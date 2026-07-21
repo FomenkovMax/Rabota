@@ -1,0 +1,15 @@
+{
+  "name": "lift-landing",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "svgo": "^4.0.2",
+    "vite": "^7.1.11"
+  }
+}

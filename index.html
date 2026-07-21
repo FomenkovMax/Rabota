@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ЛИФТ — проект кадрового резерва</title>
+<meta name="description" content="«Лифт»: прозрачный путь от специалиста до руководителя грейда 12+, показанный как поездка на лифте — этаж за этажом.">
+<meta name="theme-color" content="#0b0f10">
+<link rel="icon" href="/favicon.png" type="image/png" sizes="48x48">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="ЛИФТ">
+<meta property="og:title" content="ЛИФТ — проект кадрового резерва">
+<meta property="og:description" content="Прозрачный путь от специалиста до руководителя грейда 12+ — девять этажей отбора, наставник, практика и аттестация.">
+<meta property="og:image" content="/og-image.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:locale" content="ru_RU">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="ЛИФТ — проект кадрового резерва">
+<meta name="twitter:image" content="/og-image.jpg">
+<link rel="preload" as="image" href="./src/assets/img/scene-lobby.webp" fetchpriority="high">
+<link rel="preload" as="image" href="./src/assets/img/icon-floor-01.webp">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebPage",
+  "name": "ЛИФТ — проект кадрового резерва",
+  "description": "«Лифт»: прозрачный путь от специалиста до руководителя грейда 12+, показанный как поездка на лифте — этаж за этажом.",
+  "inLanguage": "ru"
+}
+</script>
+<script type="module" src="/src/app.js"></script>
+</head>
+<body>
+
+<div class="scene-bg" aria-hidden="true">
+  <div class="scene-layer active" data-mood="lobby"></div>
+  <div class="scene-layer" data-mood="cabin"></div>
+  <div class="scene-layer" data-mood="top"></div>
+</div>
+<div class="scene-scrim" aria-hidden="true"></div>
+
+<div class="grain" aria-hidden="true"></div>
+
+<div class="hud" aria-hidden="true">
+  <div class="arrow">▲</div>
+  <div class="num" id="hudNum">00</div>
+  <div class="name" id="hudName">Лобби</div>
+</div>
+
+<div class="rail" aria-hidden="true">
+  <div class="rail-track">
+    <div class="rail-fill"></div>
+    <div class="rail-car"></div>
+    <div class="rail-dots" id="railDots"></div>
+  </div>
+</div>
+
+<main>
+
+<header class="hero" data-floor="0" id="floor-0">
+  <div class="doors" aria-hidden="true"><div class="leaf l"></div><div class="leaf r"></div></div>
+  <div class="hero-grid">
+    <div class="hero-copy">
+      <p class="eyebrow">Проект до конца года · кодовое имя «Лифт»</p>
+      <h1>Л<span>И</span>ФТ</h1>
+      <p class="lede">Кабина, которая поднимает не строителей, а руководителей. Прозрачный путь от специалиста до позиции грейда 12+ — с понятными правилами на каждом этаже.</p>
+
+      <dl class="plaque">
+        <div>
+          <dt>Поручение</dt>
+          <dd>Сформировать пул подготовленных преемников — внутренних кандидатов на позиции руководителей и сотрудников грейдов 12+, с соблюдением прозрачности условий и критериев отбора в резерв.</dd>
+        </div>
+        <div>
+          <dt>Цель</dt>
+          <dd>Защитить ключевые руководящие позиции и повысить вовлечённость сотрудников — через возможность самостоятельно выбрать движение по карьерной лестнице и войти в конкурс на позиции руководителей с дополнительным баллом или бонусом.</dd>
+        </div>
+        <div>
+          <dt>Задача</dt>
+          <dd>Создать кадровый резерв в ГО по ЛНР на позиции грейдов 12+.</dd>
+        </div>
+      </dl>
+
+      <a class="cta" href="#floor-1">Вызвать лифт <span aria-hidden="true">↑</span></a>
+    </div>
+    <div class="hero-visual">
+      <img class="concierge-svg" src="./src/assets/img/concierge.svg" width="1792" height="2432" alt="Консьерж открывает решётчатую дверь лифта" fetchpriority="high" decoding="async">
+    </div>
+  </div>
+</header>
+
+<section class="route" aria-label="Обзор маршрута резерва">
+  <div class="route-inner">
+    <div class="route-head">
+      <p class="eyebrow">Маршрут резерва</p>
+      <h2>Весь путь — на одном табло</h2>
+      <p class="sub">Девять этажей от заявки до кабинета руководителя. Секция подсвечивается сама — синхронно с тем, где вы находитесь при скролле.</p>
+    </div>
+    <div class="route-chart">
+      <div class="route-track" id="routeTrack"></div>
+      <div class="route-labels" id="routeLabels"></div>
+    </div>
+  </div>
+</section>
+
+
+<section class="floor" data-floor="1" id="floor-1" style="--floor:1">
+  <div class="floor-ghost" aria-hidden="true">01</div>
+  <div class="doors" aria-hidden="true"><div class="leaf l"></div><div class="leaf r"></div></div>
+  <div class="floor-inner">
+    <div class="floor-meta">
+      <img class="floor-icon" src="./src/assets/img/icon-floor-01.webp" width="256" height="256" decoding="async" alt="" aria-hidden="true">
+      <span class="floor-num">Этаж 01</span>
+      <p class="eyebrow">PR-кампания</p>
+    </div>
+    <div class="floor-content">
+      <h2>Двери открываются для всех</h2>
+      <p>Никаких закрытых списков и кулуарных решений. Условия участия — в рассылках, вопросы — на живых встречах с командой, вслух, а не заочно.</p>
+      <ul class="chips">
+        <li>Рассылки с условиями участия</li>
+        <li>Встречи с сотрудниками</li>
+        <li>Открытые вопрос-ответ сессии</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section class="floor" data-floor="2" id="floor-2" style="--floor:2">
+  <div class="floor-ghost" aria-hidden="true">02</div>
+  <div class="doors" aria-hidden="true"><div class="leaf l"></div><div class="leaf r"></div></div>
+  <div class="floor-inner">
+    <div class="floor-meta">
+      <img class="floor-icon" src="./src/assets/img/icon-floor-02.webp" width="256" height="256" loading="lazy" decoding="async" alt="" aria-hidden="true">
+      <span class="floor-num">Этаж 02</span>
+      <p class="eyebrow">Диагностика</p>
+    </div>
+    <div class="floor-content">
+      <h2>Лифт считывает, куда вам нужно</h2>
+      <p>Прежде чем ехать наверх, стоит понять — куда. Три инструмента смотрят на кандидата с разных сторон: готовность меняться, мотивация и AI-интервью по компетенциям — без человеческой предвзятости.</p>
+      <ul class="chips">
+        <li>«Потенциал к изменениям»</li>
+        <li>«Мотивация»</li>
+        <li>AI-интервью по компетенциям</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section class="floor" data-floor="3" id="floor-3" style="--floor:3">
+  <div class="floor-ghost" aria-hidden="true">03</div>
+  <div class="doors" aria-hidden="true"><div class="leaf l"></div><div class="leaf r"></div></div>
+  <div class="floor-inner">
+    <div class="floor-meta">
+      <img class="floor-icon" src="./src/assets/img/icon-floor-03.webp" width="256" height="256" loading="lazy" decoding="async" alt="" aria-hidden="true">
+      <span class="floor-num">Этаж 03</span>
+      <p class="eyebrow">Заявка</p>
+    </div>
+    <div class="floor-content">
+      <h2>Не анкета, а разговор о будущем</h2>
+      <p>Кандидат сам нажимает кнопку. Заявка — это опыт, честный ответ на «почему я», короткое эссе об ожиданиях и выбор наставника — с объяснением, почему именно он.</p>
+      <ul class="chips">
+        <li>Данные и опыт кандидата</li>
+        <li>Мотивационное эссе</li>
+        <li>Выбор наставника</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section class="floor" data-floor="4" id="floor-4" style="--floor:4">
+  <div class="floor-ghost" aria-hidden="true">04</div>
+  <div class="doors" aria-hidden="true"><div class="leaf l"></div><div class="leaf r"></div></div>
+  <div class="floor-inner">
+    <div class="floor-meta">
+      <img class="floor-icon" src="./src/assets/img/icon-floor-04.webp" width="256" height="256" loading="lazy" decoding="async" alt="" aria-hidden="true">
+      <span class="floor-num">Этаж 04</span>
+      <p class="eyebrow">Отбор</p>
+    </div>
+    <div class="floor-content">
+      <h2>Тест плюс честная обратная связь</h2>
+      <p>Тестирование и проверка управленческих навыков — с обратной связью в любом случае. Прошли — добро пожаловать в резерв. Не прошли — получаете точные рекомендации к следующей попытке.</p>
+      <ul class="chips">
+        <li>Проф. тестирование</li>
+        <li>Управленческие навыки</li>
+        <li>ОС по итогам отбора</li>
+      </ul>
+      <div class="fork" role="img" aria-label="Два исхода отбора: прошли — резерв, не прошли — рекомендации к повторной попытке">
+        <svg class="fork-svg" viewBox="0 0 200 60" preserveAspectRatio="none">
+          <line class="fork-line" x1="100" y1="0" x2="100" y2="22"></line>
+          <line class="fork-line" x1="100" y1="22" x2="26" y2="56"></line>
+          <line class="fork-line" x1="100" y1="22" x2="174" y2="56"></line>
+          <circle class="fork-dot" cx="100" cy="20" r="4"></circle>
+        </svg>
+        <div class="fork-branches">
+          <div class="fork-card"><b>Прошли</b>Включение в резерв</div>
+          <div class="fork-card"><b>Не прошли</b>Рекомендации к повторной попытке</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="floor" data-floor="5" id="floor-5" style="--floor:5">
+  <div class="floor-ghost" aria-hidden="true">05</div>
+  <div class="doors" aria-hidden="true"><div class="leaf l"></div><div class="leaf r"></div></div>
+  <div class="floor-inner">
+    <div class="floor-meta">
+      <img class="floor-icon" src="./src/assets/img/icon-floor-05.webp" width="256" height="256" loading="lazy" decoding="async" alt="" aria-hidden="true">
+      <span class="floor-num">Этаж 05</span>
+      <p class="eyebrow">Наставник</p>
+    </div>
+    <div class="floor-content">
+      <h2>Проводник, а не куратор для галочки</h2>
+      <p>Наставника распределяют по реальной загрузке, а не для отчёта. 3–6 месяцев совместной работы — достаточно, чтобы разглядеть управленца, а не отрепетированную версию себя.</p>
+      <ul class="chips">
+        <li>Подбор с учётом загрузки</li>
+        <li>3–6 месяцев совместной работы</li>
+      </ul>
+      <div class="gauge" role="img" aria-label="Длительность совместной работы с наставником: от 3 до 6 месяцев из 12">
+        <div class="gauge-head"><span class="g-label">Срок работы с наставником</span><span class="g-value">3–6 мес.</span></div>
+        <div class="gauge-track"><div class="gauge-range"></div></div>
+        <div class="gauge-ticks"><span>0</span><span>3</span><span>6</span><span>9</span><span>12 мес.</span></div>
+      </div>
+      <img class="mentor-illustration" src="./src/assets/img/mentor-illustration.webp" width="900" height="506" loading="lazy" decoding="async" alt="Наставник направляет резервиста" style="width:100%;max-width:32rem;height:auto;border-radius:10px;margin-top:1rem;opacity:.95;">
+    </div>
+  </div>
+</section>
+
+<section class="floor" data-floor="6" id="floor-6" style="--floor:6">
+  <div class="floor-ghost" aria-hidden="true">06</div>
+  <div class="doors" aria-hidden="true"><div class="leaf l"></div><div class="leaf r"></div></div>
+  <div class="floor-inner">
+    <div class="floor-meta">
+      <img class="floor-icon" src="./src/assets/img/icon-floor-06.webp" width="256" height="256" loading="lazy" decoding="async" alt="" aria-hidden="true">
+      <span class="floor-num">Этаж 06</span>
+      <p class="eyebrow">План развития</p>
+    </div>
+    <div class="floor-content">
+      <h2>Маршрут под конкретного человека</h2>
+      <p>Программы в Пульсе, график очных встреч с наставником и реальные проекты — вместо курса «для всех». План собирается под кандидата, а не кандидат подгоняется под шаблон.</p>
+      <ul class="chips">
+        <li>Программы в Пульсе</li>
+        <li>Очные встречи</li>
+        <li>Проекты в работе</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section class="floor" data-floor="7" id="floor-7" style="--floor:7">
+  <div class="floor-ghost" aria-hidden="true">07</div>
+  <div class="doors" aria-hidden="true"><div class="leaf l"></div><div class="leaf r"></div></div>
+  <div class="floor-inner">
+    <div class="floor-meta">
+      <img class="floor-icon" src="./src/assets/img/icon-floor-07.webp" width="256" height="256" loading="lazy" decoding="async" alt="" aria-hidden="true">
+      <span class="floor-num">Этаж 07</span>
+      <p class="eyebrow">Практика</p>
+    </div>
+    <div class="floor-content">
+      <h2>Здесь заканчивается теория</h2>
+      <p>Резервист учится изнутри: делегирование, тайм-менеджмент, обратная связь команде и лайфхаки наставника. Проекты, пилоты, демо-дни и замещение наставника — репетиция с реальными ставками, а не в аудитории.</p>
+      <ul class="chips">
+        <li>Делегирование и тайм-менеджмент</li>
+        <li>Проекты и пилоты</li>
+        <li>Демо-дни и замещение наставника</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section class="floor" data-floor="8" id="floor-8" style="--floor:8">
+  <div class="floor-ghost" aria-hidden="true">08</div>
+  <div class="doors" aria-hidden="true"><div class="leaf l"></div><div class="leaf r"></div></div>
+  <div class="floor-inner">
+    <div class="floor-meta">
+      <img class="floor-icon" src="./src/assets/img/icon-floor-08.webp" width="256" height="256" loading="lazy" decoding="async" alt="" aria-hidden="true">
+      <span class="floor-num">Этаж 08</span>
+      <p class="eyebrow">Аттестация</p>
+    </div>
+    <div class="floor-content">
+      <h2>Решение принимает комиссия, не один человек</h2>
+      <p>Итоговое тестирование — включение в резерв утверждает кадровая комиссия. «Готов сейчас» — можно назначать. «Готов в течение года» — не отказ, а уточнённый план и продолжение работы в резерве.</p>
+      <ul class="chips">
+        <li>Кадровая комиссия</li>
+        <li>Статус «готов сейчас»</li>
+        <li>Статус «готов в течение года»</li>
+      </ul>
+      <div class="fork" role="img" aria-label="Решение комиссии: статус готов сейчас или готов в течение года">
+        <svg class="fork-svg" viewBox="0 0 200 60" preserveAspectRatio="none">
+          <line class="fork-line" x1="100" y1="0" x2="100" y2="22"></line>
+          <line class="fork-line" x1="100" y1="22" x2="26" y2="56"></line>
+          <line class="fork-line" x1="100" y1="22" x2="174" y2="56"></line>
+          <circle class="fork-dot" cx="100" cy="20" r="4"></circle>
+        </svg>
+        <div class="fork-branches">
+          <div class="fork-card"><b>Готов сейчас</b>Можно назначать</div>
+          <div class="fork-card"><b>Готов через год</b>Уточнённый план, работа в резерве</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="floor penthouse" data-floor="9" id="floor-9" style="--floor:9">
+  <div class="floor-ghost" aria-hidden="true">09</div>
+  <div class="doors" aria-hidden="true"><div class="leaf l"></div><div class="leaf r"></div></div>
+  <div class="floor-inner">
+    <div class="floor-meta">
+      <img class="floor-icon" src="./src/assets/img/icon-floor-09.webp" width="256" height="256" loading="lazy" decoding="async" alt="" aria-hidden="true">
+      <span class="floor-num">Этаж 09</span>
+      <p class="eyebrow">Финал</p>
+    </div>
+    <div class="floor-content">
+      <h2>Двери открываются на этаже руководителя</h2>
+      <p>Когда открывается вакансия, резервист поднимается быстрее очереди. Дальше путь расходится на два — в зависимости от грейда.</p>
+      <div class="fork" role="img" aria-label="При открытии вакансии — два варианта преимущества резервиста, в зависимости от грейда">
+        <svg class="fork-svg" viewBox="0 0 200 60" preserveAspectRatio="none">
+          <line class="fork-line" x1="100" y1="0" x2="100" y2="22"></line>
+          <line class="fork-line" x1="100" y1="22" x2="26" y2="56"></line>
+          <line class="fork-line" x1="100" y1="22" x2="174" y2="56"></line>
+          <circle class="fork-dot" cx="100" cy="20" r="4"></circle>
+        </svg>
+        <div class="fork-branches">
+          <div class="fork-card"><b>Вариант А</b>Назначение без конкурса</div>
+          <div class="fork-card"><b>Вариант Б</b>Конкурс без собеседования, +1 балл / +1 голос</div>
+        </div>
+      </div>
+      <p class="closing">Резерв — это не список ожидания. Это лифт, который действительно едет.</p>
+      <a class="cta restart" href="#floor-0">Вернуться в лобби <span aria-hidden="true">↺</span></a>
+    </div>
+  </div>
+</section>
+
+
+<footer>
+  <span>Черновик презентации проекта «Лифт» · драфт на основе брифа</span>
+  <span>10 этажей · 1 маршрут</span>
+</footer>
+
+</main>
+</body>
+</html>
