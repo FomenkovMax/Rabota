@@ -51,8 +51,9 @@ reference/            исходный монолит — эталон для в
 `netlify.toml`: сборка `npm run build`, публикация `dist/`, для `/assets/*` —
 `Cache-Control: immutable, max-age=31536000`.
 
-После привязки домена замените относительный `og:image` (`/og-image.jpg`) на
-абсолютный URL в `index.html` — часть скраперов не понимает относительные пути.
+Прод: https://lift-landing.netlify.app (og:image, og:url и canonical уже прописаны
+абсолютными URL). При переезде на собственный домен обновите константу домена
+в `index.html` (canonical, og:url, og:image, twitter:image, schema.org url).
 
 ## Проверка регрессий
 
