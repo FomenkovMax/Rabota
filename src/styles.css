@@ -376,8 +376,8 @@ section.floor.is-active .floor-num::after{
 .hero-copy{display:flex; flex-direction:column; align-items:flex-start; text-align:left; gap:1.5rem;}
 .hero-visual{position:relative; width:100%; border-radius:14px; overflow:hidden; background:url('./assets/img/hero-visual-bg.webp') center/cover no-repeat;}
 .hero-visual::before{content:""; position:absolute; inset:0; background:linear-gradient(180deg, rgba(11,15,16,.15), rgba(11,15,16,.55)); z-index:1;}
-.hero-visual .concierge-svg{position:relative; z-index:2;}
-.hero-visual .concierge-svg{
+.hero-visual .hero-figure{position:relative; z-index:2;}
+.hero-visual .hero-figure{
   width:100%; height:auto; display:block;
   filter:drop-shadow(0 30px 55px rgba(0,0,0,.55));
 }
