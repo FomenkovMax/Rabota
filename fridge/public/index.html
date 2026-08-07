@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Что приготовить — счётчик калорий по фото холодильника</title>
+    <meta
+      name="description"
+      content="Загрузите фото содержимого холодильника: приложение распознает продукты, посчитает калории и предложит блюда, которые из них можно приготовить."
+    />
+    <link rel="stylesheet" href="/styles.css" />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🥗</text></svg>"
+    />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="wrap topbar__inner">
+        <div class="brand">
+          <span class="brand__mark" aria-hidden="true">🥗</span>
+          <div>
+            <h1 class="brand__title">Что приготовить</h1>
+            <p class="brand__sub">Калории и блюда по фото холодильника</p>
+          </div>
+        </div>
+        <span class="badge badge--muted" id="model-badge" hidden></span>
+      </div>
+    </header>
+
+    <main class="wrap">
+      <section class="card" aria-labelledby="upload-title">
+        <h2 class="card__title" id="upload-title">1. Фото холодильника</h2>
+        <p class="card__hint">
+          Снимите полки как есть — можно несколько кадров (полки, дверца, морозилка).
+          Чем лучше видно этикетки, тем точнее подсчёт.
+        </p>
+
+        <label class="dropzone" id="dropzone">
+          <input
+            id="file-input"
+            class="visually-hidden"
+            type="file"
+            accept="image/*"
+            capture="environment"
+            multiple
+          />
+          <span class="dropzone__icon" aria-hidden="true">📷</span>
+          <span class="dropzone__text">Нажмите, чтобы выбрать или сделать фото</span>
+          <span class="dropzone__sub">либо перетащите файлы сюда · до <span id="max-images">4</span> шт</span>
+        </label>
+
+        <ul class="thumbs" id="thumbs" hidden></ul>
+      </section>
+
+      <section class="card" aria-labelledby="options-title">
+        <h2 class="card__title" id="options-title">2. Настройки подбора</h2>
+
+        <div class="grid">
+          <label class="field">
+            <span class="field__label">Порций</span>
+            <input class="field__input" type="number" id="opt-servings" min="1" max="12" value="2" />
+          </label>
+
+          <label class="field">
+            <span class="field__label">Сколько блюд предложить</span>
+            <input class="field__input" type="number" id="opt-dishes" min="3" max="8" value="5" />
+          </label>
+
+          <label class="field">
+            <span class="field__label">Приём пищи</span>
+            <select class="field__input" id="opt-meal"></select>
+          </label>
+
+          <label class="field">
+            <span class="field__label">Питание</span>
+            <select class="field__input" id="opt-diet"></select>
+          </label>
+
+          <label class="field">
+            <span class="field__label">Ккал на порцию <span class="field__opt">— необязательно</span></span>
+            <input
+              class="field__input"
+              type="number"
+              id="opt-kcal"
+              min="100"
+              max="2000"
+              step="50"
+              placeholder="например, 500"
+            />
+          </label>
+
+          <label class="field field--wide">
+            <span class="field__label">Пожелания <span class="field__opt">— необязательно</span></span>
+            <input
+              class="field__input"
+              type="text"
+              id="opt-notes"
+              maxlength="500"
+              placeholder="не люблю рыбу; нужно быстро; готовлю на детей"
+            />
+          </label>
+        </div>
+
+        <div class="switches">
+          <label class="switch">
+            <input type="checkbox" id="opt-pantry" checked />
+            <span>Соль, перец, сахар, масло и специи есть дома</span>
+          </label>
+          <label class="switch">
+            <input type="checkbox" id="opt-only" />
+            <span>Только блюда без докупок</span>
+          </label>
+        </div>
+      </section>
+
+      <div class="actions">
+        <button class="btn btn--primary" id="analyze" type="button" disabled>
+          Посчитать калории и подобрать блюда
+        </button>
+        <button class="btn btn--ghost" id="reset" type="button" hidden>Начать заново</button>
+      </div>
+
+      <p class="status" id="status" role="status" aria-live="polite"></p>
+
+      <section class="card card--error" id="error" hidden>
+        <h2 class="card__title">Не получилось</h2>
+        <p id="error-text"></p>
+      </section>
+
+      <section id="results" hidden>
+        <div class="summary" id="summary"></div>
+
+        <section class="card" aria-labelledby="products-title">
+          <div class="card__head">
+            <h2 class="card__title" id="products-title">Продукты в холодильнике</h2>
+            <span class="badge" id="products-count"></span>
+          </div>
+          <div class="table-scroll">
+            <table class="table" id="products-table">
+              <thead>
+                <tr>
+                  <th scope="col">Продукт</th>
+                  <th scope="col">Количество</th>
+                  <th scope="col" class="num">Масса</th>
+                  <th scope="col" class="num">Ккал/100 г</th>
+                  <th scope="col" class="num">Всего ккал</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+          <p class="legend">
+            <span class="dot dot--low"></span> — продукт опознан неуверенно, проверьте оценку вручную
+          </p>
+        </section>
+
+        <section aria-labelledby="dishes-title">
+          <div class="card__head card__head--bare">
+            <h2 class="card__title" id="dishes-title">Что можно приготовить</h2>
+            <div class="filters">
+              <label class="switch switch--sm">
+                <input type="checkbox" id="filter-ready" />
+                <span>Только без докупок</span>
+              </label>
+              <select class="field__input field__input--sm" id="sort-dishes">
+                <option value="default">По полноте использования</option>
+                <option value="kcal-asc">Сначала менее калорийные</option>
+                <option value="kcal-desc">Сначала более калорийные</option>
+                <option value="time">Сначала быстрые</option>
+                <option value="protein">Больше белка</option>
+              </select>
+            </div>
+          </div>
+          <div class="dishes" id="dishes"></div>
+        </section>
+
+        <p class="notes" id="notes" hidden></p>
+        <p class="disclaimer">
+          Калорийность оценивается по внешнему виду продуктов и справочным таблицам — это
+          ориентир, а не точное измерение. Для медицинских целей взвешивайте продукты.
+        </p>
+      </section>
+    </main>
+
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

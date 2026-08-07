@@ -1,0 +1,153 @@
+// Фиксированный ответ для демо-режима: позволяет посмотреть и отладить интерфейс
+// без ключа API и без обращения к модели. Включается FRIDGE_DEMO=1.
+
+export const DEMO_RESULT = {
+  products: [
+    { name: 'Яйца куриные', amount: '6 шт', grams: 330, kcal_per_100g: 157, kcal: 518, category: 'яйца', confidence: 'высокая' },
+    { name: 'Молоко 2,5%', amount: 'початый пакет ~700 мл', grams: 720, kcal_per_100g: 52, kcal: 374, category: 'молочное', confidence: 'средняя' },
+    { name: 'Сыр полутвёрдый', amount: 'кусок ~200 г', grams: 200, kcal_per_100g: 356, kcal: 712, category: 'молочное', confidence: 'средняя' },
+    { name: 'Помидоры', amount: '4 шт', grams: 480, kcal_per_100g: 20, kcal: 96, category: 'овощи', confidence: 'высокая' },
+    { name: 'Огурцы', amount: '3 шт', grams: 300, kcal_per_100g: 15, kcal: 45, category: 'овощи', confidence: 'высокая' },
+    { name: 'Куриное филе', amount: 'упаковка ~500 г', grams: 500, kcal_per_100g: 113, kcal: 565, category: 'мясо', confidence: 'высокая' },
+    { name: 'Шпинат свежий', amount: 'пачка 125 г', grams: 125, kcal_per_100g: 23, kcal: 29, category: 'овощи', confidence: 'средняя' },
+    { name: 'Сливочное масло', amount: 'початая пачка ~120 г', grams: 120, kcal_per_100g: 748, kcal: 898, category: 'молочное', confidence: 'средняя' },
+    { name: 'Хлеб пшеничный', amount: 'полбатона ~200 г', grams: 200, kcal_per_100g: 242, kcal: 484, category: 'хлеб', confidence: 'высокая' },
+    { name: 'Йогурт натуральный', amount: '2 стаканчика по 125 г', grams: 250, kcal_per_100g: 60, kcal: 150, category: 'молочное', confidence: 'высокая' },
+  ],
+  total_kcal: 3871,
+  dishes: [
+    {
+      name: 'Омлет со шпинатом и сыром',
+      description: 'Быстрый белковый завтрак из того, что уже открыто и скоро испортится.',
+      servings: 2,
+      time_minutes: 12,
+      difficulty: 'просто',
+      ingredients: [
+        { product: 'Яйца куриные', amount: '4 шт', grams: 220, kcal: 345, available: true },
+        { product: 'Молоко 2,5%', amount: '60 мл', grams: 60, kcal: 31, available: true },
+        { product: 'Шпинат свежий', amount: '125 г', grams: 125, kcal: 29, available: true },
+        { product: 'Сыр полутвёрдый', amount: '50 г', grams: 50, kcal: 178, available: true },
+        { product: 'Сливочное масло', amount: '10 г', grams: 10, kcal: 75, available: true },
+      ],
+      missing: [],
+      per_serving: { kcal: 329, protein_g: 24, fat_g: 23, carbs_g: 4 },
+      total: { kcal: 658, protein_g: 48, fat_g: 46, carbs_g: 8 },
+      steps: [
+        'Взбейте яйца с молоком, посолите и поперчите.',
+        'Растопите масло на сковороде, за минуту припустите шпинат.',
+        'Влейте яичную смесь, готовьте на среднем огне 4–5 минут под крышкой.',
+        'Посыпьте тёртым сыром, снимите с огня и дайте постоять минуту.',
+      ],
+      ready_now: true,
+    },
+    {
+      name: 'Куриное филе на сковороде с овощным салатом',
+      description: 'Основа обеда: белок плюс свежие овощи, ничего докупать не нужно.',
+      servings: 2,
+      time_minutes: 25,
+      difficulty: 'просто',
+      ingredients: [
+        { product: 'Куриное филе', amount: '400 г', grams: 400, kcal: 452, available: true },
+        { product: 'Помидоры', amount: '2 шт', grams: 240, kcal: 48, available: true },
+        { product: 'Огурцы', amount: '2 шт', grams: 200, kcal: 30, available: true },
+        { product: 'Растительное масло', amount: '1 ст. л.', grams: 15, kcal: 135, available: true },
+      ],
+      missing: [],
+      per_serving: { kcal: 333, protein_g: 45, fat_g: 14, carbs_g: 5 },
+      total: { kcal: 665, protein_g: 90, fat_g: 28, carbs_g: 10 },
+      steps: [
+        'Разрежьте филе вдоль на пласты по 1,5 см, посолите и поперчите.',
+        'Обжарьте на разогретой сковороде по 4–5 минут с каждой стороны.',
+        'Нарежьте помидоры и огурцы, заправьте маслом и солью.',
+        'Дайте мясу отдохнуть 5 минут и подавайте с салатом.',
+      ],
+      ready_now: true,
+    },
+    {
+      name: 'Горячие бутерброды с сыром и помидором',
+      description: 'Перекус за десять минут из хлеба, сыра и помидоров.',
+      servings: 2,
+      time_minutes: 10,
+      difficulty: 'просто',
+      ingredients: [
+        { product: 'Хлеб пшеничный', amount: '4 ломтика ~120 г', grams: 120, kcal: 290, available: true },
+        { product: 'Сыр полутвёрдый', amount: '80 г', grams: 80, kcal: 285, available: true },
+        { product: 'Помидоры', amount: '1 шт', grams: 120, kcal: 24, available: true },
+        { product: 'Сливочное масло', amount: '10 г', grams: 10, kcal: 75, available: true },
+      ],
+      missing: [],
+      per_serving: { kcal: 337, protein_g: 15, fat_g: 18, carbs_g: 29 },
+      total: { kcal: 674, protein_g: 30, fat_g: 36, carbs_g: 58 },
+      steps: [
+        'Разогрейте духовку до 200 °C.',
+        'Смажьте ломтики хлеба маслом, выложите кружки помидора и тёртый сыр.',
+        'Запекайте 7–8 минут до расплавления сыра.',
+      ],
+      ready_now: true,
+    },
+    {
+      name: 'Куриный салат с йогуртовой заправкой',
+      description: 'Лёгкий ужин: остаток филе, свежие овощи и йогурт вместо майонеза.',
+      servings: 2,
+      time_minutes: 20,
+      difficulty: 'просто',
+      ingredients: [
+        { product: 'Куриное филе', amount: '200 г', grams: 200, kcal: 226, available: true },
+        { product: 'Огурцы', amount: '1 шт', grams: 100, kcal: 15, available: true },
+        { product: 'Помидоры', amount: '1 шт', grams: 120, kcal: 24, available: true },
+        { product: 'Йогурт натуральный', amount: '125 г', grams: 125, kcal: 75, available: true },
+        { product: 'Лимонный сок', amount: '1 ч. л.', grams: 5, kcal: 1, available: false },
+      ],
+      missing: ['лимонный сок'],
+      per_serving: { kcal: 171, protein_g: 26, fat_g: 5, carbs_g: 6 },
+      total: { kcal: 341, protein_g: 52, fat_g: 10, carbs_g: 12 },
+      steps: [
+        'Отварите филе 15 минут в подсоленной воде и остудите.',
+        'Нарежьте мясо и овощи кубиком.',
+        'Смешайте йогурт с солью, перцем и лимонным соком.',
+        'Заправьте салат перед подачей.',
+      ],
+      ready_now: false,
+    },
+    {
+      name: 'Сырные оладьи из хлеба и молока',
+      description: 'Способ пустить в дело подсыхающий хлеб и остаток молока.',
+      servings: 2,
+      time_minutes: 20,
+      difficulty: 'средне',
+      ingredients: [
+        { product: 'Хлеб пшеничный', amount: '80 г', grams: 80, kcal: 194, available: true },
+        { product: 'Молоко 2,5%', amount: '150 мл', grams: 150, kcal: 78, available: true },
+        { product: 'Яйца куриные', amount: '2 шт', grams: 110, kcal: 173, available: true },
+        { product: 'Сыр полутвёрдый', amount: '50 г', grams: 50, kcal: 178, available: true },
+        { product: 'Мука пшеничная', amount: '2 ст. л.', grams: 30, kcal: 102, available: false },
+      ],
+      per_serving: { kcal: 363, protein_g: 19, fat_g: 17, carbs_g: 33 },
+      total: { kcal: 725, protein_g: 38, fat_g: 34, carbs_g: 66 },
+      missing: ['мука пшеничная'],
+      steps: [
+        'Замочите хлеб в тёплом молоке на 10 минут и разомните вилкой.',
+        'Вмешайте яйца, тёртый сыр, муку и соль.',
+        'Жарьте оладьи на масле по 2–3 минуты с каждой стороны.',
+      ],
+      ready_now: false,
+    },
+  ],
+  notes:
+    'Демо-режим: это заранее подготовленный пример, фото не анализировалось. Молоко и сливочное масло уже початы — используйте их в первую очередь.',
+};
+
+export function demoResult(options) {
+  return {
+    ...structuredClone(DEMO_RESULT),
+    meta: {
+      model: 'demo',
+      elapsed_ms: 400,
+      input_tokens: 0,
+      output_tokens: 0,
+      images: 0,
+      demo: true,
+      options,
+    },
+  };
+}
