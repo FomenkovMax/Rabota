@@ -33,9 +33,14 @@ const ui = {
   model: $('opt-model'),
   effort: $('opt-effort'),
   freeModel: $('opt-free-model'),
+  url: $('opt-url'),
+  customModel: $('opt-custom-model'),
+  modelList: $('model-list'),
   fieldModel: $('field-model'),
   fieldEffort: $('field-effort'),
   fieldFreeModel: $('field-free-model'),
+  fieldUrl: $('field-url'),
+  fieldCustomModel: $('field-custom-model'),
   opts: {
     servings: $('opt-servings'),
     maxDishes: $('opt-dishes'),
@@ -449,22 +454,33 @@ const PROVIDER_HINTS = {
       'загляните в <a href="https://openrouter.ai/settings/privacy" target="_blank" rel="noopener">настройки приватности</a>: ' +
       'доступ к бесплатным моделям там включается отдельно.',
   },
+  custom: {
+    placeholder: 'если сервис требует ключ',
+    html:
+      'Годится, когда Claude и OpenRouter недоступны из вашей сети. Впишите адрес любого сервиса ' +
+      'с API в формате OpenAI — российского прокси-сервиса либо программы, запущенной на этом ' +
+      'компьютере (Ollama — <code>http://localhost:11434/v1</code>, LM Studio — ' +
+      '<code>http://localhost:1234/v1</code>; там ключ не нужен, и интернет не требуется вовсе).',
+  },
 };
 
 function applyProviderView(config) {
   const provider = ui.provider.value || 'anthropic';
   const hint = PROVIDER_HINTS[provider] || PROVIDER_HINTS.anthropic;
-  const isFree = provider === 'openrouter';
+  const isRouter = provider === 'openrouter';
+  const isCustom = provider === 'custom';
 
   ui.keyHint.innerHTML = hint.html;
   ui.key.placeholder = hint.placeholder;
-  ui.fieldModel.hidden = isFree;
-  ui.fieldEffort.hidden = isFree;
-  ui.fieldFreeModel.hidden = !isFree;
+  ui.fieldModel.hidden = isRouter || isCustom;
+  ui.fieldEffort.hidden = isRouter || isCustom;
+  ui.fieldFreeModel.hidden = !isRouter;
+  ui.fieldUrl.hidden = !isCustom;
+  ui.fieldCustomModel.hidden = !isCustom;
 
   // Ключ уже сохранён для этого провайдера — поле можно оставить пустым.
   const saved = config?.hasKeys?.[provider];
-  if (saved) ui.key.placeholder = `ключ сохранён, ${hint.placeholder} — введите, чтобы заменить`;
+  if (saved && !isCustom) ui.key.placeholder = `ключ сохранён, ${hint.placeholder} — введите, чтобы заменить`;
 }
 
 function applyConfig(config) {
@@ -481,6 +497,8 @@ function applyConfig(config) {
   if (config.provider) ui.provider.value = config.provider;
   if (config.anthropicModel) ui.model.value = config.anthropicModel;
   if (config.effort) ui.effort.value = config.effort;
+  if (config.customUrl) ui.url.value = config.customUrl;
+  if (config.customModel) ui.customModel.value = config.customModel;
   if (config.openrouterModel) {
     if (![...ui.freeModel.options].some((o) => o.value === config.openrouterModel)) {
       ui.freeModel.append(h('option', { value: config.openrouterModel, text: config.openrouterModel }));
@@ -512,6 +530,10 @@ async function saveSettings() {
     if (provider === 'openrouter') {
       patch.openrouterModel = ui.freeModel.value;
       if (ui.key.value.trim()) patch.openrouterKey = ui.key.value.trim();
+    } else if (provider === 'custom') {
+      patch.customUrl = ui.url.value.trim();
+      patch.customModel = ui.customModel.value.trim();
+      patch.customKey = ui.key.value.trim();
     } else if (ui.key.value.trim()) {
       patch.apiKey = ui.key.value.trim();
     }
@@ -524,8 +546,13 @@ async function saveSettings() {
     const config = await response.json();
     if (!response.ok) throw new Error(config.error || `Ошибка ${response.status}`);
 
-    // Список бесплатных моделей приходит вместе с проверкой ключа OpenRouter.
+    // Список моделей приходит вместе с проверкой — наполняем подсказку для своего адреса.
     if (config.check?.models?.length) {
+      ui.modelList.replaceChildren(
+        ...config.check.models.map((m) => h('option', { value: m.id })),
+      );
+    }
+    if (config.check?.models?.length && ui.provider.value === 'openrouter') {
       const current = config.openrouterModel || config.check.model || '';
       ui.freeModel.replaceChildren(
         ...config.check.models.map((m) => h('option', { value: m.id, text: m.name || m.id })),

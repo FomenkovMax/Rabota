@@ -73,6 +73,30 @@
               <option value="">подберём автоматически</option>
             </select>
           </label>
+
+          <label class="field field--wide" id="field-url" hidden>
+            <span class="field__label">Адрес API <span class="field__opt">— обычно заканчивается на /v1</span></span>
+            <input
+              class="field__input"
+              type="text"
+              id="opt-url"
+              spellcheck="false"
+              placeholder="https://api.сервиса.ру/v1 или http://localhost:11434/v1"
+            />
+          </label>
+
+          <label class="field field--wide" id="field-custom-model" hidden>
+            <span class="field__label">Модель <span class="field__opt">— выберите из списка или впишите</span></span>
+            <input
+              class="field__input"
+              type="text"
+              id="opt-custom-model"
+              list="model-list"
+              spellcheck="false"
+              placeholder="например, qwen2.5vl:7b"
+            />
+            <datalist id="model-list"></datalist>
+          </label>
         </div>
 
         <div class="actions actions--tight">

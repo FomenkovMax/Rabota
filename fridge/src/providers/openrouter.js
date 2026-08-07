@@ -22,7 +22,7 @@ export class OpenRouterError extends Error {
   }
 }
 
-async function request(path, { key, method = 'GET', body } = {}) {
+async function request(path, { key, method = 'GET', body, baseUrl = BASE } = {}) {
   const headers = {
     Authorization: `Bearer ${key}`,
     'content-type': 'application/json',
@@ -33,7 +33,7 @@ async function request(path, { key, method = 'GET', body } = {}) {
 
   let response;
   try {
-    response = await fetch(`${BASE}${path}`, {
+    response = await fetch(`${baseUrl}${path}`, {
       method,
       headers,
       body: body ? JSON.stringify(body) : undefined,
@@ -47,7 +47,7 @@ async function request(path, { key, method = 'GET', body } = {}) {
         'timeout',
       );
     }
-    throw new OpenRouterError(`Нет связи с OpenRouter: ${err?.message || err}`, 502, 'network');
+    throw new OpenRouterError(`Нет связи с сервисом (${baseUrl}): ${err?.message || err}`, 502, 'network');
   }
 
   const text = await response.text();
@@ -122,8 +122,8 @@ const seesImages = (model) => {
 };
 
 /** Бесплатные модели, которые умеют смотреть на картинки, — от больших к маленьким. */
-export async function listFreeVisionModels(key) {
-  const json = await request('/models', { key });
+export async function listFreeVisionModels(key, baseUrl = BASE) {
+  const json = await request('/models', { key, baseUrl });
   return (json.data || [])
     .filter((m) => isFree(m) && seesImages(m))
     .map((m) => ({
@@ -132,6 +132,12 @@ export async function listFreeVisionModels(key) {
       context: Number(m.context_length || m.top_provider?.context_length || 0),
     }))
     .sort((a, b) => b.context - a.context);
+}
+
+/** Все модели сервиса — для своего адреса, где нет деления на платные и бесплатные. */
+export async function listModels(key, baseUrl = BASE) {
+  const json = await request('/models', { key, baseUrl });
+  return (json.data || json.models || []).map((m) => ({ id: m.id || m.name, name: m.name || m.id }));
 }
 
 export function pickModel(models) {
@@ -143,10 +149,11 @@ export function pickModel(models) {
  * отвечает не на все типы ключей, а этот путь проверяет ровно то, что нужно —
  * что ключом можно пользоваться для выбранной модели.
  */
-export async function verifyKey(key, model) {
+export async function verifyKey(key, model, baseUrl = BASE) {
   try {
     await request('/chat/completions', {
       key,
+      baseUrl,
       method: 'POST',
       body: { model, max_tokens: 1, messages: [{ role: 'user', content: 'ping' }] },
     });
@@ -161,7 +168,7 @@ export async function verifyKey(key, model) {
     // запрос не зависит от выбранной модели.
     if (err.code === 'auth') {
       try {
-        await request('/credits', { key });
+        await request('/credits', { key, baseUrl });
         return {
           ok: true,
           warning: `Ключ рабочий, но модель ${model} его не приняла — выберите другую в списке. Ответ сервера: ${err.detail || err.message}`,
@@ -175,7 +182,7 @@ export async function verifyKey(key, model) {
 }
 
 /** Один разбор: системный промпт + фото + инструкция → текст ответа (ожидается JSON). */
-export async function generate({ key, model, system, prompt, images }) {
+export async function generate({ key, model, system, prompt, images, baseUrl = BASE }) {
   const content = [
     ...images.map((image) => ({
       type: 'image_url',
@@ -196,12 +203,12 @@ export async function generate({ key, model, system, prompt, images }) {
 
   let json;
   try {
-    json = await request('/chat/completions', { key, method: 'POST', body });
+    json = await request('/chat/completions', { key, baseUrl, method: 'POST', body });
   } catch (err) {
     // Не все бесплатные модели понимают response_format — повторяем без него.
     if (err.code === 'upstream' && /response_format|json/i.test(err.message)) {
       delete body.response_format;
-      json = await request('/chat/completions', { key, method: 'POST', body });
+      json = await request('/chat/completions', { key, baseUrl, method: 'POST', body });
     } else {
       throw err;
     }

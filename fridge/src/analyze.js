@@ -7,6 +7,9 @@ import {
   getProvider,
   getOpenRouterKey,
   getOpenRouterModel,
+  getCustomUrl,
+  getCustomKey,
+  getCustomModel,
   keySource,
   saveSettings,
 } from './settings.js';
@@ -200,6 +203,7 @@ export function hasCredentials() {
 /** Проверка доступа без генерации токенов: запрашиваем карточку модели. */
 export async function checkAccess() {
   if (getProvider() === 'openrouter') return checkOpenRouter();
+  if (getProvider() === 'custom') return checkCustom();
 
   const model = getModel();
   try {
@@ -237,6 +241,35 @@ async function checkOpenRouter() {
   try {
     const verdict = await openrouter.verifyKey(key, getOpenRouterModel());
     return { ok: true, model: getOpenRouterModel(), models: shortList, warning: verdict.warning };
+  } catch (err) {
+    return { ok: false, error: err?.message || String(err), models: shortList };
+  }
+}
+
+/** Проверка своего адреса: список моделей сервиса плюс запрос в одну лексему. */
+async function checkCustom() {
+  const baseUrl = getCustomUrl();
+  if (!baseUrl) return { ok: false, error: 'Не указан адрес API.' };
+  const key = getCustomKey() || 'not-needed'; // локальные серверы ключ игнорируют
+
+  let models = [];
+  try {
+    models = await openrouter.listModels(key, baseUrl);
+  } catch (err) {
+    // Список есть не у всех сервисов — это не повод считать адрес нерабочим.
+    if (!getCustomModel()) {
+      return { ok: false, error: `Не удалось получить список моделей: ${err?.message || err}` };
+    }
+  }
+  if (!getCustomModel() && models.length) saveSettings({ customModel: models[0].id });
+  if (!getCustomModel()) {
+    return { ok: false, error: 'Сервис не отдал список моделей — впишите название модели вручную.' };
+  }
+
+  const shortList = models.slice(0, 50).map(({ id, name }) => ({ id, name }));
+  try {
+    const verdict = await openrouter.verifyKey(key, getCustomModel(), baseUrl);
+    return { ok: true, model: getCustomModel(), models: shortList, warning: verdict.warning };
   } catch (err) {
     return { ok: false, error: err?.message || String(err), models: shortList };
   }
@@ -402,16 +435,30 @@ async function runAnthropic(payload, client) {
  * Ветка OpenRouter: у бесплатных моделей нет строгих схем, поэтому схему
  * кладём прямо в текст запроса и разбираем ответ снисходительно.
  */
-async function runOpenRouter(payload) {
-  const key = getOpenRouterKey();
-  if (!key) {
+async function runOpenAiCompatible(payload, provider) {
+  const custom = provider === 'custom';
+  const baseUrl = custom ? getCustomUrl() : undefined;
+  const key = custom ? getCustomKey() || 'not-needed' : getOpenRouterKey();
+  if (custom && !baseUrl) {
+    throw new AnalyzeError(
+      'Не указан адрес API. Откройте «Настройка доступа» вверху страницы.',
+      500,
+      'no_credentials',
+    );
+  }
+  if (!custom && !key) {
     throw new AnalyzeError(
       'Не задан ключ OpenRouter. Откройте «Настройка доступа» вверху страницы.',
       500,
       'no_credentials',
     );
   }
-  const model = getOpenRouterModel() || openrouter.FALLBACK_MODEL;
+  const model = custom
+    ? getCustomModel()
+    : getOpenRouterModel() || openrouter.FALLBACK_MODEL;
+  if (!model) {
+    throw new AnalyzeError('Не выбрана модель. Откройте «Настройка доступа».', 500, 'no_model');
+  }
   const prompt = [
     buildUserPrompt(payload.options),
     '',
@@ -423,6 +470,7 @@ async function runOpenRouter(payload) {
     const text = await openrouter.generate({
       key,
       model,
+      baseUrl,
       system: SYSTEM_PROMPT,
       prompt,
       images: payload.images,
@@ -440,7 +488,9 @@ export async function analyze(body, client) {
   const started = Date.now();
 
   const result =
-    provider === 'openrouter' ? await runOpenRouter(payload) : await runAnthropic(payload, client);
+    provider === 'anthropic'
+      ? await runAnthropic(payload, client)
+      : await runOpenAiCompatible(payload, provider);
 
   return {
     ...normalize(extractJson(result.text)),

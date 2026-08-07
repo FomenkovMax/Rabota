@@ -23,6 +23,9 @@ import {
   getApiKey,
   getOpenRouterKey,
   getOpenRouterModel,
+  getCustomUrl,
+  getCustomModel,
+  normalizeUrl,
   activeModel,
   keySource,
   saveSettings,
@@ -121,11 +124,17 @@ function currentConfig() {
     model: DEMO ? 'demo' : activeModel(),
     anthropicModel: getModel(),
     openrouterModel: getOpenRouterModel(),
+    customUrl: getCustomUrl(),
+    customModel: getCustomModel(),
     effort: getEffort(),
     demo: DEMO,
     ready: DEMO || hasCredentials(),
     keySource: DEMO ? 'demo' : keySource(),
-    hasKeys: { anthropic: Boolean(getApiKey()), openrouter: Boolean(getOpenRouterKey()) },
+    hasKeys: {
+      anthropic: Boolean(getApiKey()),
+      openrouter: Boolean(getOpenRouterKey()),
+      custom: Boolean(getCustomUrl()),
+    },
     settingsFile,
     maxImages: MAX_IMAGES,
     meals: MEALS,
@@ -186,6 +195,13 @@ const server = http.createServer(async (req, res) => {
           : null);
       if (keyProblem) {
         sendJson(res, 400, { error: keyProblem, code: 'bad_key' });
+        return;
+      }
+      if (typeof body.customUrl === 'string' && body.customUrl.trim() && normalizeUrl(body.customUrl) === null) {
+        sendJson(res, 400, {
+          error: 'Адрес должен начинаться с http:// или https:// — скопируйте его из документации сервиса.',
+          code: 'bad_url',
+        });
         return;
       }
       saveSettings(body);

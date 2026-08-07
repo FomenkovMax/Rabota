@@ -11,6 +11,7 @@ const FILE = path.join(DATA_DIR, 'settings.json');
 export const PROVIDERS = {
   anthropic: 'Claude — точнее всего, платно',
   openrouter: 'OpenRouter — есть бесплатные модели',
+  custom: 'Свой адрес — прокси или модель на этом компьютере',
 };
 
 export const MODEL_CHOICES = {
@@ -33,6 +34,9 @@ const DEFAULTS = {
   effort: 'high',
   openrouterKey: '',
   openrouterModel: '',
+  customUrl: '',
+  customKey: '',
+  customModel: '',
 };
 
 let cache = null;
@@ -69,7 +73,15 @@ export function validateKey(key, provider = getProvider()) {
   if (provider === 'openrouter' && !key.startsWith('sk-or-')) {
     return 'Ключ OpenRouter должен начинаться с «sk-or-». Похоже, скопирована не та строка.';
   }
-  return null;
+  return null; // у своего адреса формат ключа непредсказуем — проверит живой запрос
+}
+
+/** Приводит адрес к виду, который ждёт клиент: без хвостового слэша. */
+export function normalizeUrl(value) {
+  const url = String(value ?? '').trim().replace(/\/+$/, '');
+  if (!url) return '';
+  if (!/^https?:\/\//i.test(url)) return null;
+  return url;
 }
 
 export function saveSettings(patch) {
@@ -78,6 +90,9 @@ export function saveSettings(patch) {
   if (typeof patch.apiKey === 'string') next.apiKey = cleanKey(patch.apiKey);
   if (typeof patch.openrouterKey === 'string') next.openrouterKey = cleanKey(patch.openrouterKey);
   if (typeof patch.openrouterModel === 'string') next.openrouterModel = patch.openrouterModel.trim();
+  if (typeof patch.customUrl === 'string') next.customUrl = normalizeUrl(patch.customUrl) || '';
+  if (typeof patch.customKey === 'string') next.customKey = cleanKey(patch.customKey);
+  if (typeof patch.customModel === 'string') next.customModel = patch.customModel.trim();
   if (Object.hasOwn(MODEL_CHOICES, patch.model)) next.model = patch.model;
   if (Object.hasOwn(EFFORT_CHOICES, patch.effort)) next.effort = patch.effort;
 
@@ -99,6 +114,10 @@ export function getProvider() {
 
 /** Откуда взят ключ активного провайдера: окружение, файл настроек или ниоткуда. */
 export function keySource() {
+  if (getProvider() === 'custom') {
+    // Локальным серверам ключ не нужен — достаточно адреса.
+    return read().customUrl ? 'file' : 'none';
+  }
   if (getProvider() === 'openrouter') {
     if (process.env.OPENROUTER_API_KEY) return 'env';
     return read().openrouterKey ? 'file' : 'none';
@@ -119,6 +138,18 @@ export function getOpenRouterModel() {
   return process.env.OPENROUTER_MODEL || read().openrouterModel || '';
 }
 
+export function getCustomUrl() {
+  return process.env.FRIDGE_API_URL || read().customUrl || '';
+}
+
+export function getCustomKey() {
+  return process.env.FRIDGE_API_KEY || read().customKey || '';
+}
+
+export function getCustomModel() {
+  return process.env.FRIDGE_API_MODEL || read().customModel || '';
+}
+
 export function getModel() {
   return process.env.ANTHROPIC_MODEL || read().model;
 }
@@ -129,7 +160,10 @@ export function getEffort() {
 
 /** Модель активного провайдера — для показа в интерфейсе. */
 export function activeModel() {
-  return getProvider() === 'openrouter' ? getOpenRouterModel() || 'подберём автоматически' : getModel();
+  const provider = getProvider();
+  if (provider === 'custom') return getCustomModel() || 'модель не выбрана';
+  if (provider === 'openrouter') return getOpenRouterModel() || 'подберём автоматически';
+  return getModel();
 }
 
 export const settingsFile = FILE;
