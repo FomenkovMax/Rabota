@@ -45,6 +45,11 @@ figure {
   padding: 0 16px;
 }
 
+/* .field и другие блоки объявляют display, поэтому атрибут hidden сам по себе не сработает */
+[hidden] {
+  display: none !important;
+}
+
 .visually-hidden {
   position: absolute;
   width: 1px;

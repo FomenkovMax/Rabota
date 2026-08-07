@@ -19,9 +19,15 @@ import {
 import {
   getModel,
   getEffort,
+  getProvider,
+  getApiKey,
+  getOpenRouterKey,
+  getOpenRouterModel,
+  activeModel,
   keySource,
   saveSettings,
   validateKey,
+  PROVIDERS,
   MODEL_CHOICES,
   EFFORT_CHOICES,
   settingsFile,
@@ -109,11 +115,16 @@ function readBody(req) {
 
 function currentConfig() {
   return {
-    model: DEMO ? 'demo' : getModel(),
+    provider: getProvider(),
+    providers: PROVIDERS,
+    model: DEMO ? 'demo' : activeModel(),
+    anthropicModel: getModel(),
+    openrouterModel: getOpenRouterModel(),
     effort: getEffort(),
     demo: DEMO,
     ready: DEMO || hasCredentials(),
     keySource: DEMO ? 'demo' : keySource(),
+    hasKeys: { anthropic: Boolean(getApiKey()), openrouter: Boolean(getOpenRouterKey()) },
     settingsFile,
     maxImages: MAX_IMAGES,
     meals: MEALS,
@@ -167,7 +178,11 @@ const server = http.createServer(async (req, res) => {
     }
     try {
       const body = (await readBody(req)) || {};
-      const keyProblem = typeof body.apiKey === 'string' ? validateKey(body.apiKey.trim()) : null;
+      const keyProblem =
+        (typeof body.apiKey === 'string' ? validateKey(body.apiKey.trim(), 'anthropic') : null) ||
+        (typeof body.openrouterKey === 'string'
+          ? validateKey(body.openrouterKey.trim(), 'openrouter')
+          : null);
       if (keyProblem) {
         sendJson(res, 400, { error: keyProblem, code: 'bad_key' });
         return;

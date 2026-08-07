@@ -35,13 +35,14 @@
           <span class="badge" id="setup-state">проверяем…</span>
         </summary>
 
-        <p class="card__hint">
-          Приложение обращается к Claude — для этого нужен ключ API. Он хранится только на этом
-          компьютере и никуда больше не отправляется. Получить ключ:
-          <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener"
-            >console.anthropic.com → API keys</a
-          >.
-        </p>
+        <div class="grid grid--setup">
+          <label class="field field--wide">
+            <span class="field__label">Через кого работать</span>
+            <select class="field__input" id="opt-provider"></select>
+          </label>
+        </div>
+
+        <p class="card__hint" id="key-hint"></p>
 
         <div class="grid grid--setup">
           <label class="field field--wide">
@@ -56,14 +57,21 @@
             />
           </label>
 
-          <label class="field">
+          <label class="field" id="field-model">
             <span class="field__label">Модель</span>
             <select class="field__input" id="opt-model"></select>
           </label>
 
-          <label class="field">
+          <label class="field" id="field-effort">
             <span class="field__label">Насколько тщательно считать</span>
             <select class="field__input" id="opt-effort"></select>
+          </label>
+
+          <label class="field field--wide" id="field-free-model" hidden>
+            <span class="field__label">Бесплатная модель</span>
+            <select class="field__input" id="opt-free-model">
+              <option value="">подберём автоматически</option>
+            </select>
           </label>
         </div>
 

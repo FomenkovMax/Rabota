@@ -27,9 +27,15 @@ const ui = {
   setupState: $('setup-state'),
   setupStatus: $('setup-status'),
   saveSettings: $('save-settings'),
+  provider: $('opt-provider'),
+  keyHint: $('key-hint'),
   key: $('opt-key'),
   model: $('opt-model'),
   effort: $('opt-effort'),
+  freeModel: $('opt-free-model'),
+  fieldModel: $('field-model'),
+  fieldEffort: $('field-effort'),
+  fieldFreeModel: $('field-free-model'),
   opts: {
     servings: $('opt-servings'),
     maxDishes: $('opt-dishes'),
@@ -426,17 +432,60 @@ const KEY_STATE = {
   none: ['нужен ключ API', 'badge badge--warn'],
 };
 
+const PROVIDER_HINTS = {
+  anthropic: {
+    placeholder: 'sk-ant-...',
+    html:
+      'Claude считает точнее всех, но запросы платные. Ключ: ' +
+      '<a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com → API keys</a>. ' +
+      'Он хранится только на этом компьютере.',
+  },
+  openrouter: {
+    placeholder: 'sk-or-v1-...',
+    html:
+      'Бесплатный вариант: у OpenRouter есть модели, за которые не берут денег и не нужна карта. ' +
+      'Ключ: <a href="https://openrouter.ai/keys" target="_blank" rel="noopener">openrouter.ai/keys</a> → «Create Key». ' +
+      'Считают такие модели грубее Claude, и есть дневные лимиты.',
+  },
+};
+
+function applyProviderView(config) {
+  const provider = ui.provider.value || 'anthropic';
+  const hint = PROVIDER_HINTS[provider] || PROVIDER_HINTS.anthropic;
+  const isFree = provider === 'openrouter';
+
+  ui.keyHint.innerHTML = hint.html;
+  ui.key.placeholder = hint.placeholder;
+  ui.fieldModel.hidden = isFree;
+  ui.fieldEffort.hidden = isFree;
+  ui.fieldFreeModel.hidden = !isFree;
+
+  // Ключ уже сохранён для этого провайдера — поле можно оставить пустым.
+  const saved = config?.hasKeys?.[provider];
+  if (saved) ui.key.placeholder = `ключ сохранён, ${hint.placeholder} — введите, чтобы заменить`;
+}
+
 function applyConfig(config) {
   state.maxImages = config.maxImages || 4;
   state.ready = Boolean(config.ready);
+  state.config = config;
   ui.maxImages.textContent = String(state.maxImages);
 
   fillSelect(ui.opts.meal, config.meals);
   fillSelect(ui.opts.diet, config.diets);
+  fillSelect(ui.provider, config.providers);
   fillSelect(ui.model, config.models);
   fillSelect(ui.effort, config.efforts);
-  if (config.model) ui.model.value = config.model;
+  if (config.provider) ui.provider.value = config.provider;
+  if (config.anthropicModel) ui.model.value = config.anthropicModel;
   if (config.effort) ui.effort.value = config.effort;
+  if (config.openrouterModel) {
+    if (![...ui.freeModel.options].some((o) => o.value === config.openrouterModel)) {
+      ui.freeModel.append(h('option', { value: config.openrouterModel, text: config.openrouterModel }));
+    }
+    ui.freeModel.value = config.openrouterModel;
+  }
+  applyProviderView(config);
 
   const [label, cls] = KEY_STATE[config.keySource] || KEY_STATE.none;
   ui.setupState.textContent = label;
@@ -446,10 +495,8 @@ function applyConfig(config) {
 
   // Блок настроек раскрыт, пока ключа нет; когда всё готово — свёрнут.
   if (!state.ready) ui.setup.open = true;
-  if (config.keySource === 'env') {
-    ui.key.placeholder = 'ключ берётся из переменной окружения';
-    ui.key.disabled = true;
-  }
+  ui.key.disabled = config.keySource === 'env';
+  if (config.keySource === 'env') ui.key.placeholder = 'ключ берётся из переменной окружения';
   updateAnalyzeButton();
 }
 
@@ -458,8 +505,14 @@ async function saveSettings() {
   ui.setupStatus.textContent = 'Сохраняем и проверяем ключ…';
   ui.setupStatus.classList.add('status--busy');
   try {
-    const patch = { model: ui.model.value, effort: ui.effort.value };
-    if (ui.key.value.trim()) patch.apiKey = ui.key.value.trim();
+    const provider = ui.provider.value;
+    const patch = { provider, model: ui.model.value, effort: ui.effort.value };
+    if (provider === 'openrouter') {
+      patch.openrouterModel = ui.freeModel.value;
+      if (ui.key.value.trim()) patch.openrouterKey = ui.key.value.trim();
+    } else if (ui.key.value.trim()) {
+      patch.apiKey = ui.key.value.trim();
+    }
 
     const response = await fetch('/api/settings', {
       method: 'POST',
@@ -468,6 +521,18 @@ async function saveSettings() {
     });
     const config = await response.json();
     if (!response.ok) throw new Error(config.error || `Ошибка ${response.status}`);
+
+    // Список бесплатных моделей приходит вместе с проверкой ключа OpenRouter.
+    if (config.check?.models?.length) {
+      const current = config.openrouterModel || config.check.model || '';
+      ui.freeModel.replaceChildren(
+        ...config.check.models.map((m) => h('option', { value: m.id, text: m.name || m.id })),
+      );
+      if (current && ![...ui.freeModel.options].some((o) => o.value === current)) {
+        ui.freeModel.prepend(h('option', { value: current, text: current }));
+      }
+      ui.freeModel.value = current;
+    }
 
     applyConfig(config);
     ui.key.value = '';
@@ -535,6 +600,11 @@ async function init() {
   });
 
   ui.saveSettings.addEventListener('click', saveSettings);
+  ui.provider.addEventListener('change', () => {
+    ui.key.value = '';
+    ui.setupStatus.textContent = '';
+    applyProviderView(state.config);
+  });
   ui.key.addEventListener('keydown', (e) => e.key === 'Enter' && saveSettings());
   ui.filterReady.addEventListener('change', renderDishes);
   ui.sortDishes.addEventListener('change', renderDishes);

@@ -1,6 +1,16 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { RESULT_SCHEMA } from './schema.js';
-import { getApiKey, getModel, getEffort, keySource } from './settings.js';
+import {
+  getApiKey,
+  getModel,
+  getEffort,
+  getProvider,
+  getOpenRouterKey,
+  getOpenRouterModel,
+  keySource,
+  saveSettings,
+} from './settings.js';
+import * as openrouter from './providers/openrouter.js';
 
 const MAX_TOKENS = Number(process.env.FRIDGE_MAX_TOKENS || 32000);
 
@@ -189,6 +199,8 @@ export function hasCredentials() {
 
 /** Проверка доступа без генерации токенов: запрашиваем карточку модели. */
 export async function checkAccess() {
+  if (getProvider() === 'openrouter') return checkOpenRouter();
+
   const model = getModel();
   try {
     const info = await getClient().models.retrieve(model);
@@ -201,6 +213,35 @@ export async function checkAccess() {
       return { ok: false, error: 'Ключ не задан.' };
     }
     return { ok: false, error: `Не удалось проверить: ${err?.message || err}` };
+  }
+}
+
+/**
+ * Проверка ключа OpenRouter: заодно тянем список бесплатных моделей, которые
+ * умеют смотреть на картинки, и, если модель ещё не выбрана, ставим лучшую.
+ */
+async function checkOpenRouter() {
+  const key = getOpenRouterKey();
+  if (!key) return { ok: false, error: 'Ключ OpenRouter не задан.' };
+  try {
+    await openrouter.checkKey(key);
+    let models = [];
+    try {
+      models = await openrouter.listFreeVisionModels(key);
+    } catch {
+      /* список — приятное дополнение, без него просто останется текущая модель */
+    }
+    if (!getOpenRouterModel() && models.length) {
+      saveSettings({ openrouterModel: openrouter.pickModel(models) });
+    }
+    if (!getOpenRouterModel()) saveSettings({ openrouterModel: openrouter.FALLBACK_MODEL });
+    return {
+      ok: true,
+      model: getOpenRouterModel(),
+      models: models.slice(0, 20).map(({ id, name }) => ({ id, name })),
+    };
+  } catch (err) {
+    return { ok: false, error: err?.message || String(err) };
   }
 }
 
@@ -229,11 +270,15 @@ async function requestModel(client, params, withFallbacks = fallbacksAvailable) 
   }
 }
 
-function extractJson(message) {
-  const text = message.content
-    .filter((block) => block.type === 'text')
-    .map((block) => block.text)
-    .join('');
+/**
+ * Достаёт JSON из ответа. Модели попроще любят обернуть его в ```json … ```
+ * или добавить вежливую фразу — вырезаем и это.
+ */
+function extractJson(raw) {
+  const text = String(raw || '')
+    .replace(/^\s*```(?:json)?\s*/i, '')
+    .replace(/\s*```\s*$/i, '')
+    .trim();
   try {
     return JSON.parse(text);
   } catch {
@@ -292,11 +337,9 @@ function normalize(result) {
   };
 }
 
-/** Основной вход: тело запроса → разобранный результат. */
-export async function analyze(body, client) {
-  const payload = parseRequest(body);
+/** Ветка Claude: строгий JSON по схеме, адаптивное мышление. */
+async function runAnthropic(payload, client) {
   const api = client || getClient();
-  const started = Date.now();
 
   let message;
   try {
@@ -348,12 +391,68 @@ export async function analyze(body, client) {
   }
 
   return {
-    ...normalize(extractJson(message)),
+    text: message.content
+      .filter((block) => block.type === 'text')
+      .map((block) => block.text)
+      .join(''),
+    model: message.model,
+    input_tokens: message.usage?.input_tokens ?? 0,
+    output_tokens: message.usage?.output_tokens ?? 0,
+  };
+}
+
+/**
+ * Ветка OpenRouter: у бесплатных моделей нет строгих схем, поэтому схему
+ * кладём прямо в текст запроса и разбираем ответ снисходительно.
+ */
+async function runOpenRouter(payload) {
+  const key = getOpenRouterKey();
+  if (!key) {
+    throw new AnalyzeError(
+      'Не задан ключ OpenRouter. Откройте «Настройка доступа» вверху страницы.',
+      500,
+      'no_credentials',
+    );
+  }
+  const model = getOpenRouterModel() || openrouter.FALLBACK_MODEL;
+  const prompt = [
+    buildUserPrompt(payload.options),
+    '',
+    'Ответ — один JSON-объект строго по этой схеме, без пояснений вокруг и без markdown-обёртки:',
+    JSON.stringify(RESULT_SCHEMA),
+  ].join('\n');
+
+  try {
+    const text = await openrouter.generate({
+      key,
+      model,
+      system: SYSTEM_PROMPT,
+      prompt,
+      images: payload.images,
+    });
+    return { text, model, input_tokens: 0, output_tokens: 0 };
+  } catch (err) {
+    throw new AnalyzeError(err?.message || String(err), err?.status || 502, err?.code || 'upstream');
+  }
+}
+
+/** Основной вход: тело запроса → разобранный результат. */
+export async function analyze(body, client) {
+  const payload = parseRequest(body);
+  const provider = getProvider();
+  const started = Date.now();
+
+  const result =
+    provider === 'openrouter' ? await runOpenRouter(payload) : await runAnthropic(payload, client);
+
+  return {
+    ...normalize(extractJson(result.text)),
     meta: {
-      model: message.model,
+      provider,
+      model: result.model,
       elapsed_ms: Date.now() - started,
-      input_tokens: message.usage?.input_tokens ?? 0,
-      output_tokens: message.usage?.output_tokens ?? 0,
+      input_tokens: result.input_tokens,
+      output_tokens: result.output_tokens,
       images: payload.images.length,
       options: payload.options,
     },
