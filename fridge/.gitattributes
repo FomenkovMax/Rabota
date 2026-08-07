@@ -1,0 +1,3 @@
+# .bat должен приходить на Windows с CRLF, иначе cmd ломает разбор файла
+*.bat -text
+*.command text eol=lf
