@@ -14,10 +14,11 @@ const MAX_TOKENS = Number(process.env.FRIDGE_MAX_TOKENS || 16000);
 export const FALLBACK_MODEL = 'meta-llama/llama-4-maverick:free';
 
 export class OpenRouterError extends Error {
-  constructor(message, status = 502, code = 'openrouter') {
+  constructor(message, status = 502, code = 'openrouter', detail = '') {
     super(message);
     this.status = status;
     this.code = code;
+    this.detail = detail; // сырой текст ответа сервера — пригодится для диагностики
   }
 }
 
@@ -62,10 +63,10 @@ async function request(path, { key, method = 'GET', body } = {}) {
     const status = response.status || json?.error?.code || 502;
     if (status === 401 || status === 403) {
       throw new OpenRouterError(
-        'Ключ OpenRouter не принят. Ключ в окне OpenRouter переносится на две строки — ' +
-          'выделять мышкой нельзя, копируйте кнопкой справа от него, иначе теряется хвост.',
+        `Ключ OpenRouter не принят. Ответ сервера: HTTP ${status}, «${detail}»`,
         502,
         'auth',
+        `HTTP ${status}, «${detail}»`,
       );
     }
     if (status === 402) {
@@ -83,7 +84,14 @@ async function request(path, { key, method = 'GET', body } = {}) {
       );
     }
     if (status === 404) {
-      throw new OpenRouterError('Такой модели у OpenRouter нет — выберите другую в настройках.', 404, 'no_model');
+      const dataPolicy = /data policy|no endpoints/i.test(detail)
+        ? ' Похоже, в аккаунте не разрешены бесплатные модели: откройте openrouter.ai/settings/privacy и включите доступ к ним.'
+        : '';
+      throw new OpenRouterError(
+        `Модель недоступна для этого ключа — выберите другую в настройках.${dataPolicy} Ответ сервера: «${detail}»`,
+        404,
+        'no_model',
+      );
     }
     throw new OpenRouterError(`OpenRouter вернул ошибку: ${detail}`, 502, 'upstream');
   }
@@ -134,7 +142,20 @@ export async function verifyKey(key, model) {
     // Ключ рабочий, просто модель сейчас недоступна или упёрлись в лимит.
     if (err.code === 'quota') return { ok: true, warning: err.message };
     if (err.code === 'no_model') {
-      return { ok: true, warning: 'Ключ рабочий, но эта модель недоступна — выберите другую в списке.' };
+      return { ok: true, warning: `${err.message} Ключ при этом рабочий.` };
+    }
+    // Отказ мог прийти из-за модели, а не из-за ключа: спрашиваем баланс, этот
+    // запрос не зависит от выбранной модели.
+    if (err.code === 'auth') {
+      try {
+        await request('/credits', { key });
+        return {
+          ok: true,
+          warning: `Ключ рабочий, но модель ${model} его не приняла — выберите другую в списке. Ответ сервера: ${err.detail || err.message}`,
+        };
+      } catch {
+        throw err;
+      }
     }
     throw err;
   }

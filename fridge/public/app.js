@@ -445,7 +445,9 @@ const PROVIDER_HINTS = {
     html:
       'Бесплатный вариант: у OpenRouter есть модели, за которые не берут денег и не нужна карта. ' +
       'Ключ: <a href="https://openrouter.ai/keys" target="_blank" rel="noopener">openrouter.ai/keys</a> → «Create Key». ' +
-      'Считают такие модели грубее Claude, и есть дневные лимиты.',
+      'Считают такие модели грубее Claude, и есть дневные лимиты. Если модель отвечает отказом — ' +
+      'загляните в <a href="https://openrouter.ai/settings/privacy" target="_blank" rel="noopener">настройки приватности</a>: ' +
+      'доступ к бесплатным моделям там включается отдельно.',
   },
 };
 
