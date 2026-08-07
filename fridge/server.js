@@ -27,6 +27,7 @@ import {
   keySource,
   saveSettings,
   validateKey,
+  cleanKey,
   PROVIDERS,
   MODEL_CHOICES,
   EFFORT_CHOICES,
@@ -179,9 +180,9 @@ const server = http.createServer(async (req, res) => {
     try {
       const body = (await readBody(req)) || {};
       const keyProblem =
-        (typeof body.apiKey === 'string' ? validateKey(body.apiKey.trim(), 'anthropic') : null) ||
+        (typeof body.apiKey === 'string' ? validateKey(cleanKey(body.apiKey), 'anthropic') : null) ||
         (typeof body.openrouterKey === 'string'
-          ? validateKey(body.openrouterKey.trim(), 'openrouter')
+          ? validateKey(cleanKey(body.openrouterKey), 'openrouter')
           : null);
       if (keyProblem) {
         sendJson(res, 400, { error: keyProblem, code: 'bad_key' });

@@ -51,6 +51,12 @@ export function getSettings() {
   return { ...read() };
 }
 
+/**
+ * Убирает любые пробелы и переносы: ключ в консолях показывают в несколько строк,
+ * и при копировании мышкой перенос попадает в середину строки.
+ */
+export const cleanKey = (value) => String(value ?? '').replace(/\s+/g, '');
+
 /** Ключи уходят в HTTP-заголовки, поэтому в них допустимы только печатные ASCII-символы. */
 export function validateKey(key, provider = getProvider()) {
   if (!key) return null;
@@ -69,8 +75,8 @@ export function validateKey(key, provider = getProvider()) {
 export function saveSettings(patch) {
   const next = { ...read() };
   if (Object.hasOwn(PROVIDERS, patch.provider)) next.provider = patch.provider;
-  if (typeof patch.apiKey === 'string') next.apiKey = patch.apiKey.trim();
-  if (typeof patch.openrouterKey === 'string') next.openrouterKey = patch.openrouterKey.trim();
+  if (typeof patch.apiKey === 'string') next.apiKey = cleanKey(patch.apiKey);
+  if (typeof patch.openrouterKey === 'string') next.openrouterKey = cleanKey(patch.openrouterKey);
   if (typeof patch.openrouterModel === 'string') next.openrouterModel = patch.openrouterModel.trim();
   if (Object.hasOwn(MODEL_CHOICES, patch.model)) next.model = patch.model;
   if (Object.hasOwn(EFFORT_CHOICES, patch.effort)) next.effort = patch.effort;

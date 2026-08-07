@@ -61,7 +61,12 @@ async function request(path, { key, method = 'GET', body } = {}) {
     const detail = json?.error?.message || json?.error || text.slice(0, 300) || `HTTP ${response.status}`;
     const status = response.status || json?.error?.code || 502;
     if (status === 401 || status === 403) {
-      throw new OpenRouterError('Ключ OpenRouter не принят — проверьте, что скопировали его целиком.', 502, 'auth');
+      throw new OpenRouterError(
+        'Ключ OpenRouter не принят. Ключ в окне OpenRouter переносится на две строки — ' +
+          'выделять мышкой нельзя, копируйте кнопкой справа от него, иначе теряется хвост.',
+        502,
+        'auth',
+      );
     }
     if (status === 402) {
       throw new OpenRouterError(
@@ -112,15 +117,24 @@ export function pickModel(models) {
   return models[0]?.id || FALLBACK_MODEL;
 }
 
-/** Проверка ключа: сведения о ключе, а если такого эндпоинта нет — список моделей. */
-export async function checkKey(key) {
+/**
+ * Проверка ключа настоящим запросом в одну лексему: служебный эндпоинт /key
+ * отвечает не на все типы ключей, а этот путь проверяет ровно то, что нужно —
+ * что ключом можно пользоваться для выбранной модели.
+ */
+export async function verifyKey(key, model) {
   try {
-    const json = await request('/key', { key });
-    return { ok: true, info: json.data || json };
+    await request('/chat/completions', {
+      key,
+      method: 'POST',
+      body: { model, max_tokens: 1, messages: [{ role: 'user', content: 'ping' }] },
+    });
+    return { ok: true };
   } catch (err) {
-    if (err.status === 404 || err.code === 'no_model') {
-      await request('/models', { key });
-      return { ok: true, info: null };
+    // Ключ рабочий, просто модель сейчас недоступна или упёрлись в лимит.
+    if (err.code === 'quota') return { ok: true, warning: err.message };
+    if (err.code === 'no_model') {
+      return { ok: true, warning: 'Ключ рабочий, но эта модель недоступна — выберите другую в списке.' };
     }
     throw err;
   }

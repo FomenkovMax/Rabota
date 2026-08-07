@@ -537,7 +537,9 @@ async function saveSettings() {
     applyConfig(config);
     ui.key.value = '';
     if (config.check?.ok) {
-      ui.setupStatus.textContent = '✓ Ключ работает, можно загружать фото.';
+      ui.setupStatus.textContent = config.check.warning
+        ? `✓ Ключ работает. ${config.check.warning}`
+        : '✓ Ключ работает, можно загружать фото.';
       state.ready = true;
       updateAnalyzeButton();
       setTimeout(() => (ui.setup.open = false), 900);

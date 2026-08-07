@@ -223,25 +223,22 @@ export async function checkAccess() {
 async function checkOpenRouter() {
   const key = getOpenRouterKey();
   if (!key) return { ok: false, error: 'Ключ OpenRouter не задан.' };
+  let models = [];
   try {
-    await openrouter.checkKey(key);
-    let models = [];
-    try {
-      models = await openrouter.listFreeVisionModels(key);
-    } catch {
-      /* список — приятное дополнение, без него просто останется текущая модель */
-    }
-    if (!getOpenRouterModel() && models.length) {
-      saveSettings({ openrouterModel: openrouter.pickModel(models) });
-    }
-    if (!getOpenRouterModel()) saveSettings({ openrouterModel: openrouter.FALLBACK_MODEL });
-    return {
-      ok: true,
-      model: getOpenRouterModel(),
-      models: models.slice(0, 20).map(({ id, name }) => ({ id, name })),
-    };
+    models = await openrouter.listFreeVisionModels(key);
+  } catch {
+    /* список — приятное дополнение, без него просто останется текущая модель */
+  }
+  if (!getOpenRouterModel()) {
+    saveSettings({ openrouterModel: models.length ? openrouter.pickModel(models) : openrouter.FALLBACK_MODEL });
+  }
+
+  const shortList = models.slice(0, 20).map(({ id, name }) => ({ id, name }));
+  try {
+    const verdict = await openrouter.verifyKey(key, getOpenRouterModel());
+    return { ok: true, model: getOpenRouterModel(), models: shortList, warning: verdict.warning };
   } catch (err) {
-    return { ok: false, error: err?.message || String(err) };
+    return { ok: false, error: err?.message || String(err), models: shortList };
   }
 }
 
