@@ -23,6 +23,13 @@ const ui = {
   notes: $('notes'),
   filterReady: $('filter-ready'),
   sortDishes: $('sort-dishes'),
+  setup: $('setup'),
+  setupState: $('setup-state'),
+  setupStatus: $('setup-status'),
+  saveSettings: $('save-settings'),
+  key: $('opt-key'),
+  model: $('opt-model'),
+  effort: $('opt-effort'),
   opts: {
     servings: $('opt-servings'),
     maxDishes: $('opt-dishes'),
@@ -40,6 +47,7 @@ const state = {
   maxImages: 4,
   result: null,
   busy: false,
+  ready: false,
 };
 
 /* ---------- мелкие помощники ---------- */
@@ -208,7 +216,12 @@ function renderThumbs() {
     ),
   );
   ui.thumbs.hidden = state.images.length === 0;
-  ui.analyze.disabled = state.images.length === 0 || state.busy;
+  updateAnalyzeButton();
+}
+
+function updateAnalyzeButton() {
+  ui.analyze.disabled = state.images.length === 0 || state.busy || !state.ready;
+  ui.analyze.title = state.ready ? '' : 'Сначала вставьте ключ API в блоке «Настройка доступа»';
 }
 
 /* ---------- запрос ---------- */
@@ -246,7 +259,7 @@ async function analyze() {
     showError(err.message || 'Не удалось связаться с сервером.');
   } finally {
     state.busy = false;
-    ui.analyze.disabled = state.images.length === 0;
+    updateAnalyzeButton();
   }
 }
 
@@ -406,22 +419,81 @@ function fillSelect(select, dict) {
   );
 }
 
+const KEY_STATE = {
+  demo: ['демо-режим', 'badge'],
+  env: ['ключ задан в системе', 'badge badge--ok'],
+  file: ['ключ сохранён', 'badge badge--ok'],
+  none: ['нужен ключ API', 'badge badge--warn'],
+};
+
+function applyConfig(config) {
+  state.maxImages = config.maxImages || 4;
+  state.ready = Boolean(config.ready);
+  ui.maxImages.textContent = String(state.maxImages);
+
+  fillSelect(ui.opts.meal, config.meals);
+  fillSelect(ui.opts.diet, config.diets);
+  fillSelect(ui.model, config.models);
+  fillSelect(ui.effort, config.efforts);
+  if (config.model) ui.model.value = config.model;
+  if (config.effort) ui.effort.value = config.effort;
+
+  const [label, cls] = KEY_STATE[config.keySource] || KEY_STATE.none;
+  ui.setupState.textContent = label;
+  ui.setupState.className = cls;
+  ui.modelBadge.textContent = config.demo ? 'демо-режим' : config.model;
+  ui.modelBadge.hidden = false;
+
+  // Блок настроек раскрыт, пока ключа нет; когда всё готово — свёрнут.
+  if (!state.ready) ui.setup.open = true;
+  if (config.keySource === 'env') {
+    ui.key.placeholder = 'ключ берётся из переменной окружения';
+    ui.key.disabled = true;
+  }
+  updateAnalyzeButton();
+}
+
+async function saveSettings() {
+  ui.saveSettings.disabled = true;
+  ui.setupStatus.textContent = 'Сохраняем и проверяем ключ…';
+  ui.setupStatus.classList.add('status--busy');
+  try {
+    const patch = { model: ui.model.value, effort: ui.effort.value };
+    if (ui.key.value.trim()) patch.apiKey = ui.key.value.trim();
+
+    const response = await fetch('/api/settings', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(patch),
+    });
+    const config = await response.json();
+    if (!response.ok) throw new Error(config.error || `Ошибка ${response.status}`);
+
+    applyConfig(config);
+    ui.key.value = '';
+    if (config.check?.ok) {
+      ui.setupStatus.textContent = '✓ Ключ работает, можно загружать фото.';
+      state.ready = true;
+      updateAnalyzeButton();
+      setTimeout(() => (ui.setup.open = false), 900);
+    } else {
+      ui.setupStatus.textContent = `Сохранено, но проверка не прошла: ${config.check?.error || 'неизвестная ошибка'}`;
+      ui.setupState.textContent = 'ключ не прошёл проверку';
+      ui.setupState.className = 'badge badge--warn';
+    }
+  } catch (err) {
+    ui.setupStatus.textContent = err.message || 'Не удалось сохранить настройки.';
+  } finally {
+    ui.setupStatus.classList.remove('status--busy');
+    ui.saveSettings.disabled = false;
+  }
+}
+
 async function init() {
   try {
-    const config = await fetch('/api/config').then((r) => r.json());
-    state.maxImages = config.maxImages || 4;
-    ui.maxImages.textContent = String(state.maxImages);
-    fillSelect(ui.opts.meal, config.meals);
-    fillSelect(ui.opts.diet, config.diets);
-    ui.modelBadge.textContent = config.demo ? 'демо-режим' : config.model;
-    ui.modelBadge.hidden = false;
-    if (!config.ready) {
-      showError(
-        'На сервере не задан ANTHROPIC_API_KEY — анализ не заработает. Добавьте ключ и перезапустите сервер (см. README) либо запустите демо-режим: npm run demo',
-      );
-    }
+    applyConfig(await fetch('/api/config').then((r) => r.json()));
   } catch {
-    showError('Сервер не отвечает. Запущен ли он (npm start)?');
+    showError('Сервер не отвечает. Запустите приложение заново («Запустить» в папке fridge).');
   }
   restoreOptions();
 
@@ -462,6 +534,8 @@ async function init() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   });
 
+  ui.saveSettings.addEventListener('click', saveSettings);
+  ui.key.addEventListener('keydown', (e) => e.key === 'Enter' && saveSettings());
   ui.filterReady.addEventListener('change', renderDishes);
   ui.sortDishes.addEventListener('change', renderDishes);
   for (const field of Object.values(ui.opts)) field.addEventListener('change', saveOptions);

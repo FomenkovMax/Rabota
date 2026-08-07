@@ -108,6 +108,56 @@ figure {
   background: color-mix(in srgb, var(--danger) 10%, var(--bg-card));
 }
 
+.card--setup {
+  border-color: color-mix(in srgb, var(--accent) 25%, var(--line));
+}
+
+.card--setup[open] {
+  padding-bottom: 8px;
+}
+
+.setup__summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  cursor: pointer;
+  font-size: 16px;
+  font-weight: 620;
+  list-style: none;
+}
+
+.setup__summary::-webkit-details-marker {
+  display: none;
+}
+
+.setup__summary > span:first-of-type {
+  margin-right: auto;
+}
+
+/* Повышенная специфичность: правило .grid объявлено ниже и иначе перебило бы это. */
+.grid.grid--setup {
+  grid-template-columns: repeat(auto-fit, minmax(270px, 1fr));
+}
+
+.setup__summary::before {
+  content: '▸\00a0';
+  color: var(--text-dim);
+}
+
+.card--setup[open] .setup__summary::before {
+  content: '▾\00a0';
+}
+
+.actions--tight {
+  margin: 14px 0 0;
+}
+
+.btn--sm {
+  padding: 9px 16px;
+  font-size: 15px;
+}
+
 .card__title {
   font-size: 16px;
   font-weight: 620;

@@ -29,6 +29,52 @@
     </header>
 
     <main class="wrap">
+      <details class="card card--setup" id="setup">
+        <summary class="setup__summary">
+          <span id="setup-title">Настройка доступа</span>
+          <span class="badge" id="setup-state">проверяем…</span>
+        </summary>
+
+        <p class="card__hint">
+          Приложение обращается к Claude — для этого нужен ключ API. Он хранится только на этом
+          компьютере и никуда больше не отправляется. Получить ключ:
+          <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener"
+            >console.anthropic.com → API keys</a
+          >.
+        </p>
+
+        <div class="grid grid--setup">
+          <label class="field field--wide">
+            <span class="field__label">Ключ API</span>
+            <input
+              class="field__input"
+              type="password"
+              id="opt-key"
+              autocomplete="off"
+              spellcheck="false"
+              placeholder="sk-ant-..."
+            />
+          </label>
+
+          <label class="field">
+            <span class="field__label">Модель</span>
+            <select class="field__input" id="opt-model"></select>
+          </label>
+
+          <label class="field">
+            <span class="field__label">Насколько тщательно считать</span>
+            <select class="field__input" id="opt-effort"></select>
+          </label>
+        </div>
+
+        <div class="actions actions--tight">
+          <button class="btn btn--primary btn--sm" id="save-settings" type="button">
+            Сохранить и проверить
+          </button>
+        </div>
+        <p class="status" id="setup-status" role="status" aria-live="polite"></p>
+      </details>
+
       <section class="card" aria-labelledby="upload-title">
         <h2 class="card__title" id="upload-title">1. Фото холодильника</h2>
         <p class="card__hint">

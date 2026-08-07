@@ -1,8 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { RESULT_SCHEMA } from './schema.js';
+import { getApiKey, getModel, getEffort, keySource } from './settings.js';
 
-export const MODEL = process.env.ANTHROPIC_MODEL || 'claude-opus-5';
-const EFFORT = process.env.FRIDGE_EFFORT || 'high';
 const MAX_TOKENS = Number(process.env.FRIDGE_MAX_TOKENS || 32000);
 
 export const MAX_IMAGES = 4;
@@ -164,25 +163,45 @@ function buildContent({ images, options }) {
   return content;
 }
 
-let sharedClient;
+let sharedClient = null;
+let clientKey = null;
+
 export function getClient() {
-  if (!sharedClient) {
-    try {
-      // Ключ берётся из ANTHROPIC_API_KEY / ANTHROPIC_AUTH_TOKEN или из профиля `ant auth login`.
-      sharedClient = new Anthropic();
-    } catch {
-      throw new AnalyzeError(
-        'Не настроен доступ к API. Задайте переменную окружения ANTHROPIC_API_KEY и перезапустите сервер.',
-        500,
-        'no_credentials',
-      );
-    }
+  // Ключ берётся из настроек (переменная окружения → .data/settings.json), а если
+  // не задан нигде — из профиля `ant auth login`, который SDK находит сам.
+  const key = getApiKey();
+  if (!sharedClient || clientKey !== key) {
+    sharedClient = new Anthropic(key ? { apiKey: key } : {});
+    clientKey = key;
   }
   return sharedClient;
 }
 
+/** Сбрасывает клиента после смены настроек — перезапуск сервера не нужен. */
+export function resetClient() {
+  sharedClient = null;
+  clientKey = null;
+}
+
 export function hasCredentials() {
-  return Boolean(process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN);
+  return keySource() !== 'none';
+}
+
+/** Проверка доступа без генерации токенов: запрашиваем карточку модели. */
+export async function checkAccess() {
+  const model = getModel();
+  try {
+    const info = await getClient().models.retrieve(model);
+    return { ok: true, model: info.id };
+  } catch (err) {
+    const status = err?.status;
+    if (status === 401 || status === 403) return { ok: false, error: 'Ключ не принят — проверьте, что скопировали его целиком.' };
+    if (status === 404) return { ok: false, error: `Модель ${model} недоступна для этого ключа.` };
+    if (/authentication method/i.test(String(err?.message))) {
+      return { ok: false, error: 'Ключ не задан.' };
+    }
+    return { ok: false, error: `Не удалось проверить: ${err?.message || err}` };
+  }
 }
 
 /**
@@ -284,12 +303,12 @@ export async function analyze(body, client) {
     message = await requestModel(
       api,
       {
-        model: MODEL,
+        model: getModel(),
         max_tokens: MAX_TOKENS,
         system: SYSTEM_PROMPT,
         thinking: { type: 'adaptive' },
         output_config: {
-          effort: EFFORT,
+          effort: getEffort(),
           format: { type: 'json_schema', name: 'fridge_report', schema: RESULT_SCHEMA },
         },
         messages: [{ role: 'user', content: buildContent(payload) }],
@@ -299,7 +318,7 @@ export async function analyze(body, client) {
     const detail = String(err?.message || err);
     if (/authentication method/i.test(detail)) {
       throw new AnalyzeError(
-        'Не настроен доступ к API. Задайте ANTHROPIC_API_KEY и перезапустите сервер (см. README).',
+        'Не задан ключ API. Откройте «Настройка доступа» вверху страницы и вставьте ключ.',
         500,
         'no_credentials',
       );
