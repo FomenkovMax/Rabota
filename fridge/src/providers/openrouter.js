@@ -61,6 +61,19 @@ async function request(path, { key, method = 'GET', body } = {}) {
   if (!response.ok || json?.error) {
     const detail = json?.error?.message || json?.error || text.slice(0, 300) || `HTTP ${response.status}`;
     const status = response.status || json?.error?.code || 502;
+    // Такой текст приходит не от самого OpenRouter, а от того, кто перехватил
+    // запрос по дороге: провайдер, антивирус, корпоративный прокси или защита
+    // сервиса по региону. Ключ тут ни при чём.
+    if (/security policy|access denied|blocked|доступ (?:закрыт|запрещ)/i.test(String(detail))) {
+      throw new OpenRouterError(
+        `Запрос до OpenRouter не дошёл — его отклонила сеть (HTTP ${status}, «${detail}»). ` +
+          'Дело не в ключе. Обычно помогает VPN; ещё стоит проверить антивирус с проверкой HTTPS ' +
+          'и настройки сети, если компьютер рабочий.',
+        502,
+        'blocked',
+        `HTTP ${status}, «${detail}»`,
+      );
+    }
     if (status === 401 || status === 403) {
       throw new OpenRouterError(
         `Ключ OpenRouter не принят. Ответ сервера: HTTP ${status}, «${detail}»`,
