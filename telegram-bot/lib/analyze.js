@@ -7,12 +7,27 @@ import { RESULT_SCHEMA } from './schema.js';
 const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY || '';
 const OPENROUTER_KEY = process.env.OPENROUTER_API_KEY || '';
 const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL || 'claude-opus-5';
-const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || 'meta-llama/llama-4-maverick:free';
+
+// Бесплатные модели на OpenRouter приходят и уходят: сегодня модель бесплатна,
+// завтра её переводят в платные. Поэтому держим не одну, а список кандидатов —
+// бот проходит по нему сверху вниз, пока какая-нибудь не ответит.
+const DEFAULT_OPENROUTER_MODELS = [
+  'google/gemma-4-31b-it:free',
+  'google/gemma-4-26b-a4b-it:free',
+  'nvidia/nemotron-nano-12b-v2-vl:free',
+];
+// В OPENROUTER_MODEL можно перечислить свои модели через запятую.
+const OPENROUTER_MODELS = (process.env.OPENROUTER_MODEL || '')
+  .split(',')
+  .map((id) => id.trim())
+  .filter(Boolean);
+const openRouterModels = () => (OPENROUTER_MODELS.length ? OPENROUTER_MODELS : DEFAULT_OPENROUTER_MODELS);
 const EFFORT = process.env.FRIDGE_EFFORT || 'medium'; // в боте важнее скорость ответа
 const MAX_DISHES = Number(process.env.FRIDGE_DISHES || 4);
+const TIMEOUT_MS = Number(process.env.FRIDGE_TIMEOUT_MS || 120_000);
 
 export const provider = () => (ANTHROPIC_KEY ? 'anthropic' : OPENROUTER_KEY ? 'openrouter' : 'none');
-export const activeModel = () => (provider() === 'anthropic' ? ANTHROPIC_MODEL : OPENROUTER_MODEL);
+export const activeModel = () => (provider() === 'anthropic' ? ANTHROPIC_MODEL : openRouterModels().join(', '));
 
 export class AnalyzeError extends Error {
   constructor(message, code = 'error') {
@@ -149,6 +164,78 @@ async function runAnthropic(images, wishes) {
     .join('');
 }
 
+/** Ошибка, после которой имеет смысл взять следующую модель из списка. */
+const isRetryable = (detail, status) =>
+  status === 429 ||
+  status === 404 ||
+  status === 502 ||
+  status === 503 ||
+  /unavailable|not found|no endpoints|no allowed providers|rate limit|is not a valid model|paid version/i.test(
+    detail,
+  );
+
+async function requestOpenRouter(model, images, prompt, { json = true } = {}) {
+  const base = process.env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1';
+  let response;
+  try {
+    response = await fetch(`${base}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${OPENROUTER_KEY}`,
+        'content-type': 'application/json',
+        'X-Title': 'Fridge calorie bot',
+      },
+      body: JSON.stringify({
+        model,
+        max_tokens: 8000,
+        ...(json ? { response_format: { type: 'json_object' } } : {}),
+        messages: [
+          { role: 'system', content: SYSTEM_PROMPT },
+          {
+            role: 'user',
+            content: [
+              ...images.map((image) => ({
+                type: 'image_url',
+                image_url: { url: `data:${image.media_type};base64,${image.data}` },
+              })),
+              { type: 'text', text: prompt },
+            ],
+          },
+        ],
+      }),
+      // Бесплатные модели бывают перегружены и молчат — не ждём вечно, берём следующую.
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+    });
+  } catch (cause) {
+    const err = new AnalyzeError(
+      cause?.name === 'TimeoutError' ? 'модель не ответила вовремя' : `нет связи: ${cause?.message || cause}`,
+      'network',
+    );
+    err.retryable = true; // связь могла отвалиться из-за конкретного провайдера модели
+    throw err;
+  }
+
+  const body = await response.json().catch(() => null);
+  if (!response.ok || body?.error) {
+    const detail = String(body?.error?.message || `HTTP ${response.status}`);
+    // Часть моделей не умеет response_format — повторяем без него, схема и так в промпте.
+    if (json && /response_format|json_object|json mode/i.test(detail)) {
+      return requestOpenRouter(model, images, prompt, { json: false });
+    }
+    const err = new AnalyzeError(detail, 'upstream');
+    err.retryable = isRetryable(detail, response.status);
+    throw err;
+  }
+
+  const text = body.choices?.[0]?.message?.content;
+  if (!text) {
+    const err = new AnalyzeError('модель вернула пустой ответ', 'empty');
+    err.retryable = true;
+    throw err;
+  }
+  return text;
+}
+
 async function runOpenRouter(images, wishes) {
   const prompt = [
     buildPrompt(wishes),
@@ -157,45 +244,25 @@ async function runOpenRouter(images, wishes) {
     JSON.stringify(RESULT_SCHEMA),
   ].join('\n');
 
-  const base = process.env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1';
-  const response = await fetch(`${base}/chat/completions`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${OPENROUTER_KEY}`,
-      'content-type': 'application/json',
-      'X-Title': 'Fridge calorie bot',
-    },
-    body: JSON.stringify({
-      model: OPENROUTER_MODEL,
-      max_tokens: 8000,
-      response_format: { type: 'json_object' },
-      messages: [
-        { role: 'system', content: SYSTEM_PROMPT },
-        {
-          role: 'user',
-          content: [
-            ...images.map((image) => ({
-              type: 'image_url',
-              image_url: { url: `data:${image.media_type};base64,${image.data}` },
-            })),
-            { type: 'text', text: prompt },
-          ],
-        },
-      ],
-    }),
-  });
+  const models = openRouterModels();
+  const failures = [];
 
-  const json = await response.json().catch(() => null);
-  if (!response.ok || json?.error) {
-    const detail = json?.error?.message || `HTTP ${response.status}`;
-    if (response.status === 429) {
-      throw new AnalyzeError('Бесплатный лимит модели исчерпан. Попробуйте позже.', 'quota');
+  for (const model of models) {
+    try {
+      return { text: await requestOpenRouter(model, images, prompt), model };
+    } catch (err) {
+      failures.push(`${model}: ${err.message}`);
+      if (!err.retryable) throw new AnalyzeError(`Модель недоступна: ${err.message}`, 'upstream');
     }
-    throw new AnalyzeError(`Модель недоступна: ${detail}`, 'upstream');
   }
-  const text = json.choices?.[0]?.message?.content;
-  if (!text) throw new AnalyzeError('Модель вернула пустой ответ. Попробуйте ещё раз.', 'empty');
-  return text;
+
+  const quota = failures.some((line) => /rate limit|429|лимит/i.test(line));
+  throw new AnalyzeError(
+    quota
+      ? 'Бесплатные модели сейчас упёрлись в лимит. Попробуйте через несколько минут.'
+      : `Ни одна из бесплатных моделей не ответила.\n${failures.join('\n')}`,
+    quota ? 'quota' : 'upstream',
+  );
 }
 
 /** Основной вход: фотографии + пожелания из подписи → разобранный результат. */
@@ -208,9 +275,12 @@ export async function analyzePhotos(images, wishes = '') {
     );
   }
   const started = Date.now();
-  const text = which === 'anthropic' ? await runAnthropic(images, wishes) : await runOpenRouter(images, wishes);
+  const { text, model } =
+    which === 'anthropic'
+      ? { text: await runAnthropic(images, wishes), model: ANTHROPIC_MODEL }
+      : await runOpenRouter(images, wishes);
   return {
     ...normalize(extractJson(text)),
-    meta: { provider: which, model: activeModel(), elapsed_ms: Date.now() - started },
+    meta: { provider: which, model, elapsed_ms: Date.now() - started },
   };
 }

@@ -11,7 +11,7 @@ const MAX_TOKENS = Number(process.env.FRIDGE_MAX_TOKENS || 16000);
 
 // Подставляется, если список моделей недоступен: id проверяется живым запросом,
 // поэтому ошибиться здесь не страшно — приложение подскажет выбрать другую.
-export const FALLBACK_MODEL = 'meta-llama/llama-4-maverick:free';
+export const FALLBACK_MODEL = 'google/gemma-4-31b-it:free';
 
 export class OpenRouterError extends Error {
   constructor(message, status = 502, code = 'openrouter', detail = '') {

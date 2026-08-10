@@ -112,7 +112,7 @@ export ANTHROPIC_API_KEY=sk-ant-...
 | `FRIDGE_PROVIDER`     | `anthropic`      | `anthropic`, `openrouter` или `custom`.                         |
 | `ANTHROPIC_API_KEY`   | —                | Ключ Claude. Если не задан — берётся из `.data/settings.json`.  |
 | `OPENROUTER_API_KEY`  | —                | Ключ OpenRouter.                                                |
-| `OPENROUTER_MODEL`    | подбирается      | Например, `meta-llama/llama-4-maverick:free`.                   |
+| `OPENROUTER_MODEL`    | подбирается      | Например, `google/gemma-4-31b-it:free`.                         |
 | `FRIDGE_API_URL`      | —                | Свой адрес, например `http://localhost:11434/v1`.               |
 | `FRIDGE_API_KEY`      | —                | Ключ для своего адреса, если сервис его требует.                |
 | `FRIDGE_API_MODEL`    | первая из списка | Модель для своего адреса.                                       |
