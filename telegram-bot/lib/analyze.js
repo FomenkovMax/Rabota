@@ -23,8 +23,11 @@ const OPENROUTER_MODELS = (process.env.OPENROUTER_MODEL || '')
   .filter(Boolean);
 const openRouterModels = () => (OPENROUTER_MODELS.length ? OPENROUTER_MODELS : DEFAULT_OPENROUTER_MODELS);
 const EFFORT = process.env.FRIDGE_EFFORT || 'medium'; // в боте важнее скорость ответа
-const MAX_DISHES = Number(process.env.FRIDGE_DISHES || 4);
-const TIMEOUT_MS = Number(process.env.FRIDGE_TIMEOUT_MS || 120_000);
+const MAX_DISHES = Number(process.env.FRIDGE_DISHES || 3);
+const TIMEOUT_MS = Number(process.env.FRIDGE_TIMEOUT_MS || 70_000);
+// Функция на Vercel живёт 300 с. Держим запас, чтобы бот успел ответить об ошибке,
+// а не оборвался молча посреди перебора моделей.
+const BUDGET_MS = Number(process.env.FRIDGE_BUDGET_MS || 240_000);
 
 export const provider = () => (ANTHROPIC_KEY ? 'anthropic' : OPENROUTER_KEY ? 'openrouter' : 'none');
 export const activeModel = () => (provider() === 'anthropic' ? ANTHROPIC_MODEL : openRouterModels().join(', '));
@@ -180,7 +183,7 @@ async function requestOpenRouter(model, images, prompt, { json = true } = {}) {
       },
       body: JSON.stringify({
         model,
-        max_tokens: 8000,
+        max_tokens: 5000,
         ...(json ? { response_format: { type: 'json_object' } } : {}),
         messages: [
           { role: 'system', content: SYSTEM_PROMPT },
@@ -242,20 +245,31 @@ async function requestOpenRouter(model, images, prompt, { json = true } = {}) {
   return text;
 }
 
+// Схему целиком (несколько килобайт JSON) бесплатные модели переваривают плохо и
+// уходят в таймаут. Короткого описания формата им достаточно.
+const COMPACT_FORMAT = `Ответ — один JSON-объект, без пояснений вокруг и без markdown-обёртки:
+{"products":[{"name":"строка","amount":"строка","grams":число,"kcal_per_100g":число,"kcal":число,"category":"строка","confidence":"высокая|средняя|низкая"}],
+"total_kcal":число,
+"dishes":[{"name":"строка","description":"строка","servings":число,"time_minutes":число,"difficulty":"просто|средне|сложно",
+"ingredients":[{"product":"строка","amount":"строка","grams":число,"kcal":число,"available":true|false}],
+"missing":["строка"],"per_serving":{"kcal":число,"protein_g":число,"fat_g":число,"carbs_g":число},
+"total":{"kcal":число,"protein_g":число,"fat_g":число,"carbs_g":число},"steps":["строка"],"ready_now":true|false}],
+"notes":"строка"}`;
+
 async function runOpenRouter(images, wishes) {
-  const prompt = [
-    buildPrompt(wishes),
-    '',
-    'Ответ — один JSON-объект строго по этой схеме, без пояснений вокруг и без markdown-обёртки:',
-    JSON.stringify(RESULT_SCHEMA),
-  ].join('\n');
+  const prompt = [buildPrompt(wishes), '', COMPACT_FORMAT].join('\n');
 
   const models = openRouterModels();
   const failures = [];
+  const deadline = Date.now() + BUDGET_MS;
 
-  for (const model of models) {
+  attempts: for (const model of models) {
     // Бесплатные эндпоинты часто отваливаются разово — даём каждой модели второй шанс.
     for (let attempt = 1; attempt <= 2; attempt += 1) {
+      if (Date.now() > deadline) {
+        failures.push('время вышло, остальные модели не пробовал');
+        break attempts;
+      }
       try {
         return { text: await requestOpenRouter(model, images, prompt), model };
       } catch (err) {

@@ -10,16 +10,22 @@ import { formatProducts, formatDish, formatFooter, WELCOME } from '../lib/format
 
 const MAX_PHOTOS = 4;
 const ALBUM_WAIT_MS = 3000;
-const MAX_PHOTO_BYTES = 1_500_000; // берём вариант поменьше: он быстрее и дешевле
+// Telegram отдаёт несколько версий снимка. Для распознавания продуктов хватает
+// примерно 1280 px, а бесплатные эндпоинты на тяжёлых картинках отваливаются по
+// таймауту — поэтому берём вариант поменьше, а не самый крупный.
+const MAX_PHOTO_WIDTH = 1280;
+const MAX_PHOTO_BYTES = 400_000;
 
 // Фото из альбома приходят разными обновлениями — копим их по media_group_id.
 const albums = new Map();
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-/** Выбирает вариант фото: самый крупный из умеренных по весу. */
+/** Выбирает вариант фото: самый крупный из тех, что укладываются в лимиты. */
 function pickPhoto(sizes) {
-  const sorted = [...sizes].sort((a, b) => (a.file_size || 0) - (b.file_size || 0));
-  const fit = sorted.filter((s) => (s.file_size || 0) <= MAX_PHOTO_BYTES);
+  const sorted = [...sizes].sort((a, b) => (a.width || 0) - (b.width || 0));
+  const fit = sorted.filter(
+    (s) => (s.width || 0) <= MAX_PHOTO_WIDTH && (s.file_size || 0) <= MAX_PHOTO_BYTES,
+  );
   return (fit.length ? fit.at(-1) : sorted[0]).file_id;
 }
 

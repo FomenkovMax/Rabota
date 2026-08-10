@@ -3,7 +3,7 @@
 
 import { provider, activeModel } from '../lib/analyze.js';
 
-export const REVISION = 3;
+export const REVISION = 4;
 
 export default function handler(req, res) {
   res.status(200).json({
