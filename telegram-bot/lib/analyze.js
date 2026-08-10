@@ -164,15 +164,8 @@ async function runAnthropic(images, wishes) {
     .join('');
 }
 
-/** Ошибка, после которой имеет смысл взять следующую модель из списка. */
-const isRetryable = (detail, status) =>
-  status === 429 ||
-  status === 404 ||
-  status === 502 ||
-  status === 503 ||
-  /unavailable|not found|no endpoints|no allowed providers|rate limit|is not a valid model|paid version/i.test(
-    detail,
-  );
+/** Начало неразобранного ответа — чтобы в сообщении об ошибке было видно, что пришло. */
+const snippet = (raw) => String(raw || '').replace(/\s+/g, ' ').trim().slice(0, 160);
 
 async function requestOpenRouter(model, images, prompt, { json = true } = {}) {
   const base = process.env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1';
@@ -215,21 +208,34 @@ async function requestOpenRouter(model, images, prompt, { json = true } = {}) {
     throw err;
   }
 
-  const body = await response.json().catch(() => null);
+  // Читаем сырым текстом: перегруженные бесплатные эндпоинты отвечают то пустотой,
+  // то страницей от балансировщика — по такому телу видно, что именно случилось.
+  const raw = await response.text();
+  let body = null;
+  try {
+    body = raw ? JSON.parse(raw) : null;
+  } catch {
+    /* ниже разберёмся по статусу */
+  }
+
   if (!response.ok || body?.error) {
-    const detail = String(body?.error?.message || `HTTP ${response.status}`);
+    const detail = String(body?.error?.message || snippet(raw) || `HTTP ${response.status}`);
     // Часть моделей не умеет response_format — повторяем без него, схема и так в промпте.
     if (json && /response_format|json_object|json mode/i.test(detail)) {
       return requestOpenRouter(model, images, prompt, { json: false });
     }
     const err = new AnalyzeError(detail, 'upstream');
-    err.retryable = isRetryable(detail, response.status);
+    // Всё лечится другой моделью, кроме отказа по ключу и деньгам.
+    err.retryable = ![401, 402, 403].includes(response.status);
     throw err;
   }
 
-  const text = body.choices?.[0]?.message?.content;
+  const text = body?.choices?.[0]?.message?.content;
   if (!text) {
-    const err = new AnalyzeError('модель вернула пустой ответ', 'empty');
+    const err = new AnalyzeError(
+      body ? 'ответ без текста' : `ответ не разобрался${snippet(raw) ? `: ${snippet(raw)}` : ' (пустое тело)'}`,
+      'empty',
+    );
     err.retryable = true;
     throw err;
   }
@@ -248,11 +254,17 @@ async function runOpenRouter(images, wishes) {
   const failures = [];
 
   for (const model of models) {
-    try {
-      return { text: await requestOpenRouter(model, images, prompt), model };
-    } catch (err) {
-      failures.push(`${model}: ${err.message}`);
-      if (!err.retryable) throw new AnalyzeError(`Модель недоступна: ${err.message}`, 'upstream');
+    // Бесплатные эндпоинты часто отваливаются разово — даём каждой модели второй шанс.
+    for (let attempt = 1; attempt <= 2; attempt += 1) {
+      try {
+        return { text: await requestOpenRouter(model, images, prompt), model };
+      } catch (err) {
+        failures.push(`${model}: ${err.message}`);
+        // Отказ по ключу или деньгам — единственное, что не лечится другой моделью.
+        if (err.retryable === false) throw new AnalyzeError(`Модель недоступна: ${err.message}`, 'upstream');
+        // Повторяем ту же модель только на срывах связи и пустых ответах.
+        if (!['empty', 'network'].includes(err.code)) break;
+      }
     }
   }
 
