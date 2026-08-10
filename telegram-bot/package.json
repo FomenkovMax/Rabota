@@ -1,0 +1,11 @@
+{
+  "name": "fridge-telegram-bot",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Телеграм-бот: считает калории по фото холодильника и предлагает блюда",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.115.0",
+    "@vercel/functions": "^3.1.0"
+  }
+}
