@@ -1,0 +1,27 @@
+/* ═══ GUTS — 黒い剣士 ═══
+   The frames are ink and screentone: near-monochrome by construction. So the
+   theme keeps every neutral on the ash axis and spends the only chroma on the
+   ember, which is the single red thing in the artwork too. */
+:root{
+  --void:#08080a;
+  --void-2:#131315;
+  --bone:#e6e4df;
+  --smoke:#8b8781;
+  --accent:#8f1208;
+  --accent-hot:#ff3a1d;
+  --accent-deep:#3f0703;
+
+  --serif:'Shippori Mincho','Yu Mincho',serif;
+  --gothic:'Zen Kaku Gothic New',sans-serif;
+  --display:'Cormorant Garamond',serif;
+  --mono:'Space Grotesk',sans-serif;
+}
+/* the display face is an old-print roman — it needs more weight and less
+   tracking than the geometric caps the other page uses */
+.phase__en,.card__ro,.jutsu__anchor-ro{font-weight:600;letter-spacing:.44em}
+.titleblock__en{font-weight:600;letter-spacing:.3em}
+.quote blockquote p{font-weight:500;font-style:italic}
+
+.titleblock__jp{text-shadow:0 0 70px rgba(143,18,8,.45)}
+.phase__jp{text-shadow:0 0 50px rgba(143,18,8,.5)}
+.quote__jp{text-shadow:0 0 60px rgba(143,18,8,.45)}

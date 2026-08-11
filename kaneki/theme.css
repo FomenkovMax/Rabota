@@ -1,0 +1,20 @@
+/* ═══ KANEKI KEN — 隻眼 ═══
+   Ground is not black but a cold plum-black, so the one red eye is the
+   only saturated thing on the page and never has to fight the backdrop. */
+:root{
+  --void:#050406;
+  --void-2:#0f0b0d;
+  --bone:#ece8e8;
+  --smoke:#877d82;
+  --accent:#b3121f;
+  --accent-hot:#ff2f3d;
+  --accent-deep:#4d060e;
+
+  --serif:'Shippori Mincho','Yu Mincho',serif;
+  --gothic:'Zen Kaku Gothic New',sans-serif;
+  --display:'Cinzel',serif;
+  --mono:'Space Grotesk',sans-serif;
+}
+.titleblock__jp{text-shadow:0 0 80px rgba(179,18,31,.5)}
+.phase__jp{text-shadow:0 0 60px rgba(179,18,31,.55)}
+.quote__jp{text-shadow:0 0 70px rgba(179,18,31,.5)}

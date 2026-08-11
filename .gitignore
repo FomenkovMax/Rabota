@@ -1,7 +1,9 @@
-node_modules/
+node_modules
 dist/
 qa/screens/*-full.png
 gojo/qa/screens/
 qa/og-raw.png
 qa/body-skeleton.html
 qa/app-orig.js
+qa/screens2/
+qa/screens3/

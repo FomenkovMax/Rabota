@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>金木 研 — KANEKI KEN</title>
+<meta name="description" content="隻眼 · 赫子 — an interactive tribute page. Scroll to break the mask, move the cursor and the kakugan follows." />
+<meta name="theme-color" content="#050406" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23050406'/%3E%3Ccircle cx='50' cy='50' r='26' fill='%23ff2f3d'/%3E%3Ccircle cx='50' cy='50' r='10' fill='%23050406'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@400;600;800&family=Zen+Kaku+Gothic+New:wght@300;500;900&family=Cinzel:wght@400;700;900&family=Space+Grotesk:wght@300;400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../shared/base.css" />
+<link rel="stylesheet" href="theme.css" />
+</head>
+<body>
+
+<div class="loader" id="loader">
+  <div class="loader__inner">
+    <div class="loader__glyph">隻眼</div>
+    <div class="loader__bar"><span id="loaderFill"></span></div>
+    <div class="loader__meta">
+      <span>読込中 / LOADING FRAMES</span>
+      <span id="loaderPct">00</span>
+    </div>
+  </div>
+</div>
+
+<div class="grain" aria-hidden="true"></div>
+<div class="vignette" aria-hidden="true"></div>
+<div class="hem-bed" aria-hidden="true"></div>
+<canvas class="hem" id="hemCanvas" aria-hidden="true"></canvas>
+
+<div class="storm" aria-hidden="true">
+  <div class="storm__flash" id="stormFlash"></div>
+  <svg class="storm__bolt" id="stormBolt" viewBox="0 0 1000 1000" preserveAspectRatio="none">
+    <path id="boltGlow" d="" fill="none" stroke="#ff6a5a" stroke-width="9"
+          stroke-linejoin="round" stroke-linecap="round" opacity=".4"/>
+    <path id="boltPath" d="" fill="none" stroke="#fff" stroke-width="2"
+          stroke-linejoin="round" stroke-linecap="round"/>
+  </svg>
+</div>
+
+<div class="cursor" id="cursor" aria-hidden="true"><span></span></div>
+
+<header class="chrome">
+  <div class="chrome__mark">
+    <svg viewBox="0 0 100 100" class="sigil" aria-hidden="true">
+      <circle cx="50" cy="50" r="46" fill="none" stroke="currentColor" stroke-width="1.6" opacity=".5"/>
+      <circle cx="50" cy="50" r="24" fill="currentColor"/>
+      <circle cx="50" cy="50" r="9" fill="var(--void)"/>
+      <path d="M6 50 H26 M74 50 H94" stroke="currentColor" stroke-width="1.6"/>
+    </svg>
+    <span>KANEKI</span>
+  </div>
+  <nav class="chrome__nav">
+    <a href="#eyes" data-jp="眼">EYES</a>
+    <a href="#jutsu" data-jp="赫">KAGUNE</a>
+    <a href="#end" data-jp="終">END</a>
+    <button class="chrome__sound" id="soundToggle" type="button"
+            aria-pressed="false" title="低音 / low hum">
+      <span class="chrome__sound-jp">音</span>
+      <span class="chrome__sound-state" id="soundState">OFF</span>
+    </button>
+  </nav>
+</header>
+
+<div class="rail rail--left" aria-hidden="true">
+  <span>あんていく · 二十区 · 隻眼の喰種</span>
+</div>
+<div class="rail rail--right" aria-hidden="true">
+  <span id="railScroll">SCROLL 000%</span>
+</div>
+
+<div class="hint" id="hint">
+  <span class="hint__jp">下へ</span>
+  <span class="hint__line"></span>
+  <span class="hint__en">SCROLL UNTIL THE MASK BREAKS</span>
+</div>
+
+<main>
+
+<!-- ══════════ ACT I — SCROLL SCRUB ══════════ -->
+<section class="scrub" id="scrub" aria-label="仮面が割れるまで">
+  <div class="scrub__sticky">
+    <canvas id="mainCanvas"></canvas>
+    <div class="scrub__glow" id="scrubGlow"></div>
+
+    <div class="phase" data-phase="0">
+      <h2 class="phase__jp">静寂</h2>
+      <p class="phase__en">SILENCE</p>
+      <p class="phase__sub">「僕は人間だ。」 — He says it once more, quietly, while the leather still holds.</p>
+    </div>
+    <div class="phase" data-phase="1">
+      <h2 class="phase__jp">亀裂</h2>
+      <p class="phase__en">THE CRACK</p>
+      <p class="phase__sub">The mask gives along its seams. It was never armour — it was a promise not to be seen.</p>
+    </div>
+    <div class="phase" data-phase="2">
+      <h2 class="phase__jp">白</h2>
+      <p class="phase__en">WHITE</p>
+      <p class="phase__sub">「1000 引く 7 は?」 — Count backwards. Keep counting. That is how a person comes apart.</p>
+    </div>
+    <div class="phase" data-phase="3">
+      <h2 class="phase__jp">赫眼</h2>
+      <p class="phase__en">KAKUGAN</p>
+      <p class="phase__sub">One eye is no longer his. The other watches it happen and does nothing.</p>
+    </div>
+
+    <div class="titleblock" id="titleblock">
+      <p class="titleblock__kicker">二十区 · 隻眼の喰種</p>
+      <h1 class="titleblock__jp">金木<span>研</span></h1>
+      <p class="titleblock__en">K A N E K I &nbsp; K E N</p>
+    </div>
+
+    <canvas id="moteCanvas" class="motes"></canvas>
+  </div>
+</section>
+
+<!-- ══════════ ACT II — GAZE TRACK ══════════ -->
+<section class="eyes" id="eyes" aria-label="赫眼の追尾">
+  <div class="eyes__sticky">
+    <canvas id="eyeCanvas"></canvas>
+    <div class="eyes__flare" id="eyeFlare"></div>
+    <div class="eyes__frame">
+      <div class="eyes__label eyes__label--tl">赫眼</div>
+      <div class="eyes__label eyes__label--tr">KAKUGAN · LIVE TRACK</div>
+      <div class="eyes__label eyes__label--bl" id="eyeReadout">視線 00.0 / 00.0 · 赫 000</div>
+      <div class="eyes__label eyes__label--br">動かせ · MOVE YOUR CURSOR</div>
+    </div>
+    <div class="eyes__copy">
+      <h2>見つめ<span>返せ</span></h2>
+      <p>「僕が食べるよ。」 — The human eye keeps track of you. The other one is just hungry.</p>
+      <p class="eyes__note">瞳孔追尾 · one frame per gaze position, mapped left to right</p>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════ ACT III — KAGUNE ══════════ -->
+<section class="jutsu" id="jutsu" aria-label="赫子">
+  <div class="jutsu__reveal" id="jutsuReveal" aria-hidden="true"></div>
+  <canvas class="ghost" id="ghostCanvas" aria-hidden="true"></canvas>
+
+  <div class="jutsu__inner">
+    <div class="jutsu__head">
+      <span class="eyebrow" data-px="0.10">赫子 · KAGUNE</span>
+      <h2 data-px="0.18">腹から<br>伸びる四本</h2>
+      <p data-px="0.26">A ghoul's weapon is not carried, it is grown — cells pushed out through the back until they harden into something that can take a life. His four came late, from a transplant he never agreed to, and they answer to a hunger he keeps arguing with.</p>
+      <div class="jutsu__meta" data-px="0.34">
+        <span><i>鱗赫</i>RINKAKU TYPE</span>
+        <span><i>移植</i>TRANSPLANTED</span>
+        <span><i>再生</i>REGENERATION</span>
+      </div>
+      <p class="jutsu__hint" data-px="0.40">動かせ · drag the dark aside</p>
+    </div>
+
+    <div class="jutsu__grid">
+      <article class="card" tabindex="0">
+        <span class="card__num">其の一</span>
+        <h3 class="card__jp">鱗赫</h3>
+        <p class="card__ro">RINKAKU</p>
+        <p class="card__txt">Four tails out of the lower back, crystalline and too fast to see. Brittle at the joints, and they regrow before the break has finished happening.</p>
+        <div class="card__foot"><i>四本</i>FOUR TAILS</div>
+      </article>
+
+      <article class="card" tabindex="0">
+        <span class="card__num">其の二</span>
+        <h3 class="card__jp">赫者</h3>
+        <p class="card__ro">KAKUJA</p>
+        <p class="card__txt">What grows over a ghoul that has eaten its own kind: a second skin of armour, and a mind that stops asking who it belongs to.</p>
+        <div class="card__foot"><i>共食い</i>CANNIBAL ARMOUR</div>
+      </article>
+
+      <article class="card" tabindex="0">
+        <span class="card__num">其の三</span>
+        <h3 class="card__jp">再生</h3>
+        <p class="card__ro">REGENERATION</p>
+        <p class="card__txt">Wounds close faster than they open. The body forgets every injury immediately — which is the one thing he was never able to do.</p>
+        <div class="card__foot"><i>即時</i>INSTANT</div>
+      </article>
+
+      <article class="card" tabindex="0">
+        <span class="card__num">其の四</span>
+        <h3 class="card__jp">空腹</h3>
+        <p class="card__ro">HUNGER</p>
+        <p class="card__txt">Coffee, and nothing else, for as long as he can manage. Everything human he still has is measured by how long that lasts.</p>
+        <div class="card__foot"><i>珈琲</i>COFFEE ONLY</div>
+      </article>
+    </div>
+
+    <div class="jutsu__foot" data-px="0.14">
+      <span>「僕は喰う側の人間になる。」</span>
+      <span>HE DID NOT CHOOSE IT. HE ONLY STOPPED REFUSING IT</span>
+    </div>
+  </div>
+
+  <div class="jutsu__anchor" aria-hidden="true">
+    <span class="jutsu__anchor-jp">隻眼の王</span>
+    <span class="jutsu__anchor-ro">ONE-EYED KING</span>
+    <span class="jutsu__anchor-sub">半人半喰種 · 唯一例 · 隻眼</span>
+  </div>
+</section>
+
+<!-- ══════════ ACT IV — QUOTE ══════════ -->
+<section class="quote" aria-label="引用">
+  <div class="quote__jp">間違ってるのは<span class="dots">…</span></div>
+  <blockquote>
+    <p>“I'm not the one who's wrong. What's wrong is the world.”</p>
+    <cite>金木 研 · KANEKI KEN</cite>
+  </blockquote>
+  <div class="quote__mark">1000 - 7</div>
+</section>
+
+<footer id="end">
+  <div class="footer__big">隻眼の王</div>
+  <div class="footer__row">
+    <span>ONE-EYED KING</span>
+    <span>十二月二十日</span>
+    <span>「いってらっしゃい。」</span>
+  </div>
+</footer>
+
+</main>
+
+<div class="sticky-badge" id="stickyBadge">
+  <span class="sticky-badge__jp">赫眼</span>
+  <span class="sticky-badge__en">KAKUGAN</span>
+</div>
+
+<script>
+window.SITE = {
+  main: { count: 71, dir: 'frames/main/', maxUp: 2.2 },
+  eyes: { count: 51, dir: 'frames/eyes/', maxUp: 2.6 },
+  titleWindow: [-1, 0, 0.05, 0.16],
+  phases: [
+    [-1, 0.02, 0.14, 0.22],
+    [0.22, 0.28, 0.40, 0.47],
+    [0.49, 0.55, 0.66, 0.73],
+    [0.75, 0.81, 0.95, 1.01]
+  ],
+  readout: (x, y, f) => `視線 ${x} / ${y} · 赫 ${String(f).padStart(3, '0')}`,
+  audio: {
+    cutoff: 300,
+    voices: [
+      { type: 'sawtooth', freq: 48, gain: 0.11 },
+      { type: 'triangle', freq: 72, gain: 0.17 }
+    ]
+  }
+};
+</script>
+<script src="../shared/engine.js"></script>
+</body>
+</html>

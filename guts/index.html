@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ガッツ — GUTS</title>
+<meta name="description" content="黒い剣士 · 狂戦士の甲冑 — an interactive tribute page. Scroll until the armour closes, move the cursor and the eye in the visor follows." />
+<meta name="theme-color" content="#08080a" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%2308080a'/%3E%3Cpath d='M14 44 L50 30 L86 44 L74 62 L50 54 L26 62 Z' fill='%23e6e4df'/%3E%3Ccircle cx='50' cy='47' r='7' fill='%23ff3a1d'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@400;600;800&family=Zen+Kaku+Gothic+New:wght@300;500;900&family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500&family=Space+Grotesk:wght@300;400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../shared/base.css" />
+<link rel="stylesheet" href="theme.css" />
+</head>
+<body>
+
+<div class="loader" id="loader">
+  <div class="loader__inner">
+    <div class="loader__glyph">烙印</div>
+    <div class="loader__bar"><span id="loaderFill"></span></div>
+    <div class="loader__meta">
+      <span>読込中 / LOADING FRAMES</span>
+      <span id="loaderPct">00</span>
+    </div>
+  </div>
+</div>
+
+<div class="grain" aria-hidden="true"></div>
+<div class="vignette" aria-hidden="true"></div>
+<div class="hem-bed" aria-hidden="true"></div>
+<canvas class="hem" id="hemCanvas" aria-hidden="true"></canvas>
+
+<div class="storm" aria-hidden="true">
+  <div class="storm__flash" id="stormFlash"></div>
+  <svg class="storm__bolt" id="stormBolt" viewBox="0 0 1000 1000" preserveAspectRatio="none">
+    <path id="boltGlow" d="" fill="none" stroke="#ff7a55" stroke-width="9"
+          stroke-linejoin="round" stroke-linecap="round" opacity=".4"/>
+    <path id="boltPath" d="" fill="none" stroke="#fff" stroke-width="2"
+          stroke-linejoin="round" stroke-linecap="round"/>
+  </svg>
+</div>
+
+<div class="cursor" id="cursor" aria-hidden="true"><span></span></div>
+
+<header class="chrome">
+  <div class="chrome__mark">
+    <svg viewBox="0 0 100 100" class="sigil" aria-hidden="true">
+      <path d="M12 42 L50 26 L88 42 L74 64 L50 54 L26 64 Z" fill="none" stroke="currentColor" stroke-width="3"/>
+      <circle cx="50" cy="45" r="6" fill="currentColor"/>
+    </svg>
+    <span>GUTS</span>
+  </div>
+  <nav class="chrome__nav">
+    <a href="#eyes" data-jp="眼">EYE</a>
+    <a href="#jutsu" data-jp="武">ARMS</a>
+    <a href="#end" data-jp="終">END</a>
+    <button class="chrome__sound" id="soundToggle" type="button"
+            aria-pressed="false" title="低音 / low hum">
+      <span class="chrome__sound-jp">音</span>
+      <span class="chrome__sound-state" id="soundState">OFF</span>
+    </button>
+  </nav>
+</header>
+
+<div class="rail rail--left" aria-hidden="true">
+  <span>鷹の団 · 蝕 · 烙印を刻まれし者</span>
+</div>
+<div class="rail rail--right" aria-hidden="true">
+  <span id="railScroll">SCROLL 000%</span>
+</div>
+
+<div class="hint" id="hint">
+  <span class="hint__jp">下へ</span>
+  <span class="hint__line"></span>
+  <span class="hint__en">SCROLL UNTIL THE ARMOUR CLOSES</span>
+</div>
+
+<main>
+
+<!-- ══════════ ACT I — SCROLL SCRUB ══════════ -->
+<section class="scrub" id="scrub" aria-label="甲冑が閉じるまで">
+  <div class="scrub__sticky">
+    <canvas id="mainCanvas"></canvas>
+    <div class="scrub__glow" id="scrubGlow"></div>
+
+    <div class="phase" data-phase="0">
+      <h2 class="phase__jp">黒い剣士</h2>
+      <p class="phase__en">THE BLACK SWORDSMAN</p>
+      <p class="phase__sub">A man, a slab of iron, and a scar where an eye used to be. Nothing here is a metaphor.</p>
+    </div>
+    <div class="phase" data-phase="1">
+      <h2 class="phase__jp">装着</h2>
+      <p class="phase__en">THE ARMOUR TAKES HIM</p>
+      <p class="phase__sub">Plate by plate it shuts. It does not protect him — it simply refuses to let him stop.</p>
+    </div>
+    <div class="phase" data-phase="2">
+      <h2 class="phase__jp">狂戦士</h2>
+      <p class="phase__en">BERSERKER</p>
+      <p class="phase__sub">Pain stops arriving. Tendons tear and hold anyway. He will pay for every second of this later.</p>
+    </div>
+    <div class="phase" data-phase="3">
+      <h2 class="phase__jp">烙印</h2>
+      <p class="phase__en">THE BRAND</p>
+      <p class="phase__sub">The mark bleeds whenever they come close. It has never once been wrong.</p>
+    </div>
+
+    <div class="titleblock" id="titleblock">
+      <p class="titleblock__kicker">鷹の団 · 元・突撃隊長</p>
+      <h1 class="titleblock__jp">ガッ<span>ツ</span></h1>
+      <p class="titleblock__en">G U T S</p>
+    </div>
+
+    <canvas id="moteCanvas" class="motes"></canvas>
+  </div>
+</section>
+
+<!-- ══════════ ACT II — GAZE TRACK ══════════ -->
+<section class="eyes" id="eyes" aria-label="兜の隙間">
+  <div class="eyes__sticky">
+    <canvas id="eyeCanvas"></canvas>
+    <div class="eyes__flare" id="eyeFlare"></div>
+    <div class="eyes__frame">
+      <div class="eyes__label eyes__label--tl">狂戦士の兜</div>
+      <div class="eyes__label eyes__label--tr">SINGLE EYE · LIVE TRACK</div>
+      <div class="eyes__label eyes__label--bl" id="eyeReadout">視線 00.0 / 00.0 · 熱 000</div>
+      <div class="eyes__label eyes__label--br">動かせ · MOVE YOUR CURSOR</div>
+    </div>
+    <div class="eyes__copy">
+      <h2>睨み<span>返せ</span></h2>
+      <p>One eye left, and it has never lost track of anything it decided to kill.</p>
+      <p class="eyes__note">単眼追尾 · one frame per gaze position, mapped left to right</p>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════ ACT III — ARMS ══════════ -->
+<section class="jutsu" id="jutsu" aria-label="武具">
+  <div class="jutsu__reveal" id="jutsuReveal" aria-hidden="true"></div>
+  <canvas class="ghost" id="ghostCanvas" aria-hidden="true"></canvas>
+
+  <div class="jutsu__inner">
+    <div class="jutsu__head">
+      <span class="eyebrow" data-px="0.10">武具 · WHAT HE CARRIES</span>
+      <h2 data-px="0.18">背負う<br>鉄の重さ</h2>
+      <p data-px="0.26">He has no technique and no bloodline. Everything that keeps him alive is an object someone else made, hauled around until it became part of him — and every one of them costs him something to use.</p>
+      <div class="jutsu__meta" data-px="0.34">
+        <span><i>無術</i>NO TECHNIQUE</span>
+        <span><i>鉄塊</i>RAW IRON</span>
+        <span><i>四つ</i>FOUR THINGS</span>
+      </div>
+      <p class="jutsu__hint" data-px="0.40">動かせ · drag the dark aside</p>
+    </div>
+
+    <div class="jutsu__grid">
+      <article class="card" tabindex="0">
+        <span class="card__num">其の一</span>
+        <h3 class="card__jp card__jp--long">ドラゴンころし</h3>
+        <p class="card__ro">DRAGONSLAYER</p>
+        <p class="card__txt">Too big to be called a sword. A heap of raw iron with an edge — swung by a man who was too stubborn to admit it could not be lifted.</p>
+        <div class="card__foot"><i>鉄塊</i>A SLAB OF IRON</div>
+      </article>
+
+      <article class="card" tabindex="0">
+        <span class="card__num">其の二</span>
+        <h3 class="card__jp">義手</h3>
+        <p class="card__ro">THE PROSTHETIC</p>
+        <p class="card__txt">The left arm he tore off himself. What replaced it holds a magnet, a cannon and a spare knife — a hand rebuilt for nothing except continuing.</p>
+        <div class="card__foot"><i>大砲</i>HAND CANNON</div>
+      </article>
+
+      <article class="card" tabindex="0">
+        <span class="card__num">其の三</span>
+        <h3 class="card__jp card__jp--long">狂戦士の甲冑</h3>
+        <p class="card__ro">BERSERKER ARMOUR</p>
+        <p class="card__txt">It overrides the limiter every body has. Muscles pull past their own tearing point, bone sets itself with nails — and it eats a piece of his mind each time.</p>
+        <div class="card__foot"><i>代償</i>IT TAKES PAYMENT</div>
+      </article>
+
+      <article class="card" tabindex="0">
+        <span class="card__num">其の四</span>
+        <h3 class="card__jp">烙印</h3>
+        <p class="card__ro">BRAND OF SACRIFICE</p>
+        <p class="card__txt">Burned into the back of his neck. It bleeds when the things that took everything from him are near, which means he is never warned early — only warned.</p>
+        <div class="card__foot"><i>生贄</i>MARKED</div>
+      </article>
+    </div>
+
+    <div class="jutsu__foot" data-px="0.14">
+      <span>「まだ、立てる。」</span>
+      <span>HE HAS BEEN GETTING BACK UP FOR LONGER THAN ANYTHING CHASING HIM HAS BEEN AWAKE</span>
+    </div>
+  </div>
+
+  <div class="jutsu__anchor" aria-hidden="true">
+    <span class="jutsu__anchor-jp">蝕</span>
+    <span class="jutsu__anchor-ro">THE ECLIPSE</span>
+    <span class="jutsu__anchor-sub">一夜 · 全損 · 引き返せぬ</span>
+  </div>
+</section>
+
+<!-- ══════════ ACT IV — EPIGRAPH ══════════ -->
+<section class="quote" aria-label="銘">
+  <div class="quote__jp">まだ<span class="dots">…</span>立てる</div>
+  <blockquote>
+    <p>“A man with nothing left to lose is the hardest thing in the world to stop — and he lost everything in a single night.”</p>
+    <cite>銘 · AN INSCRIPTION, NOT A QUOTATION</cite>
+  </blockquote>
+  <div class="quote__mark">黒い剣士</div>
+</section>
+
+<footer id="end">
+  <div class="footer__big">まだ終わらぬ</div>
+  <div class="footer__row">
+    <span>IT IS NOT OVER</span>
+    <span>蝕 · ECLIPSE</span>
+    <span>「行くぞ。」</span>
+  </div>
+</footer>
+
+</main>
+
+<div class="sticky-badge" id="stickyBadge">
+  <span class="sticky-badge__jp">烙印</span>
+  <span class="sticky-badge__en">THE BRAND</span>
+</div>
+
+<script>
+window.SITE = {
+  main: { count: 71, dir: 'frames/main/', maxUp: 2.2 },
+  eyes: { count: 51, dir: 'frames/eyes/', maxUp: 2.6 },
+  titleWindow: [-1, 0, 0.05, 0.16],
+  phases: [
+    [-1, 0.02, 0.14, 0.22],
+    [0.22, 0.28, 0.40, 0.47],
+    [0.49, 0.55, 0.66, 0.73],
+    [0.75, 0.81, 0.95, 1.01]
+  ],
+  readout: (x, y, f) => `視線 ${x} / ${y} · 熱 ${String(f).padStart(3, '0')}`,
+  audio: {
+    cutoff: 220,
+    voices: [
+      { type: 'sawtooth', freq: 41, gain: 0.13 },
+      { type: 'square', freq: 61.5, gain: 0.06 }
+    ]
+  }
+};
+</script>
+<script src="../shared/engine.js"></script>
+</body>
+</html>
