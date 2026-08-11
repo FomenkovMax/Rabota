@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>五条 悟 — GOJO SATORU</title>
+<meta name="description" content="六眼と無下限呪術 — an interactive tribute page for Gojo Satoru. Scroll-scrubbed cursed energy, cursor-tracked Six Eyes, Hollow Purple." />
+<meta name="theme-color" content="#040509" />
+<meta property="og:title" content="五条 悟 — GOJO SATORU" />
+<meta property="og:description" content="六眼 · 無下限呪術 · 領域展開 無量空処" />
+<meta property="og:type" content="website" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23040509'/%3E%3Ccircle cx='50' cy='50' r='30' fill='none' stroke='%237fd4ff' stroke-width='6'/%3E%3Ccircle cx='50' cy='50' r='12' fill='%231f6fff'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@400;600;800&family=Zen+Kaku+Gothic+New:wght@300;500;900&family=Cinzel:wght@400;700;900&family=Space+Grotesk:wght@300;400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<!-- ══════════ PRELOADER ══════════ -->
+<div class="loader" id="loader">
+  <div class="loader__inner">
+    <div class="loader__glyph">六眼</div>
+    <div class="loader__bar"><span id="loaderFill"></span></div>
+    <div class="loader__meta">
+      <span>術式展開 / INITIALIZING</span>
+      <span id="loaderPct">00</span>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ AMBIENT LAYERS ══════════ -->
+<div class="grain" aria-hidden="true"></div>
+<div class="vignette" aria-hidden="true"></div>
+
+<!-- ══════════ 呪力 / CURSED ENERGY HEM ══════════ -->
+<div class="hem-bed" aria-hidden="true"></div>
+<canvas class="hem" id="hemCanvas" aria-hidden="true"></canvas>
+
+<!-- ══════════ DISCHARGE / 帯電 ══════════ -->
+<div class="storm" aria-hidden="true">
+  <div class="storm__flash" id="stormFlash"></div>
+  <svg class="storm__bolt" id="stormBolt" viewBox="0 0 1000 1000" preserveAspectRatio="none">
+    <path id="boltGlow" d="" fill="none" stroke="#8fd9ff" stroke-width="9"
+          stroke-linejoin="round" stroke-linecap="round" opacity=".4"/>
+    <path id="boltPath" d="" fill="none" stroke="#fff" stroke-width="2"
+          stroke-linejoin="round" stroke-linecap="round"/>
+  </svg>
+</div>
+
+<!-- Infinity cursor: it approaches the pointer but never quite arrives -->
+<div class="cursor" id="cursor" aria-hidden="true"><span></span></div>
+
+<!-- ══════════ FIXED CHROME ══════════ -->
+<header class="chrome">
+  <div class="chrome__mark">
+    <svg viewBox="0 0 100 100" class="sigil" aria-hidden="true">
+      <circle cx="50" cy="50" r="46" fill="none" stroke="currentColor" stroke-width="1.6" opacity=".55"/>
+      <circle cx="50" cy="50" r="30" fill="none" stroke="currentColor" stroke-width="1.6"/>
+      <circle cx="50" cy="50" r="13" fill="currentColor"/>
+      <circle cx="50" cy="50" r="5" fill="var(--void)"/>
+      <path d="M4 50 H22 M78 50 H96 M50 4 V22 M50 78 V96" stroke="currentColor" stroke-width="1.6" opacity=".8"/>
+    </svg>
+    <span>GOJO</span>
+  </div>
+  <nav class="chrome__nav">
+    <a href="#eyes" data-jp="眼">EYES</a>
+    <a href="#jutsu" data-jp="術">JUTSU</a>
+    <a href="#end" data-jp="終">END</a>
+    <button class="chrome__sound" id="soundToggle" type="button"
+            aria-pressed="false" title="呪力の音 / cursed energy hum">
+      <span class="chrome__sound-jp">音</span>
+      <span class="chrome__sound-state" id="soundState">OFF</span>
+    </button>
+  </nav>
+</header>
+
+<div class="rail rail--left" aria-hidden="true">
+  <span>五条家 · 東京都立呪術高等専門学校 · 特級術師</span>
+</div>
+<div class="rail rail--right" aria-hidden="true">
+  <span id="railScroll">SCROLL 000%</span>
+</div>
+
+<div class="hint" id="hint">
+  <span class="hint__jp">下へ</span>
+  <span class="hint__line"></span>
+  <span class="hint__en">SCROLL TO UNSEAL THE SIX EYES</span>
+</div>
+
+<main>
+
+<!-- ══════════ ACT I — SCROLL SCRUB ══════════ -->
+<section class="scrub" id="scrub" aria-label="六眼の解封">
+  <div class="scrub__sticky">
+    <canvas id="mainCanvas"></canvas>
+    <div class="scrub__glow" id="scrubGlow"></div>
+
+    <!-- phase captions -->
+    <div class="phase" data-phase="0">
+      <h2 class="phase__jp">静寂</h2>
+      <p class="phase__en">SILENCE</p>
+      <p class="phase__sub">「目隠しをしてるのは、見えすぎるからだよ。」 — The blindfold is not a handicap. It is mercy.</p>
+    </div>
+    <div class="phase" data-phase="1">
+      <h2 class="phase__jp">解封</h2>
+      <p class="phase__en">UNSEALING</p>
+      <p class="phase__sub">「さて、始めようか。」 — The bandages come away one turn at a time.</p>
+    </div>
+    <div class="phase" data-phase="2">
+      <h2 class="phase__jp">六眼</h2>
+      <p class="phase__en">SIX EYES</p>
+      <p class="phase__sub">Every mote of cursed energy in the world, counted. Nothing costs him anything.</p>
+    </div>
+    <div class="phase" data-phase="3">
+      <h2 class="phase__jp">無下限</h2>
+      <p class="phase__en">LIMITLESS</p>
+      <p class="phase__sub">「僕に近づくほど、君は遅くなる。」 — Between you and him lies an infinite series.</p>
+    </div>
+
+    <!-- Title lockup, only in the first beat -->
+    <div class="titleblock" id="titleblock">
+      <p class="titleblock__kicker">東京呪術高専 · 特級呪術師</p>
+      <h1 class="titleblock__jp">五条<span>悟</span></h1>
+      <p class="titleblock__en">G O J O &nbsp; S A T O R U</p>
+    </div>
+
+    <canvas id="moteCanvas" class="motes"></canvas>
+  </div>
+</section>
+
+<!-- ══════════ ACT II — CURSOR-TRACKED SIX EYES ══════════ -->
+<section class="eyes" id="eyes" aria-label="六眼の追尾">
+  <div class="eyes__sticky">
+    <canvas id="eyeCanvas"></canvas>
+    <div class="eyes__flare" id="eyeFlare"></div>
+    <div class="eyes__frame">
+      <div class="eyes__label eyes__label--tl">六眼</div>
+      <div class="eyes__label eyes__label--tr">SIX EYES · LIVE TRACK</div>
+      <div class="eyes__label eyes__label--bl" id="eyeReadout">視線 00.0 / 00.0 · 呪力 000</div>
+      <div class="eyes__label eyes__label--br">動かせ · MOVE YOUR CURSOR</div>
+    </div>
+    <div class="eyes__copy">
+      <h2>見つめ<span>返せ</span></h2>
+      <p>「僕は最強だからね。」 — Wherever you move, he has already seen it.</p>
+      <p class="eyes__note">瞳孔追尾 · continuous gaze solve, zero cursed-energy cost</p>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════ ACT III — TECHNIQUE GRID ══════════ -->
+<section class="jutsu" id="jutsu" aria-label="無下限呪術">
+  <div class="jutsu__reveal" id="jutsuReveal" aria-hidden="true"></div>
+  <canvas class="ghost" id="ghostCanvas" aria-hidden="true"></canvas>
+
+  <div class="jutsu__inner">
+    <div class="jutsu__head">
+      <span class="eyebrow" data-px="0.10">無下限呪術 · LIMITLESS</span>
+      <h2 data-px="0.18">その手に<br>収束する無限</h2>
+      <p data-px="0.26">Infinity is not a shield he raises. It is the space itself, refusing to let anything finish the journey toward him — and when he inverts it, the same mathematics becomes a weapon nothing in creation is built to survive.</p>
+      <div class="jutsu__meta" data-px="0.34">
+        <span><i>生得術式</i>INNATE TECHNIQUE</span>
+        <span><i>六眼</i>PERFECT CONTROL</span>
+        <span><i>四つの式</i>FOUR FORMS</span>
+      </div>
+      <p class="jutsu__hint" data-px="0.40">動かせ · sweep the dark away</p>
+    </div>
+
+    <div class="jutsu__grid">
+      <article class="card" data-tone="blue" tabindex="0">
+        <span class="card__num">術式順転</span>
+        <h3 class="card__jp">蒼</h3>
+        <p class="card__ro">BLUE · ATTRACTION</p>
+        <p class="card__txt">A negative pressed into the empty space at his fingertips. Everything nearby falls inward, because the vacuum he made must be filled.</p>
+        <div class="card__foot"><i>収束</i>CONVERGENCE</div>
+      </article>
+
+      <article class="card" data-tone="red" tabindex="0">
+        <span class="card__num">術式反転</span>
+        <h3 class="card__jp">赫</h3>
+        <p class="card__ro">RED · REPULSION</p>
+        <p class="card__txt">The sign flipped. Reversed cursed energy given a direction, hurling everything away from a point that should not exist.</p>
+        <div class="card__foot"><i>発散</i>DIVERGENCE</div>
+      </article>
+
+      <article class="card" data-tone="purple" tabindex="0">
+        <span class="card__num">虚式</span>
+        <h3 class="card__jp">茈</h3>
+        <p class="card__ro">HOLLOW PURPLE</p>
+        <p class="card__txt">Blue and Red made to collide. What is born has imaginary mass — it does not push matter aside, it deletes the line it travels.</p>
+        <div class="card__foot"><i>仮想質量</i>IMAGINARY MASS</div>
+      </article>
+
+      <article class="card" data-tone="void" tabindex="0">
+        <span class="card__num">領域展開</span>
+        <h3 class="card__jp">無量空処</h3>
+        <p class="card__ro">UNLIMITED VOID</p>
+        <p class="card__txt">Infinite information poured into a finite mind. No pain, no wound — only a body that can no longer decide which instruction to obey first.</p>
+        <div class="card__foot"><i>必中</i>GUARANTEED HIT</div>
+      </article>
+    </div>
+
+    <div class="jutsu__foot" data-px="0.14">
+      <span>「僕一人が強くても、意味がないんだよ。」</span>
+      <span>THE STRONGEST DECIDED THAT BEING STRONGEST WAS NOT ENOUGH</span>
+    </div>
+  </div>
+
+  <div class="jutsu__anchor" aria-hidden="true">
+    <span class="jutsu__anchor-jp">無量空処</span>
+    <span class="jutsu__anchor-ro">UNLIMITED VOID</span>
+    <span class="jutsu__anchor-sub">領域展開 · 必中効果 · 逃げ場なし</span>
+  </div>
+</section>
+
+<!-- ══════════ ACT IV — QUOTE ══════════ -->
+<section class="quote" aria-label="引用">
+  <div class="quote__jp">僕は最強<span class="dots">…</span></div>
+  <blockquote>
+    <p>“I'm not the strongest because I am Gojo Satoru. I am Gojo Satoru because I'm the strongest.”</p>
+    <cite>五条 悟 · GOJO SATORU</cite>
+  </blockquote>
+  <div class="quote__mark">なんてね</div>
+</section>
+
+<!-- ══════════ FOOTER ══════════ -->
+<footer id="end">
+  <div class="footer__big">君だけが最強</div>
+  <div class="footer__row">
+    <span>YOU ARE THE STRONGEST</span>
+    <span>十二月七日</span>
+    <span>「後は頼んだ。」</span>
+  </div>
+</footer>
+
+</main>
+
+<!-- ══════════ STICKY BADGE ══════════ -->
+<div class="sticky-badge" id="stickyBadge">
+  <span class="sticky-badge__jp">六眼</span>
+  <span class="sticky-badge__en">SIX EYES</span>
+</div>
+
+<script src="main.js"></script>
+</body>
+</html>
