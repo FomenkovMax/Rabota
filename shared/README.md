@@ -74,6 +74,30 @@ python3 -m http.server 8097   # из корня репозитория
 # → http://127.0.0.1:8097/kaneki/  и  /guts/
 ```
 
+## Публикация
+
+Опубликовано: **https://kaneki-guts-tribute.netlify.app** (`/kaneki/`, `/guts/`).
+
+```bash
+sh shared/build-deploy.sh      # → tribute-dist/ : обе страницы + движок + лендинг
+```
+
+Важно: корневой `netlify.toml` принадлежит лендингу «ЛИФТ» — он запускает
+`npm run build` и публикует `dist`. Перед деплоем трибьютов его нужно временно
+подменить на такой, а после — вернуть:
+
+```toml
+[build]
+  publish = "tribute-dist"
+
+[[headers]]
+  for = "/*/frames/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+```
+
+Кадры именованы неизменяемо (`001.jpg`…), поэтому им отдаётся годовой кэш.
+
 ## Про цитаты
 
 У Канеки в четвёртом акте — реальная известная реплика персонажа. У Гатса на её

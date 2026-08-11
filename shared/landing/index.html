@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>трибьют-страницы — 隻眼 · 烙印</title>
+<meta name="description" content="Две страницы на одном кадровом движке: скролл перематывает превращение, курсор ведёт взгляд." />
+<meta name="theme-color" content="#07070a" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%2307070a'/%3E%3Ccircle cx='50' cy='50' r='26' fill='%23ff2f3d'/%3E%3Ccircle cx='50' cy='50' r='10' fill='%2307070a'/%3E%3C/svg%3E">
+<style>
+  :root{
+    --void:#07070a; --bone:#e9e6e4; --smoke:#8a8489;
+    --kaneki:#ff2f3d; --guts:#ff3a1d;
+    --serif:'Shippori Mincho','Hiragino Mincho ProN','Yu Mincho',serif;
+    --mono:'Space Grotesk','Helvetica Neue',Arial,sans-serif;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{
+    background:var(--void);color:var(--bone);font-family:var(--mono);
+    min-height:100vh;display:grid;align-content:center;
+    gap:clamp(3rem,9vh,5rem);padding:clamp(2.5rem,8vw,6rem);
+    -webkit-font-smoothing:antialiased;
+  }
+  header{display:grid;gap:1rem;max-width:60ch}
+  h1{font-family:var(--serif);font-weight:800;font-size:clamp(1.6rem,4.4vw,2.6rem);letter-spacing:.14em}
+  header p{font-size:.86rem;line-height:1.95;color:var(--smoke);font-weight:300}
+  .kicker{font-size:.56rem;letter-spacing:.42em;color:var(--smoke)}
+
+  .grid{display:grid;gap:1px;background:rgba(255,255,255,.1);
+        grid-template-columns:repeat(auto-fit,minmax(min(100%,20rem),1fr));
+        border:1px solid rgba(255,255,255,.1)}
+  a.card{
+    position:relative;background:var(--void);text-decoration:none;color:inherit;
+    padding:clamp(2rem,4vw,3rem);display:grid;gap:.7rem;align-content:start;
+    isolation:isolate;transition:background .5s cubic-bezier(.22,1,.36,1);
+  }
+  a.card::after{
+    content:'';position:absolute;inset:0;z-index:-1;opacity:0;transition:opacity .5s;
+    background:radial-gradient(circle at 50% 115%,var(--tone),transparent 72%);
+  }
+  a.card:hover,a.card:focus-visible{background:#101014;outline:none}
+  a.card:hover::after,a.card:focus-visible::after{opacity:1}
+  a.card:focus-visible{box-shadow:inset 0 0 0 1px var(--tone-solid)}
+  .jp{font-family:var(--serif);font-weight:800;font-size:clamp(2rem,5vw,2.9rem);
+      letter-spacing:.14em;line-height:1.1;transition:color .5s}
+  a.card:hover .jp,a.card:focus-visible .jp{color:var(--tone-solid)}
+  .ro{font-size:.56rem;letter-spacing:.4em;opacity:.75}
+  .txt{font-size:.78rem;line-height:1.95;color:var(--smoke);font-weight:300;margin-top:.5rem}
+  .go{margin-top:1.4rem;padding-top:.9rem;border-top:1px solid rgba(255,255,255,.12);
+      font-size:.5rem;letter-spacing:.3em;color:var(--tone-solid)}
+
+  #k{--tone:rgba(179,18,31,.4);--tone-solid:var(--kaneki)}
+  #g{--tone:rgba(143,18,8,.42);--tone-solid:var(--guts)}
+
+  footer{font-size:.5rem;letter-spacing:.3em;color:var(--smoke);line-height:2.2}
+  @media (prefers-reduced-motion:reduce){*{transition-duration:.01ms!important}}
+</style>
+</head>
+<body>
+
+<header>
+  <p class="kicker">кадровый скраб · слежение за курсором</p>
+  <h1>Две страницы, один движок</h1>
+  <p>Скролл перематывает превращение кадр за кадром, курсор во втором акте ведёт взгляд. Кадры не нарисованы по одному — они нарезаны из ролика, который интерполирует превращение целиком, иначе персонаж плывёт от кадра к кадру.</p>
+</header>
+
+<nav class="grid">
+  <a class="card" id="k" href="kaneki/">
+    <span class="ro">TOKYO GHOUL</span>
+    <span class="jp">金木 研</span>
+    <span class="ro">KANEKI KEN</span>
+    <span class="txt">Маска трескается по швам, волосы белеют от корней, загорается какуган. Во втором акте человеческий глаз следит за курсором.</span>
+    <span class="go">ОТКРЫТЬ →</span>
+  </a>
+  <a class="card" id="g" href="guts/">
+    <span class="ro">BERSERK</span>
+    <span class="jp">ガッツ</span>
+    <span class="ro">GUTS</span>
+    <span class="txt">Доспех Берсерка смыкается пластина за пластиной, шлем захлопывается, в щели зажигается красный. Всё в гравюрной манге со скринтоном.</span>
+    <span class="go">ОТКРЫТЬ →</span>
+  </a>
+</nav>
+
+<footer>
+  <div>ЛУЧШЕ СМОТРЕТЬ С ДЕСКТОПА · ПЕРВЫЙ ЭКРАН ГРУЗИТ КАДРЫ</div>
+  <div>ФАН-СТРАНИЦЫ. ПЕРСОНАЖИ ПРИНАДЛЕЖАТ ИХ ПРАВООБЛАДАТЕЛЯМ</div>
+</footer>
+
+</body>
+</html>
