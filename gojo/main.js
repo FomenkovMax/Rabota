@@ -720,7 +720,9 @@ function frame(now) {
   const dt = Math.min(now - last, 64);
   last = now;
 
-  const doc = document.documentElement;
+  /* scrollingElement, not documentElement: in quirks mode the scroller is
+     <body>, and a host that wraps this page can put it there */
+  const doc = document.scrollingElement || document.documentElement;
   const scrolled = doc.scrollTop / Math.max(1, doc.scrollHeight - doc.clientHeight);
   railScroll.textContent = 'SCROLL ' + String(Math.round(scrolled * 100)).padStart(3, '0') + '%';
   hintEl.classList.toggle('hide', doc.scrollTop > window.innerHeight * 0.35);
