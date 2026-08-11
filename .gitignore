@@ -8,3 +8,4 @@ qa/app-orig.js
 qa/screens2/
 qa/screens3/
 tribute-dist/
+.netlify/
