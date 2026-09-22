@@ -191,7 +191,10 @@ def _traffic_table(comparisons: list[Comparison]) -> str:
         if c.psb:
             # Условия, при которых достигается ставка, важнее суммы и срока:
             # «31% на 32 дня до 50 000 ₽» читается иначе, чем просто «31%».
-            conditions = getattr(c.psb, "rate_conditions", "")
+            # Саму ставку из условий убираем: она уже стоит в соседней
+            # колонке, и повтор «до 13,80% | 13,80% — 181 день» только шумит.
+            conditions = re.sub(r"^\d+[,.]\d+%\s*[—-]\s*", "",
+                                getattr(c.psb, "rate_conditions", ""))
             detail = conditions or (f"{fmt_money(c.psb.amount_max)} · "
                                     f"{fmt_term(c.psb.term_max_months)}")
             psb_extra = f'<div class="pmeta">{e(detail)}</div>'
