@@ -478,9 +478,48 @@ def classify_all(rows: Iterable[Any], bank: str, *, today: date | None = None,
 
 # --- сравнение по сегментам ----------------------------------------------
 
+# Сегменты акций, которым соответствует категория продукта. Нужны, чтобы
+# отсутствие акции не выдавалось за отсутствие продукта: у ПСБ по вкладам
+# нет промо-баннеров, но есть вклады под 31% — и это главное, что нужно
+# знать про сегмент.
+SEGMENT_TO_CATEGORY: dict[str, str] = {
+    "Вклады": "Вклады",
+    "Накопительные счета": "Накопительные счета",
+    "Кредиты": "Кредиты",
+    "Ипотека": "Ипотека",
+    "Кредитные карты": "Кредитные карты",
+    "Дебетовые карты": "Дебетовые карты",
+    "Банковские карты": "Банковские карты",
+    "Долгосрочные сбережения": "Долгосрочные сбережения",
+    "Страхование": "Страхование",
+    "Инвестиции": "Инвестиционные услуги",
+}
+
+# Продукты, где выгода клиента — ставка выше.
+SAVINGS_SEGMENTS = {"Вклады", "Накопительные счета", "Долгосрочные сбережения"}
+
+BASIS_PROMO, BASIS_PRODUCT, BASIS_NONE = "акции", "витрина продуктов", ""
+
+
+@dataclass
+class ProductShowcase:
+    """Лучшее, что банк предлагает в сегменте по условиям продукта."""
+
+    title: str = ""
+    rate: float | None = None
+    conditions: str = ""
+    url: str = ""
+
+    @property
+    def display(self) -> str:
+        if self.rate is None:
+            return "—"
+        return f"{self.rate:g}".replace(".", ",") + " %"
+
+
 @dataclass
 class SegmentComparison:
-    """Итог по одному сегменту: чьи акции сильнее."""
+    """Итог по одному сегменту: чьё предложение сильнее."""
 
     segment: str
     psb: list[PromoInsight] = field(default_factory=list)
@@ -488,10 +527,16 @@ class SegmentComparison:
 
     verdict: str = ""          # green | yellow | red | grey
     headline: str = ""         # короткий вывод
+    basis: str = BASIS_NONE    # на чём основан вывод: акции или витрина
     best_type: str = ""        # по какому типу выгоды сравнивали
     best_unit: str = ""        # и в каких единицах
     psb_best: float | None = None
     sber_best: float | None = None
+
+    # Витрина продуктов сегмента — чтобы отсутствие акции не выглядело
+    # как отсутствие продукта.
+    psb_product: ProductShowcase | None = None
+    sber_product: ProductShowcase | None = None
 
     @property
     def total(self) -> int:
@@ -553,44 +598,95 @@ def sort_key(promo: PromoInsight) -> tuple[int, float, str]:
             -(promo.benefit_value or 0), promo.title)
 
 
-def compare_segments(psb: list[PromoInsight], sber: list[PromoInsight]) -> list[SegmentComparison]:
-    """Группирует акции по сегментам и выносит вердикт по каждому.
+def _showcase(products, category: str, higher_is_better: bool):
+    """Лучший продукт банка в категории по витринной ставке."""
+    pool = [p for p in products if (getattr(p, "category", "") or "") == category]
+    if not pool:
+        return None
 
-    Сравниваем внутри одного типа выгоды: кешбэк с кешбэком, ставку со
-    ставкой. Сопоставлять «30% кешбэка» с «5000 ₽ бонуса» бессмысленно —
-    это разные величины, и такой вердикт вводил бы в заблуждение.
+    bound = "rate_max" if higher_is_better else "rate_min"
+    scored = [(getattr(p, bound, None), p) for p in pool]
+    scored = [(rate, prod) for rate, prod in scored if rate is not None]
+    if not scored:
+        best = pool[0]
+        return ProductShowcase(title=best.title, rate=None,
+                               conditions=getattr(best, "rate_conditions", ""),
+                               url=getattr(best, "source_url", ""))
+
+    rate, best = (max(scored, key=lambda x: x[0]) if higher_is_better
+                  else min(scored, key=lambda x: x[0]))
+    return ProductShowcase(title=best.title, rate=rate,
+                           conditions=getattr(best, "rate_conditions", ""),
+                           url=getattr(best, "source_url", ""))
+
+
+def compare_segments(psb: list[PromoInsight], sber: list[PromoInsight],
+                     psb_products: list[Any] | None = None,
+                     sber_products: list[Any] | None = None) -> list[SegmentComparison]:
+    """Группирует предложения по сегментам и выносит вердикт по каждому.
+
+    Внутри сегмента сравнивается однотипная выгода в одинаковых единицах:
+    кешбэк с кешбэком, ставка со ставкой.
+
+    Если акций у банка не нашлось, это не значит, что у него нет продукта.
+    На страницах вкладов ПСБ нет промо-баннеров, но сами вклады идут под
+    31% — и писать «у ПСБ нет ни одного предложения» было бы обманом.
+    Поэтому в таком случае вывод строится по витрине продуктов.
     """
-    segments = sorted({p.segment for p in psb} | {p.segment for p in sber})
-    results: list[SegmentComparison] = []
+    psb_products = psb_products or []
+    sber_products = sber_products or []
 
-    for segment in segments:
+    segments = {p.segment for p in psb} | {p.segment for p in sber}
+
+    # Сегменты без единой акции, но с продуктами, тоже показываем.
+    for segment, category in SEGMENT_TO_CATEGORY.items():
+        if any((getattr(p, "category", "") or "") == category
+               for p in psb_products + sber_products):
+            segments.add(segment)
+
+    results: list[SegmentComparison] = []
+    for segment in sorted(segments):
         item = SegmentComparison(
             segment=segment,
             psb=[p for p in psb if p.segment == segment],
             sber=[p for p in sber if p.segment == segment],
         )
+        category = SEGMENT_TO_CATEGORY.get(segment)
+        if category:
+            higher = segment in SAVINGS_SEGMENTS
+            item.psb_product = _showcase(psb_products, category, higher)
+            item.sber_product = _showcase(sber_products, category, higher)
+
         _judge(item)
         results.append(item)
 
-    # Сначала те, где проигрываем, — руководителю важно именно это.
     order = {"red": 0, "yellow": 1, "green": 2, "grey": 3}
     results.sort(key=lambda s: (order.get(s.verdict, 4), -s.total, s.segment))
     return results
 
 
 def _judge(item: SegmentComparison) -> None:
-    if not item.sber:
-        item.verdict = "red" if item.psb else "grey"
-        item.headline = (f"У ПСБ {offers_count(len(item.psb))}, "
-                         "у Сбера нет ни одного"
-                         if item.psb else "Предложений нет ни у одного банка")
-        return
-    if not item.psb:
-        item.verdict = "green"
-        item.headline = f"У Сбера {offers_count(len(item.sber))}, у ПСБ нет ни одного"
+    has_psb, has_sber = bool(item.psb), bool(item.sber)
+
+    if has_psb and has_sber and _judge_promos(item):
         return
 
-    # Ищем выгоду, сопоставимую по типу И по единице измерения.
+    # Сопоставимых акций нет — опираемся на витрину продуктов.
+    if _judge_products(item):
+        missing = []
+        if not has_psb:
+            missing.append("по ПСБ акций в сегменте не найдено")
+        if not has_sber:
+            missing.append("по Сберу акций в сегменте не найдено")
+        if missing:
+            item.headline += " · " + ", ".join(missing)
+        return
+
+    _judge_nothing(item, has_psb, has_sber)
+
+
+def _judge_promos(item: SegmentComparison) -> bool:
+    """Вердикт по акциям. False — если сопоставимой пары нет."""
     candidates = [
         (benefit_type, unit)
         for benefit_type in (CASHBACK, RATE, MONEY, POINTS, DISCOUNT)
@@ -598,24 +694,18 @@ def _judge(item: SegmentComparison) -> None:
         if _best_by(item.psb, benefit_type, unit) is not None
         and _best_by(item.sber, benefit_type, unit) is not None
     ]
-
     if not candidates:
-        item.verdict = "grey"
-        item.headline = (f"ПСБ — {offers_count(len(item.psb))}, "
-                         f"Сбер — {offers_count(len(item.sber))}: "
-                         "выгода несопоставима по типу или единице измерения")
-        return
+        return False
 
     benefit_type, unit = candidates[0]
     psb_best = _best_by(item.psb, benefit_type, unit)
     sber_best = _best_by(item.sber, benefit_type, unit)
 
+    item.basis = BASIS_PROMO
     item.best_type, item.best_unit = benefit_type, unit
     item.psb_best, item.sber_best = psb_best, sber_best
 
-    # По ставке кредита выгода клиента — меньше; по кешбэку и деньгам — больше.
-    lower_is_better = benefit_type == RATE and item.segment not in (
-        "Вклады", "Накопительные счета", "Долгосрочные сбережения")
+    lower_is_better = benefit_type == RATE and item.segment not in SAVINGS_SEGMENTS
     sber_wins = (sber_best < psb_best) if lower_is_better else (sber_best > psb_best)
 
     phrase = benefit_phrase(benefit_type, lower_is_better)
@@ -631,6 +721,54 @@ def _judge(item: SegmentComparison) -> None:
     else:
         item.verdict = "red"
         item.headline = f"{phrase.capitalize()}: ПСБ {psb_text} против {sber_text} у Сбера"
+    return True
+
+
+def _judge_products(item: SegmentComparison) -> bool:
+    """Вердикт по витрине продуктов. False — если витрины нет."""
+    psb, sber = item.psb_product, item.sber_product
+    if psb is None or sber is None or psb.rate is None or sber.rate is None:
+        return False
+
+    higher_is_better = item.segment in SAVINGS_SEGMENTS
+    sber_wins = (sber.rate > psb.rate) if higher_is_better else (sber.rate < psb.rate)
+    phrase = "максимальная ставка" if higher_is_better else "минимальная ставка"
+
+    psb_text = f"{psb.rate:g}".replace(".", ",") + " %"
+    sber_text = f"{sber.rate:g}".replace(".", ",") + " %"
+
+    item.basis = BASIS_PRODUCT
+    if psb.rate == sber.rate:
+        item.verdict = "yellow"
+        item.headline = f"По витрине продуктов {phrase} одинаковая — {psb_text}"
+    elif sber_wins:
+        item.verdict = "green"
+        item.headline = (f"По витрине продуктов {phrase}: "
+                         f"Сбер {sber_text} против {psb_text} у ПСБ")
+    else:
+        item.verdict = "red"
+        item.headline = (f"По витрине продуктов {phrase}: "
+                         f"ПСБ {psb_text} против {sber_text} у Сбера")
+    return True
+
+
+def _judge_nothing(item: SegmentComparison, has_psb: bool, has_sber: bool) -> None:
+    """Сравнить нечем — говорим прямо, без вердикта."""
+    item.basis = BASIS_NONE
+    item.verdict = "grey"
+
+    if has_psb and has_sber:
+        item.headline = (f"ПСБ — {offers_count(len(item.psb))}, "
+                         f"Сбер — {offers_count(len(item.sber))}: "
+                         "выгода несопоставима по типу или единице измерения")
+    elif has_psb:
+        item.headline = (f"У ПСБ {offers_count(len(item.psb))}; по Сберу акций "
+                         "в сегменте не найдено, витрины для сравнения тоже нет")
+    elif has_sber:
+        item.headline = (f"У Сбера {offers_count(len(item.sber))}; по ПСБ акций "
+                         "в сегменте не найдено, витрины для сравнения тоже нет")
+    else:
+        item.headline = "Данных для сравнения в сегменте нет"
 
 
 def summarize_promos(promos: list[PromoInsight]) -> dict[str, int]:

@@ -168,7 +168,8 @@ svg{display:block;max-width:100%;overflow:visible}
 .seg:last-of-type{margin-bottom:8px}
 .seghead{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:2px}
 .seghead h3{font-size:15px;margin:0;letter-spacing:-.005em}
-.seghint{color:var(--ink-muted);font-size:13px;margin:0 0 10px}
+.seghint{color:var(--ink-muted);font-size:13px;margin:0 0 6px}
+.segsrc{color:var(--ink-muted);font-size:12.5px;margin:0 0 10px;font-style:italic}
 .exp{margin:8px 0 0;padding-left:18px}
 .exp li{margin-bottom:4px}
 @media(max-width:640px){
@@ -457,12 +458,22 @@ def _versus(item: Any) -> str:
     """
     psb, sber = _best_offer(item.psb, item), _best_offer(item.sber, item)
     var = VERDICT_VAR.get(item.verdict, "--ink-muted")
+    use_products = getattr(item, "basis", "") == "витрина продуктов"
 
-    def side(promo: Any, bank: str, highlight: bool) -> str:
+    def side(promo: Any, bank: str, highlight: bool, product: Any = None) -> str:
         head = f'<div class="vs-bank">{e(bank)}</div>'
+
+        # Когда вывод опирается на витрину, показываем продукт, а не пустоту:
+        # «нет акций» рядом с банком, у которого вклады под 31%, — обман.
+        if (use_products or promo is None) and product is not None and product.rate is not None:
+            color = f"var({var})" if highlight else "var(--ink)"
+            return (f'<div class="vs-side">{head}'
+                    f'<div class="vs-val" style="color:{color}">{e(product.display)}</div>'
+                    f'<div class="vs-name">{e(product.title[:70])}</div></div>')
+
         if promo is None:
             return (f'<div class="vs-side">{head}'
-                    '<div class="vs-val vs-none">нет акций</div>'
+                    '<div class="vs-val vs-none">акций не найдено</div>'
                     '<div class="vs-name">—</div></div>')
 
         # Крупной цифрой показываем только измеримую выгоду. «Прочее»
@@ -481,9 +492,21 @@ def _versus(item: Any) -> str:
     # Подсвечиваем того, кто сильнее: при «выигрываем» — Сбера, иначе ПСБ.
     psb_strong = item.verdict == "red"
     sber_strong = item.verdict == "green"
-    return (f'<div class="vs">{side(psb, "ПСБ", psb_strong)}'
+    return (f'<div class="vs">'
+            f'{side(psb, "ПСБ", psb_strong, item.psb_product)}'
             f'<div class="vs-mid">против</div>'
-            f'{side(sber, "Сбер", sber_strong)}</div>')
+            f'{side(sber, "Сбер", sber_strong, item.sber_product)}</div>')
+
+
+def _showcase_line(item: Any) -> str:
+    """Витрина продуктов сегмента — когда вывод опирается на неё."""
+    if getattr(item, "basis", "") != "витрина продуктов":
+        return ""
+    psb, sber = item.psb_product, item.sber_product
+    if psb is None or sber is None:
+        return ""
+    return ('<p class="segsrc">Вывод построен по условиям продуктов: '
+            f'ПСБ — {e(psb.title[:60])}, Сбер — {e(sber.title[:60])}</p>')
 
 
 def _promo_analysis(segments: list[Any], expired: list[Any]) -> str:
@@ -502,6 +525,7 @@ def _promo_analysis(segments: list[Any], expired: list[Any]) -> str:
             f'<div class="seghead"><h3>{e(item.segment)}</h3>{chip}'
             f'<span class="segcount">ПСБ {len(item.psb)} · Сбер {len(item.sber)}</span></div>'
             f'<p class="seghint">{e(item.headline)}</p>'
+            + _showcase_line(item)
             + _versus(item) +
             '<details class="segdet"><summary>Все предложения сегмента</summary>'
             '<div class="scroll"><table><thead><tr>'
@@ -512,17 +536,10 @@ def _promo_analysis(segments: list[Any], expired: list[Any]) -> str:
             + "</tbody></table></div></details></div>"
         )
 
-    tail = ""
-    if expired:
-        items = "".join(
-            f'<li>{e(p.bank)} · {e(p.title[:110])} — завершилась {e(p.valid_display)}</li>'
-            for p in expired[:12]
-        )
-        more = (f"<li>…и ещё {len(expired) - 12}</li>" if len(expired) > 12 else "")
-        tail = ('<div class="note"><b>Отсеяно как завершившиеся: '
-                f'{len(expired)}</b><ul class="exp">{items}{more}</ul></div>')
-
-    return "".join(blocks) + tail
+    # Список завершившихся акций в отчёт не выводим: прошлогодние условия
+    # решений не меняют. Они по-прежнему отсеиваются, а их число видно
+    # в логе запуска и в базе.
+    return "".join(blocks)
 
 
 def render_report(
@@ -602,9 +619,10 @@ def render_report(
 
 <section class="card">
   <h2>Акции: сравнительный анализ по сегментам</h2>
-  <p class="hint">Только действующие предложения. Завершившиеся отсеяны и перечислены
-  в конце раздела. Внутри сегмента сравнивается однотипная выгода — кешбэк с кешбэком,
-  ставка со ставкой: сопоставлять «30% кешбэка» с «5000 ₽ бонуса» некорректно.
+  <p class="hint">Только действующие предложения — завершившиеся отсеяны.
+  Внутри сегмента сравнивается однотипная выгода: кешбэк с кешбэком, ставка со ставкой.
+  Если размеченных акций у банка нет, вывод строится по условиям его продуктов —
+  отсутствие промо-баннера не означает отсутствие продукта.
   По ПСБ данные собраны с сайта, по Сберу — из предоставленной выгрузки.</p>
   {_promo_analysis(promo_segments, expired_promos)}
 </section>

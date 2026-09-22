@@ -241,7 +241,12 @@ def run(config: Config, *, skip_collect: bool = False) -> dict[str, Any]:
         expired = [p for p in promo_psb + promo_sber if p.status == EXPIRED]
         active_psb = [p for p in promo_psb if p.status != EXPIRED]
         active_sber = [p for p in promo_sber if p.status != EXPIRED]
-        promo_segments = compare_segments(active_psb, active_sber)
+        # Продукты передаём, чтобы отсутствие промо-баннера не выглядело
+        # как отсутствие продукта: у ПСБ по вкладам акций не размечено,
+        # но сами вклады идут под 31%.
+        promo_segments = compare_segments(active_psb, active_sber,
+                                          psb_products=psb_products,
+                                          sber_products=sber_products)
 
         log.info("Акции: действующих %s (ПСБ %s, Сбер %s), завершившихся %s, "
                  "сегментов %s", len(active_psb) + len(active_sber),

@@ -203,11 +203,67 @@ def test_prizes_sort_last():
     assert sorted([prize, cashback], key=sort_key)[0].title == "Кешбэк"
 
 
-def test_segment_without_sber_is_red():
+def test_no_promos_at_other_bank_is_not_a_verdict():
+    """Отсутствие акции — не повод объявлять победу или поражение.
+
+    У ПСБ на страницах вкладов нет промо-баннеров, но вклады идут под 31%.
+    Формулировка «у банка нет ни одного предложения» вводила в заблуждение,
+    а цветной вердикт на пустоте — тем более.
+    """
     psb = [_promo("ПСБ", "Карты", CASHBACK, 30.0, "%")]
     result = compare_segments(psb, [])[0]
-    assert result.verdict == "red"
-    assert "нет ни одного" in result.headline
+    assert result.verdict == "grey"
+    assert "нет ни одного" not in result.headline
+    assert "не найдено" in result.headline
+
+
+def test_product_showcase_used_when_promos_missing():
+    """Нет акций по вкладам — сравниваем витрину: 31% ПСБ против 14% Сбера."""
+
+    class P:
+        def __init__(self, title, category, rate_max, rate_min=None):
+            self.title = title
+            self.category = category
+            self.rate_max = rate_max
+            self.rate_min = rate_min if rate_min is not None else rate_max
+            self.rate_conditions = ""
+            self.source_url = ""
+
+    result = compare_segments(
+        [], [],
+        psb_products=[P("Вклад «Александр Невский»", "Вклады", 31.0)],
+        sber_products=[P("Вклад «Лучший %»", "Вклады", 14.0)],
+    )
+    segment = next(s for s in result if s.segment == "Вклады")
+    assert segment.verdict == "red"
+    assert "31 %" in segment.headline
+    assert segment.psb_product.title == "Вклад «Александр Невский»"
+    assert segment.basis == "витрина продуктов"
+
+
+def test_deposit_showcase_takes_upper_bound():
+    """По вкладу витрина — это «до», по кредиту — «от»."""
+
+    class P:
+        def __init__(self, title, category, rate_min, rate_max):
+            self.title = title
+            self.category = category
+            self.rate_min = rate_min
+            self.rate_max = rate_max
+            self.rate_conditions = ""
+            self.source_url = ""
+
+    result = compare_segments(
+        [], [],
+        psb_products=[P("Вклад ПСБ", "Вклады", 11.0, 13.8),
+                      P("Кредит ПСБ", "Кредиты", 16.9, 36.9)],
+        sber_products=[P("Вклад Сбера", "Вклады", 11.0, 13.5),
+                       P("Кредит Сбера", "Кредиты", 18.9, 33.2)],
+    )
+    deposits = next(s for s in result if s.segment == "Вклады")
+    credits = next(s for s in result if s.segment == "Кредиты")
+    assert deposits.psb_product.rate == 13.8
+    assert credits.psb_product.rate == 16.9
 
 
 def test_classify_rejects_article():
