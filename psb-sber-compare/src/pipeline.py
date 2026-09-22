@@ -175,32 +175,45 @@ def run(config: Config, *, skip_collect: bool = False) -> dict[str, Any]:
     history_days = int(config.get("storage", "history_days", default=365))
 
     storage = Storage(config.path("storage", "db_path", default="data/psb_sber.db"))
-    run_id = storage.start_run(region_label)
+
+    # Пересборка отчёта не должна создавать новый запуск: иначе на годовом
+    # графике появится лишняя точка, а «изменения за неделю» обнулятся.
+    if skip_collect:
+        run_id = storage.last_successful_run_id()
+        if run_id is None:
+            storage.close()
+            raise RuntimeError(
+                "Нет ни одного успешного сбора. Сначала выполни: python run.py collect"
+            )
+        log.info("Пересобираю отчёт по данным запуска #%s, без похода на сайт", run_id)
+    else:
+        run_id = storage.start_run(region_label)
 
     try:
         if skip_collect:
-            previous = storage.previous_run_id(run_id)
-            if previous is None:
-                raise RuntimeError("Нет ни одного прошлого сбора — запусти без --skip-collect")
-            log.info("Пропускаю сбор, переиспользую данные запуска #%s", previous)
-            psb_products = _rows_to_products(storage.products_of_run(previous, "ПСБ"))
-            psb_promos = _rows_to_promos(storage.promos_of_run(previous, "ПСБ"))
+            psb_products = _rows_to_products(storage.products_of_run(run_id, "ПСБ"))
+            psb_promos = _rows_to_promos(storage.promos_of_run(run_id, "ПСБ"))
+            sber_products = _rows_to_products(storage.products_of_run(run_id, "Сбер"))
+            sber_promos = _rows_to_promos(storage.promos_of_run(run_id, "Сбер"))
+            for product in sber_products:
+                object.__setattr__(product, "product_key", product.url_path)
+            changes = [dict(row) for row in storage.changes_of_run(run_id)]
         else:
             psb_products, psb_promos = collect_psb(config)
 
-        sber_path = config.path("sber", "source", default="data/sber.xlsx")
-        sber_products, sber_promos = load_sber(
-            sber_path, region=region_label,
-            collected_at=datetime.now().isoformat(timespec="seconds"),
-        )
+            sber_path = config.path("sber", "source", default="data/sber.xlsx")
+            sber_products, sber_promos = load_sber(
+                sber_path, region=region_label,
+                collected_at=datetime.now().isoformat(timespec="seconds"),
+            )
 
-        storage.save_products(run_id, psb_products + sber_products)
-        storage.save_promos(run_id, "ПСБ", psb_promos)
-        storage.save_promos(run_id, "Сбер", sber_promos)
+            storage.save_products(run_id, psb_products + sber_products)
+            storage.save_promos(run_id, "ПСБ", psb_promos)
+            storage.save_promos(run_id, "Сбер", sber_promos)
 
-        previous_run = storage.previous_run_id(run_id)
-        changes = detect_changes(storage, run_id, previous_run)
-        storage.save_changes(run_id, changes)
+            previous_run = storage.previous_run_id(run_id)
+            changes = detect_changes(storage, run_id, previous_run)
+            storage.save_changes(run_id, changes)
 
         pairs = load_pairs()
         comparisons = build_comparisons(psb_products, sber_products, pairs, thresholds)
@@ -234,9 +247,10 @@ def run(config: Config, *, skip_collect: bool = False) -> dict[str, Any]:
         digest_path.parent.mkdir(parents=True, exist_ok=True)
         digest_path.write_text(digest, encoding="utf-8")
 
-        storage.finish_run(run_id, psb=len(psb_products), sber=len(sber_products),
-                           promos=len(psb_promos) + len(sber_promos))
-        storage.purge_older_than(history_days)
+        if not skip_collect:
+            storage.finish_run(run_id, psb=len(psb_products), sber=len(sber_products),
+                               promos=len(psb_promos) + len(sber_promos))
+            storage.purge_older_than(history_days)
 
         return {
             "run_id": run_id,
@@ -251,7 +265,8 @@ def run(config: Config, *, skip_collect: bool = False) -> dict[str, Any]:
         }
 
     except Exception as exc:
-        storage.finish_run(run_id, psb=0, sber=0, promos=0, status="failed", note=str(exc))
+        if not skip_collect:
+            storage.finish_run(run_id, psb=0, sber=0, promos=0, status="failed", note=str(exc))
         raise
     finally:
         storage.close()
@@ -302,7 +317,7 @@ def suggest(config: Config) -> Path:
 
 
 def _rows_to_products(rows: list[Any]) -> list[Any]:
-    """Строки БД → объекты Product (для прогона без повторного сбора)."""
+    """Строки БД → объекты Product (для пересборки отчёта без сбора)."""
     import json as _json
 
     from .psb.parser import Product
