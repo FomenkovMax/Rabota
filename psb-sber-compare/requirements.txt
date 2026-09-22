@@ -1,0 +1,4 @@
+requests>=2.31
+certifi>=2024.2.2
+PyYAML>=6.0
+openpyxl>=3.1

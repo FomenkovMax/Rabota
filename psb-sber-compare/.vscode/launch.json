@@ -1,0 +1,47 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "1. Проверка доступа к сайту ПСБ",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/run.py",
+      "args": ["check"],
+      "console": "integratedTerminal",
+      "justMyCode": true
+    },
+    {
+      "name": "2. Полный сбор + отчёт",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/run.py",
+      "args": ["collect", "--open"],
+      "console": "integratedTerminal",
+      "justMyCode": true
+    },
+    {
+      "name": "3. Черновик пар продуктов",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/run.py",
+      "args": ["suggest"],
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "4. Пересобрать отчёт (без сайта)",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/run.py",
+      "args": ["report", "--open"],
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "5. История запусков",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/run.py",
+      "args": ["history"],
+      "console": "integratedTerminal"
+    }
+  ]
+}
