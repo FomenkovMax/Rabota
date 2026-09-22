@@ -176,19 +176,24 @@ pairs:
 
 ## Еженедельный запуск
 
+В комплекте есть готовые скрипты — они сами найдут виртуальное окружение
+и запишут лог каждого запуска в `data/run_ГГГГ-ММ-ДД.log`.
+
 ### Windows — Планировщик заданий
 
+`Win+R` → `taskschd.msc` → «Создать задачу» → вкладка «Действия»:
+
 ```
-Программа:   C:\путь\psb-sber-compare\.venv\Scripts\python.exe
-Аргументы:   run.py collect
-Рабочая папка: C:\путь\psb-sber-compare
-Расписание:  еженедельно, понедельник 07:00
+Программа:      C:\путь\psb-sber-compare\weekly_run.bat
+Рабочая папка:  C:\путь\psb-sber-compare
 ```
+
+Триггер: еженедельно, понедельник, 07:00.
 
 ### macOS / Linux — cron
 
 ```cron
-0 7 * * 1 cd /путь/psb-sber-compare && .venv/bin/python run.py collect
+0 7 * * 1 /путь/psb-sber-compare/weekly_run.sh
 ```
 
 После прогона сводка изменений пишется в `data/changes_digest.txt` — этот
