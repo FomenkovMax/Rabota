@@ -146,7 +146,34 @@ svg{display:block;max-width:100%;overflow:visible}
   border:1px solid var(--border);border-radius:8px;color:var(--ink-2);
   padding:6px 11px;font:inherit;font-size:12.5px;cursor:pointer;
 }
+.seg{margin-bottom:26px;padding-bottom:20px;border-bottom:1px solid var(--grid)}
+.segcount{color:var(--ink-muted);font-size:12.5px;margin-left:auto}
+.vs{
+  display:grid;grid-template-columns:1fr auto 1fr;gap:14px;align-items:center;
+  background:var(--wash);border-radius:10px;padding:14px 16px;margin-bottom:10px;
+}
+.vs-side{min-width:0}
+.vs-bank{font-size:11.5px;font-weight:700;letter-spacing:.05em;color:var(--ink-muted)}
+.vs-val{font-size:23px;font-weight:650;line-height:1.2;margin:2px 0 3px;letter-spacing:-.01em}
+.vs-none{font-size:15px;font-weight:600;color:var(--ink-muted)}
+.vs-name{font-size:12.5px;color:var(--ink-2);overflow-wrap:anywhere}
+.vs-mid{font-size:12px;color:var(--ink-muted);white-space:nowrap}
+.segdet{margin-top:4px}
+.segdet summary{
+  cursor:pointer;font-size:13px;color:var(--ink-2);
+  padding:6px 0;user-select:none;
+}
+.segdet summary:hover{color:var(--ink)}
+.segdet[open] summary{margin-bottom:6px}
+.seg:last-of-type{margin-bottom:8px}
+.seghead{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:2px}
+.seghead h3{font-size:15px;margin:0;letter-spacing:-.005em}
+.seghint{color:var(--ink-muted);font-size:13px;margin:0 0 10px}
+.exp{margin:8px 0 0;padding-left:18px}
+.exp li{margin-bottom:4px}
 @media(max-width:640px){
+  .vs{grid-template-columns:1fr;gap:10px;text-align:left}
+  .vs-mid{justify-self:start}
   body{padding:20px 12px 48px}
   .scroll{overflow-x:auto}
   h1{font-size:21px}
@@ -161,7 +188,7 @@ def _tiles(counts: dict[str, int], changes: list[Any], total_promos: int) -> str
         (counts[YELLOW], "Паритет", "--st-warning"),
         (counts[GREEN], "Выигрываем", "--st-good"),
         (counts[GREY], "Нет данных", "--ink-muted"),
-        (total_promos, "Акций отслеживается", "--s1"),
+        (total_promos, "Действующих акций", "--s1"),
         (high, "Важных изменений за неделю", "--s2"),
     ]
     cells = "".join(
@@ -381,54 +408,121 @@ def _changes_block(changes: list[Any]) -> str:
     return "".join(blocks) + tail
 
 
-def _promo_fields(item: Any) -> tuple[str, str, str]:
-    """Достаёт (title, text, url) и из строки БД, и из объекта Promo."""
-    if hasattr(item, "keys"):
-        return (item["title"] or "", item["text"] or "", item["url"] or "")
-    return (getattr(item, "title", ""), getattr(item, "text", ""),
-            getattr(item, "url", ""))
+VERDICT_VAR = {"green": "--st-good", "yellow": "--st-warning",
+               "red": "--st-critical", "grey": "--ink-muted"}
+VERDICT_ICON = {"green": "▲", "yellow": "■", "red": "▼", "grey": "—"}
+VERDICT_LABEL = {"green": "Выигрываем", "yellow": "Паритет",
+                 "red": "Проигрываем", "grey": "Не сравнить"}
 
 
-_OFFER_NUMBER_RE = re.compile(r"\d+\s*%|\d[\d\s]*\s*₽|\d+\s*(?:дн|мес|год)")
+def _promo_rows(promos: list[Any], bank: str) -> str:
+    """Строки одного банка внутри сегмента."""
+    if not promos:
+        return (f'<tr><td class="bank">{e(bank)}</td>'
+                f'<td colspan="3" class="empty" style="padding:8px 10px">'
+                "Предложений нет</td></tr>")
 
+    # Гарантированная выгода сверху, розыгрыши — в конце сегмента.
+    from .promos import sort_key
 
-def _promos_table(promos_psb: list[Any], promos_sber: list[Any]) -> str:
-    """Акции обоих банков.
-
-    Предложения с конкретными цифрами идут первыми: «кешбэк 30%» руководителю
-    полезнее, чем «лучшая карта года», а листать шестьдесят строк ради
-    содержательных он не станет.
-    """
-    entries: list[tuple[int, str, str, str, str]] = []
-    for bank, items in (("ПСБ", promos_psb), ("Сбер", promos_sber)):
-        for item in items:
-            title, text, url = _promo_fields(item)
-            if not title:
-                continue
-            concrete = 0 if _OFFER_NUMBER_RE.search(f"{title} {text}") else 1
-            entries.append((concrete, bank, title, text, url))
-
-    if not entries:
-        return '<p class="empty">Действующих акций не обнаружено.</p>'
-
-    entries.sort(key=lambda row: (row[0], row[1], row[2]))
-
+    ordered = sorted(promos, key=sort_key)
     rows = []
-    for _, bank, title, text, url in entries:
-        link = (f' <a href="{e(url)}" target="_blank" rel="noopener">источник</a>'
-                if url else "")
+    for promo in ordered:
+        link = (f' <a href="{e(promo.url)}" target="_blank" rel="noopener">источник</a>'
+                if promo.url else "")
         rows.append(
-            f'<tr><td><span class="bank">{e(bank)}</span></td>'
-            f'<td><div class="pname">{e(title[:160])}</div>'
-            f'<div class="pmeta">{e(text[:220])}{link}</div></td></tr>'
+            f'<tr><td class="bank">{e(bank)}</td>'
+            f'<td><div class="pname">{e(promo.title[:130])}</div>'
+            f'<div class="pmeta">{e(promo.text[:150])}{link}</div></td>'
+            f'<td class="num"><b>{e(promo.benefit_display)}</b>'
+            f'<div class="pmeta">{e(promo.benefit_label)}</div></td>'
+            f'<td class="pmeta">{e(promo.valid_display)}</td></tr>'
+        )
+    return "".join(rows)
+
+
+def _best_offer(promos: list[Any], item: Any) -> Any | None:
+    """Сильнейшее предложение банка — в тех же единицах, что и вердикт."""
+    from .promos import best_offer
+
+    return best_offer(promos, getattr(item, "best_type", ""),
+                      getattr(item, "best_unit", ""))
+
+
+def _versus(item: Any) -> str:
+    """Шапка сегмента: лучшее у ПСБ против лучшего у Сбера, крупно.
+
+    Руководителю нужен ответ за секунду, а не чтение таблицы на двадцать
+    строк. Подробности — ниже, в таблице.
+    """
+    psb, sber = _best_offer(item.psb, item), _best_offer(item.sber, item)
+    var = VERDICT_VAR.get(item.verdict, "--ink-muted")
+
+    def side(promo: Any, bank: str, highlight: bool) -> str:
+        head = f'<div class="vs-bank">{e(bank)}</div>'
+        if promo is None:
+            return (f'<div class="vs-side">{head}'
+                    '<div class="vs-val vs-none">нет акций</div>'
+                    '<div class="vs-name">—</div></div>')
+
+        # Крупной цифрой показываем только измеримую выгоду. «Прочее»
+        # набранное в 23 пункта выглядит как результат, хотя это признание
+        # в том, что величину извлечь не удалось.
+        if promo.benefit_value is None:
+            return (f'<div class="vs-side">{head}'
+                    f'<div class="vs-val vs-none">{e(promo.benefit_label)}</div>'
+                    f'<div class="vs-name">{e(promo.title[:70])}</div></div>')
+
+        color = f"var({var})" if highlight else "var(--ink)"
+        return (f'<div class="vs-side">{head}'
+                f'<div class="vs-val" style="color:{color}">{e(promo.benefit_display)}</div>'
+                f'<div class="vs-name">{e(promo.title[:70])}</div></div>')
+
+    # Подсвечиваем того, кто сильнее: при «выигрываем» — Сбера, иначе ПСБ.
+    psb_strong = item.verdict == "red"
+    sber_strong = item.verdict == "green"
+    return (f'<div class="vs">{side(psb, "ПСБ", psb_strong)}'
+            f'<div class="vs-mid">против</div>'
+            f'{side(sber, "Сбер", sber_strong)}</div>')
+
+
+def _promo_analysis(segments: list[Any], expired: list[Any]) -> str:
+    """Сравнительный анализ акций по сегментам."""
+    if not segments:
+        return ('<p class="empty">Действующих предложений не обнаружено.</p>')
+
+    blocks = []
+    for item in segments:
+        var = VERDICT_VAR.get(item.verdict, "--ink-muted")
+        chip = (f'<span class="chip" style="color:var({var})">'
+                f'<span class="ic">{VERDICT_ICON.get(item.verdict, "—")}</span>'
+                f'{e(VERDICT_LABEL.get(item.verdict, ""))}</span>')
+        blocks.append(
+            f'<div class="seg">'
+            f'<div class="seghead"><h3>{e(item.segment)}</h3>{chip}'
+            f'<span class="segcount">ПСБ {len(item.psb)} · Сбер {len(item.sber)}</span></div>'
+            f'<p class="seghint">{e(item.headline)}</p>'
+            + _versus(item) +
+            '<details class="segdet"><summary>Все предложения сегмента</summary>'
+            '<div class="scroll"><table><thead><tr>'
+            "<th>Банк</th><th>Предложение</th><th>Выгода</th><th>Действует до</th>"
+            "</tr></thead><tbody>"
+            + _promo_rows(item.psb, "ПСБ")
+            + _promo_rows(item.sber, "Сбер")
+            + "</tbody></table></div></details></div>"
         )
 
-    concrete_count = sum(1 for row in entries if row[0] == 0)
-    note = (f'<p class="hint" style="margin-top:14px">Всего предложений: {len(entries)}, '
-            f'из них с конкретными условиями: {concrete_count}. '
-            "Предложения с цифрами показаны первыми.</p>")
-    return ('<div class="scroll"><table><thead><tr><th>Банк</th><th>Предложение</th>'
-            "</tr></thead><tbody>" + "".join(rows) + "</tbody></table></div>" + note)
+    tail = ""
+    if expired:
+        items = "".join(
+            f'<li>{e(p.bank)} · {e(p.title[:110])} — завершилась {e(p.valid_display)}</li>'
+            for p in expired[:12]
+        )
+        more = (f"<li>…и ещё {len(expired) - 12}</li>" if len(expired) > 12 else "")
+        tail = ('<div class="note"><b>Отсеяно как завершившиеся: '
+                f'{len(expired)}</b><ul class="exp">{items}{more}</ul></div>')
+
+    return "".join(blocks) + tail
 
 
 def render_report(
@@ -436,8 +530,9 @@ def render_report(
     comparisons: list[Comparison],
     counts: dict[str, int],
     changes: list[Any],
-    promos_psb: list[Any],
-    promos_sber: list[Any],
+    promo_segments: list[Any],
+    expired_promos: list[Any],
+    promo_active_total: int,
     history: dict[str, list[tuple[str, float]]],
     region: str,
     generated_at: str,
@@ -446,7 +541,7 @@ def render_report(
     sber_total: int,
     thresholds: Any,
 ) -> str:
-    total_promos = len(promos_psb) + len(promos_sber)
+    total_promos = promo_active_total
     delta_chart = _delta_chart(comparisons)
     history_chart = _history_chart(history, "История ставок за год")
 
@@ -506,9 +601,12 @@ def render_report(
 {history_section}
 
 <section class="card">
-  <h2>Действующие акции</h2>
-  <p class="hint">По ПСБ — собраны с сайта автоматически. По Сберу — из предоставленной выгрузки.</p>
-  {_promos_table(promos_psb, promos_sber)}
+  <h2>Акции: сравнительный анализ по сегментам</h2>
+  <p class="hint">Только действующие предложения. Завершившиеся отсеяны и перечислены
+  в конце раздела. Внутри сегмента сравнивается однотипная выгода — кешбэк с кешбэком,
+  ставка со ставкой: сопоставлять «30% кешбэка» с «5000 ₽ бонуса» некорректно.
+  По ПСБ данные собраны с сайта, по Сберу — из предоставленной выгрузки.</p>
+  {_promo_analysis(promo_segments, expired_promos)}
 </section>
 
 <footer>

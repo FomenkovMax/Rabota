@@ -182,8 +182,14 @@ def load_sber(path: str | Path, *, region: str = "", collected_at: str = "") -> 
 
         promo_text = _cell(row, mapping, "promo")
         if promo_text:
-            promos.append(Promo(title=promo_text[:250], source_path=title,
-                                url=product.source_url, content_type="СберВыгрузка"))
+            promos.append(Promo(
+                title=promo_text[:250],
+                text=f"Продукт: {title}",
+                source_path=title,
+                url=product.source_url,
+                content_type="СберВыгрузка",
+                segment=product.category,
+            ))
 
     log.info("Из выгрузки Сбера прочитано продуктов: %s, акций: %s", len(products), len(promos))
     return products, promos

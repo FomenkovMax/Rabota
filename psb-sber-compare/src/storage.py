@@ -65,7 +65,12 @@ CREATE TABLE IF NOT EXISTS promos (
     text       TEXT,
     url        TEXT,
     source_path TEXT,
-    category   TEXT
+    category   TEXT,
+    segment    TEXT,
+    status     TEXT,
+    valid_until TEXT,
+    benefit_type TEXT,
+    benefit_value REAL
 );
 CREATE INDEX IF NOT EXISTS ix_promos_run ON promos(run_id);
 CREATE INDEX IF NOT EXISTS ix_promos_key ON promos(bank, promo_key);
@@ -105,7 +110,15 @@ class Storage:
         for column, ddl in (("rate_conditions", "TEXT"),):
             if column not in existing:
                 self.conn.execute(f"ALTER TABLE products ADD COLUMN {column} {ddl}")
-                log.info("База обновлена: добавлена колонка %s", column)
+                log.info("База обновлена: products.%s", column)
+
+        existing = {row["name"] for row in self.conn.execute("PRAGMA table_info(promos)")}
+        for column, ddl in (("segment", "TEXT"), ("status", "TEXT"),
+                            ("valid_until", "TEXT"), ("benefit_type", "TEXT"),
+                            ("benefit_value", "REAL")):
+            if column not in existing:
+                self.conn.execute(f"ALTER TABLE promos ADD COLUMN {column} {ddl}")
+                log.info("База обновлена: promos.%s", column)
 
     # --- запуски ---------------------------------------------------------
 
@@ -167,14 +180,26 @@ class Storage:
         self.conn.commit()
 
     def save_promos(self, run_id: int, bank: str, promos: list[Any],
-                    category: str = "") -> None:
-        rows = [
-            (run_id, bank, pr.key(), pr.title, pr.text, pr.url, pr.source_path, category)
-            for pr in promos
-        ]
+                    category: str = "", insights: dict[str, Any] | None = None) -> None:
+        """Сохраняет акции. `insights` — разбор из promos.classify по ключу."""
+        insights = insights or {}
+        rows = []
+        for pr in promos:
+            key = pr.key()
+            info = insights.get(key)
+            rows.append((
+                run_id, bank, key, pr.title, pr.text, pr.url, pr.source_path,
+                category or getattr(pr, "segment", ""),
+                getattr(info, "segment", "") if info else "",
+                getattr(info, "status", "") if info else "",
+                info.valid_until.isoformat() if info and info.valid_until else "",
+                getattr(info, "benefit_type", "") if info else "",
+                getattr(info, "benefit_value", None) if info else None,
+            ))
         self.conn.executemany(
             "INSERT INTO promos (run_id, bank, promo_key, title, text, url,"
-            " source_path, category) VALUES (?,?,?,?,?,?,?,?)",
+            " source_path, category, segment, status, valid_until,"
+            " benefit_type, benefit_value) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
             rows,
         )
         self.conn.commit()

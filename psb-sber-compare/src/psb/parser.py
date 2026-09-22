@@ -126,6 +126,9 @@ class Promo:
     url: str = ""
     source_path: str = ""
     content_type: str = ""
+    # Сегмент из выгрузки Сбера: у него раздела сайта нет, зато есть
+    # категория продукта, к которому акция привязана.
+    segment: str = ""
 
     def key(self) -> str:
         return f"{self.title}|{self.text}"[:400]

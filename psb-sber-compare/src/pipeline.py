@@ -13,6 +13,7 @@ import yaml
 
 from .changes import detect_changes, format_digest
 from .compare import Thresholds, build_comparisons, suggest_pairs, summarize
+from .promos import EXPIRED, classify_all, compare_segments
 from .psb.catalog import RETAIL_SECTIONS, build_catalog
 from .psb.client import REGIONS, PageNotFound, PsbClient
 from .psb.parser import parse_product
@@ -209,8 +210,18 @@ def run(config: Config, *, skip_collect: bool = False) -> dict[str, Any]:
             )
 
             storage.save_products(run_id, psb_products + sber_products)
-            storage.save_promos(run_id, "ПСБ", psb_promos)
-            storage.save_promos(run_id, "Сбер", sber_promos)
+
+            # Разбор акций делаем до записи: сегмент, статус и размер выгоды
+            # сохраняются вместе с самой акцией, чтобы пересборка отчёта и
+            # сравнение с прошлой неделей работали по одним и тем же данным.
+            psb_insights = classify_all(psb_promos, "ПСБ")
+            sber_insights = classify_all(sber_promos, "Сбер")
+            storage.save_promos(run_id, "ПСБ", psb_promos,
+                                insights={p.key(): i for p, i in
+                                          _pair_by_key(psb_promos, psb_insights)})
+            storage.save_promos(run_id, "Сбер", sber_promos,
+                                insights={p.key(): i for p, i in
+                                          _pair_by_key(sber_promos, sber_insights)})
 
             previous_run = storage.previous_run_id(run_id)
             changes = detect_changes(storage, run_id, previous_run)
@@ -222,12 +233,27 @@ def run(config: Config, *, skip_collect: bool = False) -> dict[str, Any]:
 
         history = build_history(storage, comparisons, history_days)
 
+        # Акции для отчёта берём из базы: там они уже с разбором, и путь
+        # одинаков и для свежего сбора, и для пересборки отчёта.
+        promo_psb = classify_all(storage.promos_of_run(run_id, "ПСБ"), "ПСБ")
+        promo_sber = classify_all(storage.promos_of_run(run_id, "Сбер"), "Сбер")
+
+        expired = [p for p in promo_psb + promo_sber if p.status == EXPIRED]
+        active_psb = [p for p in promo_psb if p.status != EXPIRED]
+        active_sber = [p for p in promo_sber if p.status != EXPIRED]
+        promo_segments = compare_segments(active_psb, active_sber)
+
+        log.info("Акции: действующих %s (ПСБ %s, Сбер %s), завершившихся %s, "
+                 "сегментов %s", len(active_psb) + len(active_sber),
+                 len(active_psb), len(active_sber), len(expired), len(promo_segments))
+
         html_text = render_report(
             comparisons=comparisons,
             counts=counts,
             changes=changes,
-            promos_psb=storage.promos_of_run(run_id, "ПСБ"),
-            promos_sber=storage.promos_of_run(run_id, "Сбер"),
+            promo_segments=promo_segments,
+            expired_promos=expired,
+            promo_active_total=len(active_psb) + len(active_sber),
             history=history,
             region=region_label,
             generated_at=datetime.now().strftime("%d.%m.%Y %H:%M"),
@@ -333,6 +359,16 @@ def suggest(config: Config, *, fresh: bool = False) -> Path:
     out.write_text("\n".join(lines), encoding="utf-8")
     log.info("Черновик пар: %s", out)
     return out
+
+
+def _pair_by_key(promos: list[Any], insights: list[Any]) -> list[tuple[Any, Any]]:
+    """Сопоставляет акции с их разбором.
+
+    classify_all отбрасывает то, что акцией не является, поэтому списки
+    разной длины и сопоставлять их по индексу нельзя.
+    """
+    by_title = {i.title: i for i in insights}
+    return [(p, by_title[p.title]) for p in promos if p.title in by_title]
 
 
 def _rows_to_products(rows: list[Any]) -> list[Any]:
