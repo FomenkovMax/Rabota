@@ -93,6 +93,8 @@ def main() -> int:
     parser.add_argument("--config", default=str(ROOT / "config" / "settings.yaml"))
     parser.add_argument("--open", action="store_true",
                         help="открыть готовый отчёт в браузере")
+    parser.add_argument("--fresh", action="store_true",
+                        help="для suggest: обойти сайт заново, а не брать последний сбор")
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args()
 
@@ -104,7 +106,7 @@ def main() -> int:
     if args.command == "history":
         return cmd_history(config)
     if args.command == "suggest":
-        path = suggest(config)
+        path = suggest(config, fresh=args.fresh)
         print(f"\nЧерновик пар записан: {path}")
         print("Проверь его глазами и перенеси подтверждённые пары "
               "в config/product_map.yaml")

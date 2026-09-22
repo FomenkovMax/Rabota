@@ -78,6 +78,7 @@ def collect_psb(config: Config) -> tuple[list[Any], list[Any]]:
         pause=float(config.get("psb", "pause", default=1.0)),
         timeout=int(config.get("psb", "timeout", default=30)),
         retries=int(config.get("psb", "retries", default=3)),
+        throttle_backoff=int(config.get("psb", "throttle_backoff", default=30)),
     )
 
     products: list[Any] = []
@@ -272,9 +273,27 @@ def run(config: Config, *, skip_collect: bool = False) -> dict[str, Any]:
         storage.close()
 
 
-def suggest(config: Config) -> Path:
-    """Черновые пары для ручной проверки."""
-    psb_products, _ = collect_psb(config)
+def suggest(config: Config, *, fresh: bool = False) -> Path:
+    """Черновые пары для ручной проверки.
+
+    По умолчанию берёт данные последнего сбора: повторный обход каталога
+    занимает минуты, а для подбора пар свежесть цифр не нужна.
+    """
+    psb_products: list[Any] = []
+
+    if not fresh:
+        storage = Storage(config.path("storage", "db_path", default="data/psb_sber.db"))
+        last_run = storage.last_successful_run_id()
+        if last_run is not None:
+            psb_products = _rows_to_products(storage.products_of_run(last_run, "ПСБ"))
+            log.info("Использую данные запуска #%s (%s продуктов ПСБ). "
+                     "Нужны свежие — добавь --fresh", last_run, len(psb_products))
+        storage.close()
+
+    if not psb_products:
+        log.info("Готовых данных нет — обхожу сайт")
+        psb_products, _ = collect_psb(config)
+
     sber_products, _ = load_sber(config.path("sber", "source", default="data/sber.xlsx"))
 
     if not sber_products:
@@ -336,6 +355,9 @@ def _rows_to_products(rows: list[Any]) -> list[Any]:
             terms=_json.loads(row["terms_json"] or "{}"),
             source_url=row["source_url"] or "", collected_at=row["collected_at"] or "",
         )
+        keys = row.keys()
+        if "rate_conditions" in keys:
+            product.rate_conditions = row["rate_conditions"] or ""
         out.append(product)
     return out
 

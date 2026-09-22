@@ -160,6 +160,10 @@ class Product:
     term_max_months: int | None = None
     term_raw: str = ""
 
+    # Условия, при которых достигается максимальная ставка: срок и сумма.
+    # Без них витринная ставка вводит в заблуждение.
+    rate_conditions: str = ""
+
     # Всё, что банк указал в тарифной таблице, дословно.
     terms: dict[str, str] = field(default_factory=dict)
     promos: list[Promo] = field(default_factory=list)
@@ -235,26 +239,113 @@ def _extract_tariff_rows(state: dict[str, Any], product: Product) -> None:
                     product.term_min_months, product.term_max_months = min(months), max(months)
 
 
-def _extract_deposit_tables(state: dict[str, Any], product: Product) -> None:
-    """Вклады: ставки лежат в таблицах `tableData`, а не в тарифных строках.
+# Таблица «минимальная гарантированная ставка» (МГС) — это другая метрика,
+# по закону она считается иначе и всегда ниже витринной. Смешивать её со
+# ставкой нельзя: диапазон разъезжается и цифра в отчёте становится неверной.
+_GUARANTEED_RE = re.compile(r"гарантирован", re.I)
+_PERCENT_IN_CELL_RE = re.compile(r"\d\s*%")
 
-    Нас интересует диапазон ставок по продукту, поэтому собираем все проценты
-    из ячеек и берём минимум/максимум.
+
+def _table_cells(row: dict[str, Any]) -> list[str]:
+    cells = sorted(row.get("cells") or [], key=lambda c: c.get("order", 0))
+    return [clean(c.get("content")) for c in cells]
+
+
+def _rates_from_table(table: dict[str, Any]) -> list[tuple[float, str, str]]:
+    """Ставки вклада вместе с условиями: (ставка, срок, сумма).
+
+    Условия нужны не для украшения. Ставка 31% годовых выглядит совсем
+    иначе, когда рядом написано «32 дня, от 10 000 до 50 000 ₽»: без этого
+    акционный вклад сравнивается с обычным срочным как равный.
+
+    МГС отсеиваем по строке и колонке, а не по заголовку таблицы: в шапке
+    ПСБ нередко перечислены обе метрики сразу, и фильтр по ней выбросил бы
+    таблицу целиком вместе с настоящими ставками.
     """
+    header_cells = _table_cells(table.get("headerRow") or {})
+    data_rows = [_table_cells(row) for row in table.get("rows") or []]
+
+    # Колонку со ставками определяем по содержимому, а не по названию.
+    # Названия ненадёжны: у одного вклада колонки подписаны «Срок вклада
+    # 32 дня», у другого просто «32 дня», а шапка «СУММА/СРОК ВКЛАДА»
+    # ложно срабатывает на слово «срок» и выдаёт колонку сумм за колонку ставок.
+    width = max([len(cells) for cells in data_rows] + [len(header_cells)] or [0])
+    rate_columns = []
+    for index in range(width):
+        label = header_cells[index] if index < len(header_cells) else ""
+        if _GUARANTEED_RE.search(label):
+            continue
+        has_percent = any(
+            index < len(cells) and _PERCENT_IN_CELL_RE.search(cells[index])
+            for cells in data_rows
+        )
+        if has_percent:
+            rate_columns.append(index)
+
+    info_columns = [i for i in range(width) if i not in rate_columns]
+
+    found: list[tuple[float, str, str]] = []
+    for row in table.get("rows") or []:
+        cells = _table_cells(row)
+        row_title = clean(row.get("title"))
+        if _GUARANTEED_RE.search(row_title) or (cells and _GUARANTEED_RE.search(cells[0])):
+            continue
+
+        # Ячейки вне колонок со ставками описывают условия: сумму, категорию.
+        if info_columns:
+            amount = " – ".join(cells[i] for i in info_columns
+                                if i < len(cells) and cells[i])
+        else:
+            amount = cells[0] if cells else ""
+
+        indices = rate_columns or range(len(cells))
+        for index in indices:
+            if index >= len(cells):
+                continue
+            term = header_cells[index] if index < len(header_cells) else ""
+            for rate in parse_rates(cells[index]):
+                found.append((rate, term, amount))
+    return found
+
+
+def _extract_deposit_tables(state: dict[str, Any], product: Product) -> None:
+    """Вклады: ставки лежат в сетке «срок × сумма», а не в тарифных строках."""
     if product.rate_raw:
         return
 
-    rates: list[float] = []
+    found: list[tuple[float, str, str]] = []
     for entry in find_entries(state, "tableData?id="):
-        blob = str(entry)
-        rates.extend(parse_rates(clean(blob)))
+        if isinstance(entry, dict):
+            found.extend(_rates_from_table(entry))
 
-    # Отсекаем заведомо не-ставки: доли процента в сносках и проценты > 100.
-    rates = [r for r in rates if 0.1 <= r <= 100]
-    if rates:
-        product.rate_min, product.rate_max = min(rates), max(rates)
-        product.rate_raw = f"от {product.rate_min:.2f}% до {product.rate_max:.2f}%".replace(".", ",")
-        product.terms.setdefault("Ставка (из таблицы вкладов)", product.rate_raw)
+    # Отсекаем заведомо не-ставки: доли процента из сносок и всё выше 100.
+    found = [item for item in found if 0.1 <= item[0] <= 100]
+    if not found:
+        return
+
+    rates = [item[0] for item in found]
+    product.rate_min, product.rate_max = min(rates), max(rates)
+    product.rate_raw = (f"от {product.rate_min:.2f}% до {product.rate_max:.2f}%"
+                        .replace(".", ","))
+    product.terms.setdefault("Ставка (из таблицы вкладов)", product.rate_raw)
+
+    best_rate, best_term, best_amount = max(found, key=lambda item: item[0])
+    conditions = ", ".join(part for part in (best_term, best_amount) if part)
+    if conditions:
+        product.rate_conditions = f"{best_rate:.2f}%".replace(".", ",") + f" — {conditions}"
+        product.terms.setdefault("Условия максимальной ставки", product.rate_conditions)
+
+    # Срок и сумму берём из той же строки, если отдельно их не нашли.
+    if not product.term_raw and best_term:
+        months = parse_term_months(best_term)
+        if months:
+            product.term_min_months, product.term_max_months = min(months), max(months)
+            product.term_raw = best_term
+    if not product.amount_raw and best_amount:
+        amounts = parse_money(best_amount)
+        if amounts:
+            product.amount_min, product.amount_max = min(amounts), max(amounts)
+            product.amount_raw = best_amount
 
 
 def _extract_banner(state: dict[str, Any], product: Product) -> None:

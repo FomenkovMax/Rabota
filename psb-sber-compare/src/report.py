@@ -14,7 +14,7 @@
 from __future__ import annotations
 
 import html
-import json
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -189,8 +189,12 @@ def _traffic_table(comparisons: list[Comparison]) -> str:
         sber_rate = (prefix + fmt_rate(c.sber_rate)) if c.sber_rate is not None else "—"
         psb_extra = ""
         if c.psb:
-            psb_extra = (f'<div class="pmeta">{e(fmt_money(c.psb.amount_max))} · '
-                         f'{e(fmt_term(c.psb.term_max_months))}</div>')
+            # Условия, при которых достигается ставка, важнее суммы и срока:
+            # «31% на 32 дня до 50 000 ₽» читается иначе, чем просто «31%».
+            conditions = getattr(c.psb, "rate_conditions", "")
+            detail = conditions or (f"{fmt_money(c.psb.amount_max)} · "
+                                    f"{fmt_term(c.psb.term_max_months)}")
+            psb_extra = f'<div class="pmeta">{e(detail)}</div>'
         rows.append(
             f"<tr>"
             f'<td><div class="pname">{e(c.label)}</div>'
@@ -374,23 +378,54 @@ def _changes_block(changes: list[Any]) -> str:
     return "".join(blocks) + tail
 
 
+def _promo_fields(item: Any) -> tuple[str, str, str]:
+    """Достаёт (title, text, url) и из строки БД, и из объекта Promo."""
+    if hasattr(item, "keys"):
+        return (item["title"] or "", item["text"] or "", item["url"] or "")
+    return (getattr(item, "title", ""), getattr(item, "text", ""),
+            getattr(item, "url", ""))
+
+
+_OFFER_NUMBER_RE = re.compile(r"\d+\s*%|\d[\d\s]*\s*₽|\d+\s*(?:дн|мес|год)")
+
+
 def _promos_table(promos_psb: list[Any], promos_sber: list[Any]) -> str:
-    rows = []
+    """Акции обоих банков.
+
+    Предложения с конкретными цифрами идут первыми: «кешбэк 30%» руководителю
+    полезнее, чем «лучшая карта года», а листать шестьдесят строк ради
+    содержательных он не станет.
+    """
+    entries: list[tuple[int, str, str, str, str]] = []
     for bank, items in (("ПСБ", promos_psb), ("Сбер", promos_sber)):
-        for p in items:
-            title = p["title"] if isinstance(p, dict) or hasattr(p, "keys") else p.title
-            text = (p["text"] if hasattr(p, "keys") else getattr(p, "text", "")) or ""
-            url = (p["url"] if hasattr(p, "keys") else getattr(p, "url", "")) or ""
-            link = f' <a href="{e(url)}" target="_blank" rel="noopener">источник</a>' if url else ""
-            rows.append(
-                f'<tr><td><span class="bank">{e(bank)}</span></td>'
-                f'<td><div class="pname">{e(title[:160])}</div>'
-                f'<div class="pmeta">{e(text[:220])}{link}</div></td></tr>'
-            )
-    if not rows:
+        for item in items:
+            title, text, url = _promo_fields(item)
+            if not title:
+                continue
+            concrete = 0 if _OFFER_NUMBER_RE.search(f"{title} {text}") else 1
+            entries.append((concrete, bank, title, text, url))
+
+    if not entries:
         return '<p class="empty">Действующих акций не обнаружено.</p>'
+
+    entries.sort(key=lambda row: (row[0], row[1], row[2]))
+
+    rows = []
+    for _, bank, title, text, url in entries:
+        link = (f' <a href="{e(url)}" target="_blank" rel="noopener">источник</a>'
+                if url else "")
+        rows.append(
+            f'<tr><td><span class="bank">{e(bank)}</span></td>'
+            f'<td><div class="pname">{e(title[:160])}</div>'
+            f'<div class="pmeta">{e(text[:220])}{link}</div></td></tr>'
+        )
+
+    concrete_count = sum(1 for row in entries if row[0] == 0)
+    note = (f'<p class="hint" style="margin-top:14px">Всего предложений: {len(entries)}, '
+            f'из них с конкретными условиями: {concrete_count}. '
+            "Предложения с цифрами показаны первыми.</p>")
     return ('<div class="scroll"><table><thead><tr><th>Банк</th><th>Предложение</th>'
-            "</tr></thead><tbody>" + "".join(rows) + "</tbody></table></div>")
+            "</tr></thead><tbody>" + "".join(rows) + "</tbody></table></div>" + note)
 
 
 def render_report(

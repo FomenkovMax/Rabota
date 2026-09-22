@@ -104,11 +104,13 @@ class PsbClient:
         timeout: int = 30,
         retries: int = 3,
         pause: float = 1.0,
+        throttle_backoff: int = 30,
     ) -> None:
         self.region = region
         self.timeout = timeout
         self.retries = retries
         self.pause = pause
+        self.throttle_backoff = throttle_backoff
         self.ca_bundle = build_ca_bundle()
 
         self.session = requests.Session()
@@ -142,7 +144,18 @@ class PsbClient:
                 # а каждая попытка с бэкоффом стоит секунд четырнадцать.
                 if status == 404:
                     raise PageNotFound(f"Страницы нет: {url}") from exc
-                if 400 <= status < 500 and status != 429:
+                # 403 и 429 здесь — это лимит частоты, а не запрет: сайт
+                # отдаёт их при интенсивном обходе и отпускает через
+                # десяток-другой секунд. Проверено вживую, поэтому ждём
+                # заметно дольше обычного и пробуем снова.
+                if status in (403, 429):
+                    last_error = exc
+                    backoff = self.throttle_backoff * attempt
+                    log.warning("Лимит частоты на %s (HTTP %s, попытка %s/%s). "
+                                "Пауза %s с", url, status, attempt, self.retries, backoff)
+                    time.sleep(backoff)
+                    continue
+                if 400 <= status < 500:
                     raise RuntimeError(f"{url} → HTTP {status}") from exc
                 last_error = exc
                 backoff = 2 ** attempt

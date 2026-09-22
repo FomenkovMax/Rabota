@@ -44,7 +44,7 @@ CREATE TABLE IF NOT EXISTS products (
     title        TEXT NOT NULL,
     category     TEXT,
     region       TEXT,
-    rate_min     REAL, rate_max REAL, rate_raw TEXT,
+    rate_min     REAL, rate_max REAL, rate_raw TEXT, rate_conditions TEXT,
     apr_min      REAL, apr_max  REAL, apr_raw  TEXT,
     amount_min   REAL, amount_max REAL, amount_raw TEXT,
     term_min_months INTEGER, term_max_months INTEGER, term_raw TEXT,
@@ -96,7 +96,16 @@ class Storage:
         self.conn.row_factory = sqlite3.Row
         self.conn.execute("PRAGMA foreign_keys = ON")
         self.conn.executescript(SCHEMA)
+        self._migrate()
         self.conn.commit()
+
+    def _migrate(self) -> None:
+        """Добавляет колонки, появившиеся после создания базы."""
+        existing = {row["name"] for row in self.conn.execute("PRAGMA table_info(products)")}
+        for column, ddl in (("rate_conditions", "TEXT"),):
+            if column not in existing:
+                self.conn.execute(f"ALTER TABLE products ADD COLUMN {column} {ddl}")
+                log.info("База обновлена: добавлена колонка %s", column)
 
     # --- запуски ---------------------------------------------------------
 
@@ -138,7 +147,7 @@ class Storage:
         for p in products:
             rows.append((
                 run_id, p.bank, product_key(p), p.title, p.category, p.region,
-                p.rate_min, p.rate_max, p.rate_raw,
+                p.rate_min, p.rate_max, p.rate_raw, getattr(p, "rate_conditions", ""),
                 p.apr_min, p.apr_max, p.apr_raw,
                 p.amount_min, p.amount_max, p.amount_raw,
                 p.term_min_months, p.term_max_months, p.term_raw,
@@ -147,11 +156,12 @@ class Storage:
             ))
         self.conn.executemany(
             "INSERT INTO products (run_id, bank, product_key, title, category, region,"
-            " rate_min, rate_max, rate_raw, apr_min, apr_max, apr_raw,"
+            " rate_min, rate_max, rate_raw, rate_conditions,"
+            " apr_min, apr_max, apr_raw,"
             " amount_min, amount_max, amount_raw,"
             " term_min_months, term_max_months, term_raw,"
             " terms_json, source_url, fingerprint, collected_at)"
-            " VALUES (" + ",".join("?" * 22) + ")",
+            " VALUES (" + ",".join("?" * 23) + ")",
             rows,
         )
         self.conn.commit()
