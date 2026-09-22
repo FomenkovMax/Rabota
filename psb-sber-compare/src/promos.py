@@ -281,6 +281,43 @@ BENEFIT_LABEL = {
     OTHER: "Прочее",
 }
 
+# Склонять «максимальный» под род каждой подписи — источник ошибок вроде
+# «максимальный ставка». Проще хранить готовую формулировку.
+BENEFIT_PHRASE = {
+    CASHBACK: "максимальный кешбэк",
+    MONEY: "максимальная выгода",
+    POINTS: "максимум баллов",
+    DISCOUNT: "максимальная скидка",
+    PRIZE: "максимальный приз",
+    FREE: "бесплатная услуга",
+    OTHER: "лучшее предложение",
+}
+
+
+def benefit_phrase(benefit_type: str, lower_is_better: bool = False) -> str:
+    """Формулировка для вывода по сегменту."""
+    if benefit_type == RATE:
+        return "минимальная ставка" if lower_is_better else "максимальная ставка"
+    return BENEFIT_PHRASE.get(benefit_type, "лучшее предложение")
+
+
+def plural(count: int, one: str, few: str, many: str) -> str:
+    """Русское согласование числительного: 1 акция, 2 акции, 5 акций."""
+    tail_100 = count % 100
+    if 11 <= tail_100 <= 14:
+        return many
+    tail = count % 10
+    if tail == 1:
+        return one
+    if 2 <= tail <= 4:
+        return few
+    return many
+
+
+def offers_count(count: int) -> str:
+    return f"{count} {plural(count, 'предложение', 'предложения', 'предложений')}"
+
+
 def format_benefit(value: float, unit: str) -> str:
     """Размер выгоды с правильной единицей измерения."""
     if unit == "₽":
@@ -293,7 +330,9 @@ def format_benefit(value: float, unit: str) -> str:
 
 _PERCENT_RE = re.compile(r"(\d{1,3}(?:[.,]\d{1,2})?)\s*%")
 _RUB_RE = re.compile(r"(\d[\d\s ]*)\s*(?:₽|руб)", re.I)
-_POINTS_RE = re.compile(r"(\d[\d\s ]*)\s*балл", re.I)
+# Между числом и словом «баллов» почти всегда стоит определение:
+# «до 4000 бонусных баллов», «2000 приветственных баллов».
+_POINTS_RE = re.compile(r"(\d[\d\s\u00a0]*)\s*(?:[а-яё]+\s+){0,2}балл", re.I)
 
 
 def _first_number(pattern: re.Pattern[str], text: str) -> float | None:
@@ -542,12 +581,13 @@ def compare_segments(psb: list[PromoInsight], sber: list[PromoInsight]) -> list[
 def _judge(item: SegmentComparison) -> None:
     if not item.sber:
         item.verdict = "red" if item.psb else "grey"
-        item.headline = (f"У ПСБ {len(item.psb)} предложений, у Сбера нет ни одного"
+        item.headline = (f"У ПСБ {offers_count(len(item.psb))}, "
+                         "у Сбера нет ни одного"
                          if item.psb else "Предложений нет ни у одного банка")
         return
     if not item.psb:
         item.verdict = "green"
-        item.headline = f"У Сбера {len(item.sber)} предложений, у ПСБ нет ни одного"
+        item.headline = f"У Сбера {offers_count(len(item.sber))}, у ПСБ нет ни одного"
         return
 
     # Ищем выгоду, сопоставимую по типу И по единице измерения.
@@ -561,7 +601,8 @@ def _judge(item: SegmentComparison) -> None:
 
     if not candidates:
         item.verdict = "grey"
-        item.headline = (f"ПСБ {len(item.psb)}, Сбер {len(item.sber)} — "
+        item.headline = (f"ПСБ — {offers_count(len(item.psb))}, "
+                         f"Сбер — {offers_count(len(item.sber))}: "
                          "выгода несопоставима по типу или единице измерения")
         return
 
@@ -571,25 +612,25 @@ def _judge(item: SegmentComparison) -> None:
 
     item.best_type, item.best_unit = benefit_type, unit
     item.psb_best, item.sber_best = psb_best, sber_best
-    label = BENEFIT_LABEL[benefit_type].lower()
 
     # По ставке кредита выгода клиента — меньше; по кешбэку и деньгам — больше.
     lower_is_better = benefit_type == RATE and item.segment not in (
         "Вклады", "Накопительные счета", "Долгосрочные сбережения")
     sber_wins = (sber_best < psb_best) if lower_is_better else (sber_best > psb_best)
 
+    phrase = benefit_phrase(benefit_type, lower_is_better)
     psb_text = format_benefit(psb_best, unit)
     sber_text = format_benefit(sber_best, unit)
 
     if psb_best == sber_best:
         item.verdict = "yellow"
-        item.headline = f"Максимальный {label} одинаковый — {psb_text}"
+        item.headline = f"{phrase.capitalize()} одинаковая у обоих — {psb_text}"
     elif sber_wins:
         item.verdict = "green"
-        item.headline = f"Максимальный {label}: Сбер {sber_text} против {psb_text} у ПСБ"
+        item.headline = f"{phrase.capitalize()}: Сбер {sber_text} против {psb_text} у ПСБ"
     else:
         item.verdict = "red"
-        item.headline = f"Максимальный {label}: ПСБ {psb_text} против {sber_text} у Сбера"
+        item.headline = f"{phrase.capitalize()}: ПСБ {psb_text} против {sber_text} у Сбера"
 
 
 def summarize_promos(promos: list[PromoInsight]) -> dict[str, int]:

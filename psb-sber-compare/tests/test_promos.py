@@ -261,3 +261,54 @@ def test_partner_name_does_not_make_it_a_service():
 
 def test_service_detected_from_title():
     assert segment_of("/personal/x", "Бесплатные консультации") == "Сервисы и услуги"
+
+
+# --- формулировки ---------------------------------------------------------
+
+@pytest.mark.parametrize("count,expected", [
+    (1, "1 предложение"), (2, "2 предложения"), (4, "4 предложения"),
+    (5, "5 предложений"), (11, "11 предложений"), (14, "14 предложений"),
+    (21, "21 предложение"), (22, "22 предложения"), (25, "25 предложений"),
+    (101, "101 предложение"), (0, "0 предложений"),
+])
+def test_offers_count_agrees_with_number(count, expected):
+    from src.promos import offers_count
+
+    assert offers_count(count) == expected
+
+
+def test_benefit_phrase_agrees_in_gender():
+    """«Максимальный ставка» — рассогласование, которое видно в отчёте."""
+    from src.promos import benefit_phrase
+
+    assert benefit_phrase(CASHBACK) == "максимальный кешбэк"
+    assert benefit_phrase(RATE, lower_is_better=True) == "минимальная ставка"
+    assert benefit_phrase(RATE, lower_is_better=False) == "максимальная ставка"
+
+
+def test_credit_rate_headline_says_minimal():
+    """По кредиту выгодна ставка ниже — в выводе должно стоять «минимальная»."""
+    psb = [_promo("ПСБ", "Кредиты", RATE, 5.0, "%")]
+    sber = [_promo("Сбер", "Кредиты", RATE, 17.9, "%")]
+    result = compare_segments(psb, sber)[0]
+    assert result.headline.startswith("Минимальная ставка")
+    assert result.verdict == "red"
+
+
+def test_deposit_rate_headline_says_maximal():
+    psb = [_promo("ПСБ", "Вклады", RATE, 13.0, "%")]
+    sber = [_promo("Сбер", "Вклады", RATE, 14.0, "%")]
+    result = compare_segments(psb, sber)[0]
+    assert result.headline.startswith("Максимальная ставка")
+    assert result.verdict == "green"
+
+
+@pytest.mark.parametrize("title,expected", [
+    ("Получите до 2000 баллов", 2000.0),
+    # Между числом и «баллов» почти всегда стоит определение.
+    ("Получите до 4000 бонусных баллов за перевод пенсии", 4000.0),
+    ("2000 приветственных баллов", 2000.0),
+])
+def test_points_with_adjective(title, expected):
+    benefit_type, value, unit = parse_benefit(title)
+    assert (benefit_type, value, unit) == (POINTS, expected, "баллов")
