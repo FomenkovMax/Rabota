@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from datetime import datetime
 
 from .base import BankAdapter, CollectResult
@@ -64,7 +65,13 @@ class SiteAdapter(BankAdapter):
 
         try:
             with browser_session(settings, cookies=region_cookies or None) as session:
-                for url, category in self.sections:
+                total = len(self.sections)
+                for number, (url, category) in enumerate(self.sections, 1):
+                    # Отметка по каждому разделу: без неё в логе видно лишь
+                    # начало обхода, и долгий сбор не отличить от вставшего.
+                    log.info("%s: раздел %s из %s — %s",
+                             self.title, number, total, category)
+                    started = time.monotonic()
                     try:
                         text = session.text(url, wait_for=self.wait_for)
                     except Exception as exc:        # noqa: BLE001
@@ -75,6 +82,9 @@ class SiteAdapter(BankAdapter):
 
                     visited += 1
                     found = extract_products(text)
+                    log.info("%s: раздел %s прочитан за %.1f с, продуктов %s",
+                             self.title, category,
+                             time.monotonic() - started, len(found))
                     if not found:
                         log.warning("%s: в разделе %s условий не найдено. "
                                     "%s", self.title, url,
