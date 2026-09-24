@@ -92,3 +92,39 @@ def test_to_products_deduplicates():
                       collected_at="", source_url="https://example.ru")
     assert len(out) == 1
     assert out[0].bank == "ЦМР"
+
+
+def test_rate_above_title_sber_layout():
+    """У Сбера ставка стоит над названием — витрина должна читаться."""
+    text = "\n".join([
+        "Помоги подобрать вклад",
+        "до 14%", "Вклад «Сбер Рядом»", "От 30 000 ₽, от 1 месяца", "Подробнее",
+        "до 12,5%", "Накопительный счёт Рядом", "От 0 ₽, бессрочный", "Подробнее",
+        "до 13,5%", "СберВклад Рядом", "От 30 000 ₽, от 1 месяца",
+    ])
+    found = extract_products(text)
+    assert [p.title for p in found] == [
+        "Вклад «Сбер Рядом»", "Накопительный счёт Рядом", "СберВклад Рядом"]
+    assert [p.rate_max for p in found] == [14.0, 12.5, 13.5]
+
+
+def test_whole_percent_is_a_rate():
+    """Половина витрины Сбера подписана целыми: «до 14%», «до 22%»."""
+    found = extract_products("до 22%\nВклад Забота о будущем\nОт 50 000 ₽")
+    assert [(p.title, p.rate_max) for p in found] == [("Вклад Забота о будущем", 22.0)]
+
+
+def test_rate_relative_to_key_rate_is_not_a_rate():
+    """«Ставка ЦБ минус 2%» — поправка к чужой величине, а не условие вклада."""
+    assert extract_products("Ставка ЦБ минус 2%\nВклад Ключевой\nОт 100 000 ₽") == []
+
+
+def test_layout_detection_keeps_psb_style():
+    """Определение вёрстки не должно ломать банки со ставкой под названием."""
+    text = "\n".join([
+        "Вклад «Первый»", "Пополнение", "Нет", "До 13,8 %",
+        "Вклад «Второй»", "Пополнение", "Да", "До 13,5 %",
+    ])
+    found = extract_products(text)
+    assert [(p.title, p.rate_max) for p in found] == [
+        ("Вклад «Первый»", 13.8), ("Вклад «Второй»", 13.5)]

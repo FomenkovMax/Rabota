@@ -22,7 +22,14 @@ from ..psb.parser import Product, parse_money, parse_rates, parse_term_months
 
 log = logging.getLogger(__name__)
 
-_RATE_LINE = re.compile(r"(?:от|до|до\s+)?\s*\d{1,2}[,.]\d{1,2}\s?%")
+# Дробная часть необязательна: у Сбера половина витрины подписана
+# целыми — «до 14%», «до 22%».
+_RATE_LINE = re.compile(r"(?:от|до|до\s+)?\s*\d{1,2}(?:[,.]\d{1,2})?\s?%")
+
+# Ставка, выраженная через чужую величину: «Ставка ЦБ минус 2%». Число
+# здесь — поправка, а не условие вклада, и выдавать его за ставку нельзя.
+_RELATIVE_RATE = re.compile(r"ключев\w*\s+ставк|ставк\w*\s+цб|цб\s*[+−+-]|"
+                            r"мину́?с\s*\d|плюс\s*\d", re.I)
 
 # Процент на странице банка — далеко не всегда ставка. На карточке
 # семейной ипотеки Сбера первой строкой идёт «Первоначальный взнос от
@@ -40,7 +47,7 @@ _NOT_A_RATE = re.compile(
     r"[^%]{0,40}?\d{1,3}(?:[,.]\d{1,2})?\s?%",
     re.I,
 )
-_PURE_RATE = re.compile(r"^\s*(?:от|до)?\s*\d{1,2}[,.]\d{1,2}\s?%\s*$", re.I)
+_PURE_RATE = re.compile(r"^\s*(?:от|до)?\s*\d{1,2}(?:[,.]\d{1,2})?\s?%\s*$", re.I)
 
 # Строки, которые ставкой быть не могут, хотя процент в них есть.
 _NOISE = re.compile(
@@ -114,53 +121,116 @@ def _is_product_title(line: str) -> bool:
     return bool(_PRODUCT_WORD.search(head))
 
 
+def _rates_of(line: str) -> list[float] | None:
+    """Ставки строки, если это вообще строка про ставку."""
+    if not _RATE_LINE.search(line):
+        return None
+    if _RELATIVE_RATE.search(line):
+        return None
+    measured = _NOT_A_RATE.sub(" ", line)
+    if not _RATE_LINE.search(measured):
+        return None
+    values = [r for r in parse_rates(measured) if 0.1 <= r <= 100]
+    return values or None
+
+
+def _rate_above_title(lines: list[str], titles: list[int]) -> bool:
+    """Где на карточках этой страницы стоит ставка — над названием или под.
+
+    У ПСБ и ЦМР ставка идёт под названием, у Сбера — над ним: «до 14%»,
+    следом «Вклад «Сбер Рядом»». Отдельно взятая тройка «название,
+    ставка, название» подходит обоим случаям, поэтому решает страница
+    целиком: для каждого названия смотрим, чья ставка ближе — та, что
+    выше, или та, что ниже, — и берём вёрстку, за которую голосов
+    больше. При равенстве остаётся привычная, с ставкой под названием.
+    """
+    mark = set(titles)
+    above_wins = below_wins = 0
+
+    for position, index in enumerate(titles):
+        stop_up = titles[position - 1] if position else -1
+        distance_up = None
+        for step in range(index - 1, stop_up, -1):
+            if step in mark:
+                break
+            if _rates_of(lines[step]) is not None:
+                distance_up = index - step
+                break
+
+        stop_down = titles[position + 1] if position + 1 < len(titles) else len(lines)
+        distance_down = None
+        for step in range(index + 1, stop_down):
+            if _rates_of(lines[step]) is not None:
+                distance_down = step - index
+                break
+
+        if distance_up is not None and (distance_down is None
+                                        or distance_up < distance_down):
+            above_wins += 1
+        elif distance_down is not None:
+            below_wins += 1
+
+    return above_wins > below_wins
+
+
 def extract_products(text: str, *, window: int = 6) -> list[TextProduct]:
-    """Ищет пары «название продукта → ставка рядом».
+    """Ищет пары «название продукта ↔ ставка рядом».
 
     Окно в несколько строк — компромисс: в карточке название и ставка
     стоят рядом, но между ними бывают подписи вроде «Пополнение» и
     «Снятие». Брать ставку издалека нельзя: так она приклеится к чужому
     продукту, а неверная привязка хуже отсутствия данных.
+
+    Сторона, с которой стоит ставка, у банков разная, поэтому сначала
+    определяется вёрстка страницы, а потом по ней разбираются карточки.
     """
     lines = [l.strip() for l in text.split("\n") if l.strip()]
+    titles = [i for i, line in enumerate(lines) if _is_product_title(line)]
+    if not titles:
+        return []
+
+    mark = set(titles)
     found: list[TextProduct] = []
     used_rate_lines: set[int] = set()
 
-    for index, line in enumerate(lines):
-        if not _is_product_title(line):
-            continue
+    if _rate_above_title(lines, titles):
+        for index in titles:
+            above = index - 1
+            if above < 0 or above in used_rate_lines or above in mark:
+                continue
+            values = _rates_of(lines[above])
+            if values is None or _NOISE.search(lines[above]):
+                continue
+            used_rate_lines.add(above)
+            found.append(TextProduct(
+                title=lines[index],
+                rate_min=min(values),
+                rate_max=max(values),
+                rate_raw=lines[above],
+                context=" · ".join(lines[above:index + 3])[:300],
+            ))
+        return found
 
+    for index in titles:
         for offset in range(1, window + 1):
             candidate_index = index + offset
-            if candidate_index >= len(lines) or candidate_index in used_rate_lines:
+            if candidate_index >= len(lines) or candidate_index in mark:
+                break
+            if candidate_index in used_rate_lines:
                 continue
             candidate = lines[candidate_index]
             if _NOISE.search(candidate):
                 continue
-            if not _RATE_LINE.search(candidate):
+            values = _rates_of(candidate)
+            if values is None:
                 continue
-
-            # Строка вида «Ставка 12,5% годовых при взносе от 20,1%» несёт
-            # оба процента сразу. Посторонние убираем вместе с их числами
-            # и смотрим, осталась ли ставка: у карточки «Первоначальный
-            # взнос от 20,1%» после этого не остаётся ничего, и продукт
-            # честно уходит без ставки вместо выдуманной.
-            measured = _NOT_A_RATE.sub(" ", candidate)
-            if not _RATE_LINE.search(measured):
-                continue
-
-            rates = [r for r in parse_rates(measured) if 0.1 <= r <= 100]
-            if not rates:
-                continue
-
             used_rate_lines.add(candidate_index)
-            context = " · ".join(lines[index:candidate_index + 2])[:300]
             found.append(TextProduct(
-                title=line,
-                rate_min=min(rates),
-                rate_max=max(rates),
+                title=lines[index],
+                rate_min=min(values),
+                rate_max=max(values),
                 rate_raw=candidate,
-                context=context,
+                context=" · ".join(lines[index:candidate_index + 2])[:300],
             ))
             break
 
