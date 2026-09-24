@@ -317,7 +317,20 @@ async def run() -> None:
         )
 
     log.info("Доступ открыт %s пользователям", len(ALLOWED))
-    bot = Bot(token=token,
+
+    # Из некоторых сетей api.telegram.org недоступен напрямую. Тогда
+    # соединение идёт через прокси, заданный в BOT_PROXY. На сбор данных
+    # с сайтов банков это не влияет — там свои настройки.
+    proxy = os.environ.get("BOT_PROXY", "").strip()
+    session = None
+    if proxy:
+        from aiogram.client.session.aiohttp import AiohttpSession  # noqa: PLC0415
+
+        log.info("Подключаюсь к Telegram через прокси %s",
+                 proxy.split("@")[-1])   # без логина и пароля в логе
+        session = AiohttpSession(proxy=proxy)
+
+    bot = Bot(token=token, session=session,
               default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 
     # Сетевые и токенные ошибки показываем человеческим текстом: бота
@@ -339,11 +352,21 @@ async def run() -> None:
         hint = ""
         if "CERTIFICATE_VERIFY_FAILED" in str(exc):
             hint = ("\nПохоже на перехват TLS: сеть подменяет сертификаты.\n"
-                    "Укажи корневой сертификат своей сети через "
-                    "SSL_CERT_FILE\nили выпусти бота в интернет напрямую.")
+                    "Укажи корневой сертификат своей сети через SSL_CERT_FILE.")
+        elif not proxy:
+            hint = (
+                "\n\nПроверь с сервера, доступен ли Telegram:\n"
+                "  curl -s -m 10 -o /dev/null -w '%{http_code}\\n' "
+                "https://api.telegram.org\n"
+                "Ответ 000 означает, что из этой сети Telegram не открывается.\n"
+                "Тогда пропиши прокси в .env и перезапусти бота:\n"
+                "  BOT_PROXY=http://логин:пароль@адрес:порт"
+            )
+        else:
+            hint = ("\n\nПрокси задан, но связи нет. Проверь его адрес "
+                    "и работоспособность.")
         raise SystemExit(
-            f"Нет связи с api.telegram.org.\n"
-            f"Проверь интернет на сервере и доступность Telegram.{hint}"
+            f"Нет связи с api.telegram.org.{hint}"
         ) from None
     finally:
         await bot.session.close()
