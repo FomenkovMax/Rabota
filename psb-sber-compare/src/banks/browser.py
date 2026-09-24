@@ -202,18 +202,43 @@ class BrowserSession:
         return (self.settings.timeout_ms * 3 + self.settings.settle_ms) / 1000
 
     def fetch(self, url: str, *, wait_for: str = "") -> str:
-        """Открывает страницу и возвращает её HTML после отработки скриптов."""
+        """Разметка страницы после отработки скриптов."""
+        html, _ = self.snapshot(url, wait_for=wait_for)
+        return html
+
+    def text(self, url: str, *, wait_for: str = "") -> str:
+        """Видимый текст страницы — когда разметка не нужна."""
+        _, text = self.snapshot(url, wait_for=wait_for)
+        return text
+
+    def snapshot(self, url: str, *, wait_for: str = "") -> tuple[str, str]:
+        """Разметка и видимый текст страницы за одну загрузку.
+
+        Единственный путь чтения: fetch и text — обёртки над ним. Порознь
+        они успели разъехаться, и сбор вставал там, где диагностика
+        отрабатывала за секунды, потому что таймаут перехода был проставлен
+        только в одном из трёх мест.
+
+        Разметка снимается через evaluate, а не через page.content(): у
+        content нет параметра таймаута, и на странице, где скрипты
+        непрерывно перерисовывают документ, он ждёт стабильного состояния
+        сколько угодно.
+        """
         if self._context is None:
             raise BrowserUnavailable("Сессия браузера не запущена")
 
+        limit = self.settings.timeout_ms
         page = self._context.new_page()
         try:
-            response = page.goto(url, wait_until="domcontentloaded")
+            page.set_default_timeout(limit)
+            response = page.goto(url, wait_until="domcontentloaded", timeout=limit)
             status = response.status if response else 0
+            if status >= 400:
+                log.warning("%s → HTTP %s", url, status)
 
             if wait_for:
                 try:
-                    page.wait_for_selector(wait_for, timeout=self.settings.timeout_ms)
+                    page.wait_for_selector(wait_for, timeout=limit)
                 except Exception:
                     log.debug("Не дождались селектора %s на %s", wait_for, url)
 
@@ -222,66 +247,6 @@ class BrowserSession:
 
             with hard_limit(self._overall(), f"чтение страницы {url}"):
                 html = page.evaluate("() => document.documentElement.outerHTML")
-            if status >= 400:
-                log.warning("%s → HTTP %s", url, status)
-            return html
-        finally:
-            page.close()
-            time.sleep(self.settings.pause_s)
-
-    def text(self, url: str, *, wait_for: str = "") -> str:
-        """Видимый текст страницы — когда разметка не нужна."""
-        if self._context is None:
-            raise BrowserUnavailable("Сессия браузера не запущена")
-        page = self._context.new_page()
-        try:
-            page.goto(url, wait_until="domcontentloaded")
-            if wait_for:
-                try:
-                    page.wait_for_selector(wait_for, timeout=self.settings.timeout_ms)
-                except Exception:
-                    pass
-            page.wait_for_timeout(self.settings.settle_ms)
-            with hard_limit(self._overall(), f"чтение страницы {url}"):
-                return page.evaluate(
-                    "() => document.body ? document.body.innerText : ''")
-        finally:
-            page.close()
-            time.sleep(self.settings.pause_s)
-
-    def snapshot(self, url: str, *, wait_for: str = "") -> tuple[str, str]:
-        """Разметка и видимый текст одной страницы за одну загрузку.
-
-        Порознь fetch и text открывают её дважды, а это лишний поход на
-        чужой сервер и двойное ожидание скриптов.
-
-        Разметка снимается через evaluate, а не через page.content():
-        у content нет параметра таймаута, и на странице, где скрипты
-        непрерывно перерисовывают документ, он ждёт стабильного состояния
-        бесконечно. Сбор по такой странице вставал молча и навсегда.
-        """
-        if self._context is None:
-            raise BrowserUnavailable("Сессия браузера не запущена")
-
-        limit = self.settings.timeout_ms
-        overall = self._overall()
-        page = self._context.new_page()
-        try:
-            log.debug("%s: открываю", url)
-            page.goto(url, wait_until="domcontentloaded", timeout=limit)
-
-            if wait_for:
-                try:
-                    page.wait_for_selector(wait_for, timeout=limit)
-                except Exception:
-                    log.debug("Не дождались селектора %s на %s", wait_for, url)
-
-            page.wait_for_timeout(self.settings.settle_ms)
-
-            with hard_limit(overall, f"чтение страницы {url}"):
-                log.debug("%s: снимаю разметку", url)
-                html = page.evaluate("() => document.documentElement.outerHTML")
-                log.debug("%s: снимаю текст", url)
                 text = page.evaluate(
                     "() => document.body ? document.body.innerText : ''")
             return html, text
