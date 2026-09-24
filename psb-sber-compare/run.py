@@ -66,8 +66,7 @@ def cmd_dump(config: Config, code: str, section: str) -> int:
     разметка не та, которую ждёт разбор. Отличить их можно только по
     самой странице, поэтому она кладётся в файл целиком.
     """
-    from src.banks.browser import (BrowserSettings, PageTooSlow,
-                                   browser_session)
+    from src.banks.browser import BrowserSettings, PageTooSlow, read_page
 
     cls = registry.get(code)
     if cls is None:
@@ -94,27 +93,21 @@ def cmd_dump(config: Config, code: str, section: str) -> int:
     print(f"Куки    : {len(cookies)}")
     print("\nЗапускаю браузер…", flush=True)
 
-    started = time.monotonic()
     browser = BrowserSettings.from_config(settings.get("browser"))
     print(f"Таймаут {browser.timeout_ms} мс, ожидание скриптов "
           f"{browser.settle_ms} мс", flush=True)
 
-    with browser_session(browser, cookies=cookies or None) as session:
-        print(f"Браузер поднялся за {time.monotonic() - started:.1f} с, "
-              f"открываю страницу…", flush=True)
-        opened = time.monotonic()
-        try:
-            html, text = session.snapshot(url)
-        except PageTooSlow as exc:
-            print(f"\n[НЕ ОК] {exc}\n"
-                  f"Страница не отдалась за {time.monotonic() - opened:.0f} с. "
-                  f"Так же на ней встанет и сбор.\n"
-                  f"Обычно помогает уменьшить browser.settle_ms в "
-                  f"config/settings.yaml\nили задать разделу селектор "
-                  f"ожидания вместо паузы.", flush=True)
-            return 1
-        print(f"Страница прочитана за {time.monotonic() - opened:.1f} с\n",
-              flush=True)
+    opened = time.monotonic()
+    try:
+        html, text = read_page(url, browser, cookies=cookies or None,
+                               limit_s=float(settings.get("section_timeout_s") or 0))
+    except PageTooSlow as exc:
+        print(f"\n[НЕ ОК] {exc}\n"
+              f"Так же этот раздел будет пропущен и при сборе — остальные "
+              f"соберутся.", flush=True)
+        return 1
+    print(f"Страница прочитана за {time.monotonic() - opened:.1f} с "
+          f"(вместе с запуском браузера)\n", flush=True)
 
     out = Path("data") / f"dump-{code}-{index}.html"
     out.parent.mkdir(parents=True, exist_ok=True)

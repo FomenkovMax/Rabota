@@ -237,6 +237,26 @@ def extract_products(text: str, *, window: int = 6) -> list[TextProduct]:
     return found
 
 
+# Продукт сам говорит, что он такое, — и это надёжнее страницы, на
+# которой он оказался. У Сбера «Накопительный счёт Рядом» стоит на
+# витрине вкладов; записанный вкладом, он сравнивался бы со вкладами
+# конкурента, хотя его пара — их накопительный счёт.
+_CATEGORY_BY_TITLE = (
+    (re.compile(r"накопительн\w*\s+сч[её]т", re.I), "Накопительные счета"),
+    (re.compile(r"кредитн\w*\s+карт", re.I), "Кредитные карты"),
+    (re.compile(r"дебетов\w*\s+карт", re.I), "Дебетовые карты"),
+    (re.compile(r"ипотек", re.I), "Ипотека"),
+)
+
+
+def _category_for(title: str, page_category: str) -> str:
+    """Категория по названию продукта, если оно однозначно; иначе — по странице."""
+    for pattern, category in _CATEGORY_BY_TITLE:
+        if pattern.search(title):
+            return category
+    return page_category
+
+
 def to_products(items: Iterable[TextProduct], *, bank: str, category: str,
                 region: str, collected_at: str, source_url: str) -> list[Product]:
     """Переводит вычитанное в общую модель продукта."""
@@ -253,7 +273,7 @@ def to_products(items: Iterable[TextProduct], *, bank: str, category: str,
             bank=bank,
             url_path=source_url,
             title=item.title,
-            category=category,
+            category=_category_for(item.title, category),
             region=region,
             rate_min=item.rate_min,
             rate_max=item.rate_max,
