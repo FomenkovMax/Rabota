@@ -14,7 +14,7 @@ import time
 from datetime import datetime
 
 from .base import BankAdapter, CollectResult
-from .browser import BrowserSettings, BrowserUnavailable, browser_session
+from .browser import BrowserSettings, BrowserUnavailable, read_page
 from .generic_site import extract_products, to_products
 
 log = logging.getLogger(__name__)
@@ -63,40 +63,49 @@ class SiteAdapter(BankAdapter):
         visited = 0
         failures: list[str] = []
 
+        # Каждый раздел читается отдельным процессом: чужая защита умеет
+        # подвешивать браузер так, что изнутри его не прервать, а снаружи
+        # процесс убивается всегда. Один тяжёлый раздел больше не уносит
+        # с собой весь обход.
+        limit_s = float(self.settings.get("section_timeout_s") or 0)
+
         try:
-            with browser_session(settings, cookies=region_cookies or None) as session:
-                total = len(self.sections)
-                for number, (url, category) in enumerate(self.sections, 1):
-                    # Отметка по каждому разделу: без неё в логе видно лишь
-                    # начало обхода, и долгий сбор не отличить от вставшего.
-                    log.info("%s: раздел %s из %s — %s",
-                             self.title, number, total, category)
-                    started = time.monotonic()
-                    try:
-                        text = session.text(url, wait_for=self.wait_for)
-                    except Exception as exc:        # noqa: BLE001
-                        failures.append(f"{url}: {str(exc)[:80]}")
-                        log.warning("%s: раздел %s не открылся — %s",
-                                    self.title, url, str(exc)[:120])
-                        continue
+            total = len(self.sections)
+            for number, (url, category) in enumerate(self.sections, 1):
+                # Отметка по каждому разделу: без неё в логе видно лишь
+                # начало обхода, и долгий сбор не отличить от вставшего.
+                log.info("%s: раздел %s из %s — %s",
+                         self.title, number, total, category)
+                started = time.monotonic()
+                try:
+                    _, text = read_page(url, settings,
+                                        cookies=region_cookies or None,
+                                        wait_for=self.wait_for,
+                                        limit_s=limit_s)
+                except Exception as exc:        # noqa: BLE001
+                    failures.append(f"{url}: {str(exc)[:80]}")
+                    log.warning("%s: раздел %s не открылся за %.0f с — %s",
+                                self.title, url, time.monotonic() - started,
+                                str(exc)[:120])
+                    continue
 
-                    visited += 1
-                    found = extract_products(text)
-                    log.info("%s: раздел %s прочитан за %.1f с, продуктов %s",
-                             self.title, category,
-                             time.monotonic() - started, len(found))
-                    if not found:
-                        log.warning("%s: в разделе %s условий не найдено. "
-                                    "%s", self.title, url,
-                                    "Возможно, изменилась вёрстка"
-                                    if not self.protection
-                                    else f"Защита: {self.protection}")
-                        continue
+                visited += 1
+                found = extract_products(text)
+                log.info("%s: раздел %s прочитан за %.1f с, продуктов %s",
+                         self.title, category,
+                         time.monotonic() - started, len(found))
+                if not found:
+                    log.warning("%s: в разделе %s условий не найдено. "
+                                "%s", self.title, url,
+                                "Возможно, изменилась вёрстка"
+                                if not self.protection
+                                else f"Защита: {self.protection}")
+                    continue
 
-                    products.extend(to_products(
-                        found, bank=self.title, category=category,
-                        region=region_label, collected_at=now, source_url=url,
-                    ))
+                products.extend(to_products(
+                    found, bank=self.title, category=category,
+                    region=region_label, collected_at=now, source_url=url,
+                ))
         except BrowserUnavailable as exc:
             return self._failed(str(exc))
         except Exception as exc:                    # noqa: BLE001

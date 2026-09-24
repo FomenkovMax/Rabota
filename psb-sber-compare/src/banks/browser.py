@@ -17,6 +17,7 @@ API — просто читаем страницу так, как её види�
 from __future__ import annotations
 
 import logging
+import multiprocessing
 import os
 import signal
 import threading
@@ -274,3 +275,64 @@ def browser_session(settings: BrowserSettings,
         yield session
     finally:
         session.close()
+
+
+def _read_worker(url: str, settings: "BrowserSettings", cookies: list[dict] | None,
+                 wait_for: str, channel: Any) -> None:
+    """Тело дочернего процесса: открыть страницу и вернуть её содержимое."""
+    try:
+        with browser_session(settings, cookies=cookies) as session:
+            html, text = session.snapshot(url, wait_for=wait_for)
+        channel.send(("ok", html, text))
+    except Exception as exc:                        # noqa: BLE001
+        channel.send(("fail", f"{type(exc).__name__}: {str(exc)[:200]}", ""))
+    finally:
+        channel.close()
+
+
+def read_page(url: str, settings: "BrowserSettings", *,
+              cookies: list[dict] | None = None, wait_for: str = "",
+              limit_s: float = 0) -> tuple[str, str]:
+    """Читает страницу в отдельном процессе, который можно убить.
+
+    Таймауты Playwright закрывают его собственные ожидания, но не случай,
+    когда Chromium перестаёт отвечать вовсе: у Сбера защита то отдаёт
+    содержимое за восемь секунд, то закручивает проверку на часы, и
+    прервать это изнутри нечем — сигнал теряется между переключениями
+    контекста. Снаружи же процесс убивается всегда.
+
+    Ценой запуска браузера на каждую страницу — около двух секунд — сбор
+    перестаёт зависеть от того, в настроении ли сегодня чужая защита.
+    """
+    if limit_s <= 0:
+        limit_s = (settings.timeout_ms * 2 + settings.settle_ms) / 1000 + 20
+
+    context = multiprocessing.get_context("fork")
+    ours, theirs = context.Pipe(duplex=False)
+    process = context.Process(
+        target=_read_worker, args=(url, settings, cookies, wait_for, theirs),
+        daemon=True,
+    )
+    process.start()
+    theirs.close()          # конец родителя не нужен, иначе poll не заметит конца
+
+    try:
+        if not ours.poll(limit_s):
+            raise PageTooSlow(
+                f"страница не отдалась за {limit_s:.0f} с: {url}")
+        status, first, second = ours.recv()
+    except EOFError:
+        raise PageTooSlow(f"чтение страницы оборвалось: {url}") from None
+    finally:
+        ours.close()
+        if process.is_alive():
+            process.terminate()
+            process.join(5)
+            if process.is_alive():
+                process.kill()
+        process.join(5)
+
+    if status != "ok":
+        raise BrowserUnavailable(first)
+    return first, second
+
