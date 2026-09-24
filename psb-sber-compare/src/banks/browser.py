@@ -18,6 +18,8 @@ from __future__ import annotations
 
 import logging
 import os
+import signal
+import threading
 import time
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -59,6 +61,38 @@ def _normalise_cookies(cookies: list[dict[str, Any]]) -> list[dict[str, Any]]:
             item.setdefault("path", "/")
         ready.append(item)
     return ready
+
+
+class PageTooSlow(RuntimeError):
+    """Страница не отдалась за отведённое время."""
+
+
+@contextmanager
+def hard_limit(seconds: float, what: str) -> Iterator[None]:
+    """Предел на операцию целиком — последняя защита от вечного ожидания.
+
+    Таймауты Playwright закрывают отдельные шаги, но не случай, когда
+    ожидание уходит туда, где параметра таймаута нет. Будильник прерывает
+    такое ожидание и превращает зависание в понятную ошибку: молчаливо
+    висящий сбор хуже упавшего, потому что о нём никто не узнает.
+
+    Будильник живёт только в главном потоке. В остальных предел не
+    ставится, и вызов выполняется как есть.
+    """
+    if threading.current_thread() is not threading.main_thread():
+        yield
+        return
+
+    def ring(signum: int, frame: Any) -> None:
+        raise PageTooSlow(f"{what}: не уложились в {seconds:.0f} с")
+
+    previous = signal.signal(signal.SIGALRM, ring)
+    signal.setitimer(signal.ITIMER_REAL, seconds)
+    try:
+        yield
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        signal.signal(signal.SIGALRM, previous)
 
 
 class BrowserUnavailable(RuntimeError):
@@ -158,6 +192,15 @@ class BrowserSession:
         if self.cookies:
             self._context.add_cookies(_normalise_cookies(self.cookies))
 
+    def _overall(self) -> float:
+        """Предел на чтение страницы целиком, в секундах.
+
+        Свои шаги Playwright закрывает сам; этот запас нужен там, где
+        параметра таймаута нет. Берём с перекрытием, чтобы будильник не
+        перебивал таймауты самого Playwright.
+        """
+        return (self.settings.timeout_ms * 3 + self.settings.settle_ms) / 1000
+
     def fetch(self, url: str, *, wait_for: str = "") -> str:
         """Открывает страницу и возвращает её HTML после отработки скриптов."""
         if self._context is None:
@@ -177,7 +220,8 @@ class BrowserSession:
             # Время на JS-проверку и на дозагрузку условий отдельными запросами.
             page.wait_for_timeout(self.settings.settle_ms)
 
-            html = page.content()
+            with hard_limit(self._overall(), f"чтение страницы {url}"):
+                html = page.evaluate("() => document.documentElement.outerHTML")
             if status >= 400:
                 log.warning("%s → HTTP %s", url, status)
             return html
@@ -198,7 +242,9 @@ class BrowserSession:
                 except Exception:
                     pass
             page.wait_for_timeout(self.settings.settle_ms)
-            return page.inner_text("body")
+            with hard_limit(self._overall(), f"чтение страницы {url}"):
+                return page.evaluate(
+                    "() => document.body ? document.body.innerText : ''")
         finally:
             page.close()
             time.sleep(self.settings.pause_s)
@@ -208,20 +254,37 @@ class BrowserSession:
 
         Порознь fetch и text открывают её дважды, а это лишний поход на
         чужой сервер и двойное ожидание скриптов.
+
+        Разметка снимается через evaluate, а не через page.content():
+        у content нет параметра таймаута, и на странице, где скрипты
+        непрерывно перерисовывают документ, он ждёт стабильного состояния
+        бесконечно. Сбор по такой странице вставал молча и навсегда.
         """
         if self._context is None:
             raise BrowserUnavailable("Сессия браузера не запущена")
 
+        limit = self.settings.timeout_ms
+        overall = self._overall()
         page = self._context.new_page()
         try:
-            page.goto(url, wait_until="domcontentloaded")
+            log.debug("%s: открываю", url)
+            page.goto(url, wait_until="domcontentloaded", timeout=limit)
+
             if wait_for:
                 try:
-                    page.wait_for_selector(wait_for, timeout=self.settings.timeout_ms)
+                    page.wait_for_selector(wait_for, timeout=limit)
                 except Exception:
                     log.debug("Не дождались селектора %s на %s", wait_for, url)
+
             page.wait_for_timeout(self.settings.settle_ms)
-            return page.content(), page.inner_text("body")
+
+            with hard_limit(overall, f"чтение страницы {url}"):
+                log.debug("%s: снимаю разметку", url)
+                html = page.evaluate("() => document.documentElement.outerHTML")
+                log.debug("%s: снимаю текст", url)
+                text = page.evaluate(
+                    "() => document.body ? document.body.innerText : ''")
+            return html, text
         finally:
             page.close()
             time.sleep(self.settings.pause_s)

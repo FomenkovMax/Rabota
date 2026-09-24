@@ -66,7 +66,8 @@ def cmd_dump(config: Config, code: str, section: str) -> int:
     разметка не та, которую ждёт разбор. Отличить их можно только по
     самой странице, поэтому она кладётся в файл целиком.
     """
-    from src.banks.browser import BrowserSettings, browser_session
+    from src.banks.browser import (BrowserSettings, PageTooSlow,
+                                   browser_session)
 
     cls = registry.get(code)
     if cls is None:
@@ -102,7 +103,16 @@ def cmd_dump(config: Config, code: str, section: str) -> int:
         print(f"Браузер поднялся за {time.monotonic() - started:.1f} с, "
               f"открываю страницу…", flush=True)
         opened = time.monotonic()
-        html, text = session.snapshot(url)
+        try:
+            html, text = session.snapshot(url)
+        except PageTooSlow as exc:
+            print(f"\n[НЕ ОК] {exc}\n"
+                  f"Страница не отдалась за {time.monotonic() - opened:.0f} с. "
+                  f"Так же на ней встанет и сбор.\n"
+                  f"Обычно помогает уменьшить browser.settle_ms в "
+                  f"config/settings.yaml\nили задать разделу селектор "
+                  f"ожидания вместо паузы.", flush=True)
+            return 1
         print(f"Страница прочитана за {time.monotonic() - opened:.1f} с\n",
               flush=True)
 
