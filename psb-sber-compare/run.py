@@ -11,12 +11,14 @@
     python run.py suggest              черновые пары продуктов
     python run.py history              история запусков
     python run.py bot                  запустить Telegram-бота
+    python run.py dump sber 0          сохранить страницу раздела для разбора
 """
 
 from __future__ import annotations
 
 import argparse
 import logging
+import re
 import sys
 import webbrowser
 from pathlib import Path
@@ -51,6 +53,64 @@ def cmd_banks(config: Config) -> int:
               f"{'да' if cls.verified else 'НЕТ':<6} {cls.strategy}")
     print("\nСтолбец «Пров» — подтверждён ли сбор на живых данных.")
     print("Непроверенные банки помечаются в отчёте как неподтверждённые.")
+    return 0
+
+
+
+def cmd_dump(config: Config, code: str, section: str) -> int:
+    """Сохраняет страницу раздела как есть — чтобы видеть, что отдаёт сайт.
+
+    Когда раздел собирается пустым, причин может быть три: защита вернула
+    заглушку, условия дорисовываются скриптами уже после загрузки, или
+    разметка не та, которую ждёт разбор. Отличить их можно только по
+    самой странице, поэтому она кладётся в файл целиком.
+    """
+    from src.banks.browser import BrowserSettings, browser_session
+
+    cls = registry.get(code)
+    if cls is None:
+        print(f"Неизвестный банк «{code}». Доступны: {', '.join(registry.codes())}")
+        return 1
+    if not getattr(cls, "sections", ()):
+        print(f"У банка «{code}» нет разделов для обхода: это не сайтовый адаптер")
+        return 1
+
+    try:
+        index = int(section)
+        url, category = cls.sections[index]
+    except (ValueError, IndexError):
+        print(f"Нет раздела с номером «{section}». Разделы банка {cls.title}:")
+        for i, (addr, cat) in enumerate(cls.sections):
+            print(f"  {i}  {cat:<22} {addr}")
+        return 1
+
+    settings = config.bank_settings(code)
+    cookies = settings.get("region_cookies") or []
+    print(f"Банк    : {cls.title}")
+    print(f"Раздел  : {index} — {category}")
+    print(f"Адрес   : {url}")
+    print(f"Куки    : {len(cookies)}")
+    print("\nОткрываю…\n")
+
+    with browser_session(BrowserSettings.from_config(settings.get("browser")),
+                         cookies=cookies or None) as session:
+        html = session.fetch(url)
+        text = session.text(url)
+
+    out = Path("data") / f"dump-{code}-{index}.html"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(html, encoding="utf-8")
+
+    percents = re.findall(r"\d+[.,]\d+\s*%|\d+\s*%", text)
+    print(f"Размер HTML   : {len(html)} символов")
+    print(f"Размер текста : {len(text)} символов")
+    print(f"Защита в ответе: {'да, bobcmn' if 'bobcmn' in html else 'не видно'}")
+    print(f"Процентов в тексте: {len(percents)}"
+          + (f" — {', '.join(percents[:8])}" if percents else ""))
+    print(f"\nСтраница сохранена: {out}")
+    print("Посмотреть первые строки текста:")
+    for line in [ln.strip() for ln in text.splitlines() if ln.strip()][:15]:
+        print(f"   {line[:90]}")
     return 0
 
 
@@ -144,10 +204,12 @@ def main() -> int:
     )
     parser.add_argument("command", choices=[
         "collect", "check-bank", "banks", "report", "export",
-        "suggest", "history", "bot",
+        "suggest", "history", "bot", "dump",
     ])
     parser.add_argument("target", nargs="?", default="",
-                        help="код банка для check-bank")
+                        help="код банка для check-bank и dump")
+    parser.add_argument("section", nargs="?", default="0",
+                        help="номер раздела для dump, по умолчанию 0")
     parser.add_argument("--bank", default="", help="собрать только этот банк")
     parser.add_argument("--fmt", default="all",
                         choices=["xlsx", "pdf", "html", "all"])
@@ -169,6 +231,9 @@ def main() -> int:
 
     if args.command == "banks":
         return cmd_banks(config)
+    if args.command == "dump":
+        return cmd_dump(config, args.target.strip().lower(), args.section)
+
     if args.command == "check-bank":
         code = args.target or args.bank
         if not code:
