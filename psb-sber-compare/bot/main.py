@@ -326,9 +326,27 @@ async def run() -> None:
     if proxy:
         from aiogram.client.session.aiohttp import AiohttpSession  # noqa: PLC0415
 
+        # curl различает socks5 и socks5h тем, кто разрешает имена: сам
+        # curl или прокси. aiogram разрешает их через прокси всегда, и
+        # схему socks5h не принимает. Схемы с суффиксом приводим к той,
+        # которую он понимает, — поведение от этого не меняется.
+        for suffix, plain in (("socks5h://", "socks5://"),
+                              ("socks4a://", "socks4://")):
+            if proxy.lower().startswith(suffix):
+                proxy = plain + proxy[len(suffix):]
+                break
+
         log.info("Подключаюсь к Telegram через прокси %s",
                  proxy.split("@")[-1])   # без логина и пароля в логе
-        session = AiohttpSession(proxy=proxy)
+        try:
+            session = AiohttpSession(proxy=proxy)
+        except ValueError as exc:
+            raise SystemExit(
+                f"Не понимаю адрес прокси в BOT_PROXY: {exc}\n"
+                f"Ожидаю вид схема://логин:пароль@адрес:порт, где схема —\n"
+                f"socks5, socks4 или http. Например:\n"
+                f"  BOT_PROXY=socks5://myuser:mypass@77.83.184.180:8000"
+            ) from None
 
     bot = Bot(token=token, session=session,
               default=DefaultBotProperties(parse_mode=ParseMode.HTML))
