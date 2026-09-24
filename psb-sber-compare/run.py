@@ -119,6 +119,10 @@ def cmd_dump(config: Config, code: str, section: str) -> int:
     out = Path("data") / f"dump-{code}-{index}.html"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(html, encoding="utf-8")
+    # Текст отдельным файлом: по нему видно порядок строк, а значит и то,
+    # где на карточке стоит ставка относительно названия продукта.
+    plain = out.with_suffix(".txt")
+    plain.write_text(text, encoding="utf-8")
 
     percents = re.findall(r"\d+[.,]\d+\s*%|\d+\s*%", text)
     print(f"Размер HTML   : {len(html)} символов")
@@ -127,9 +131,16 @@ def cmd_dump(config: Config, code: str, section: str) -> int:
     print(f"Процентов в тексте: {len(percents)}"
           + (f" — {', '.join(percents[:8])}" if percents else ""))
     print(f"\nСтраница сохранена: {out}")
-    print("Посмотреть первые строки текста:")
-    for line in [ln.strip() for ln in text.splitlines() if ln.strip()][:15]:
-        print(f"   {line[:90]}")
+    print(f"Текст сохранён    : {plain}")
+
+    lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+    print(f"\nТекст страницы, {len(lines)} строк "
+          f"(строки со ставкой помечены знаком %):")
+    for number, line in enumerate(lines[:120]):
+        mark = "%" if re.search(r"\d[,.]?\d*\s?%", line) else " "
+        print(f" {mark} {number:>3}  {line[:100]}")
+    if len(lines) > 120:
+        print(f"     … ещё {len(lines) - 120} строк, целиком в {plain}")
     return 0
 
 
