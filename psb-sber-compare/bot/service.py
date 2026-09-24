@@ -97,6 +97,13 @@ def compare_text(bank_code: str) -> str:
         for s in segments:
             lines.append(f"🔴 {_esc(s.segment)}: {_esc(s.headline[:110])}")
 
+    no_region = data.get("no_region") or []
+    if no_region:
+        names = ", ".join(no_region)
+        lines += ["", f"⚠️ <i>Регион на сайте не выбран: {_esc(names)}. "
+                      "Показаны условия, которые сайт отдал по умолчанию — "
+                      "обычно московские, а не луганские.</i>"]
+
     if data["unverified"]:
         names = ", ".join(data["unverified"])
         lines += ["", f"⚠️ <i>Сбор не подтверждён на живых данных: {_esc(names)}. "

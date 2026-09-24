@@ -23,6 +23,9 @@ class PsbAdapter(BankAdapter):
     title = "ПСБ"
     strategy = "SSR-состояние страницы, обычный HTTP-запрос"
     verified = True
+    # Регион задаётся кукой geoId; проверено: ставки по вкладам в Москве
+    # и Луганске действительно различаются.
+    sets_region = True
 
     def collect(self) -> CollectResult:
         settings = self.settings

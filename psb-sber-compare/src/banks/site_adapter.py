@@ -28,21 +28,42 @@ class SiteAdapter(BankAdapter):
     wait_for: str = ""
     #: Что известно про защиту — попадает в лог и в README.
     protection: str = ""
+    #: Умеет ли адаптер выбирать регион на сайте. Пока не умеет — данные
+    #: нельзя подписывать нужным регионом: сайт отдаст условия по своему
+    #: усмотрению, обычно московские, и подпись «ЛНР» будет неправдой.
+    sets_region: bool = False
 
     def collect(self) -> CollectResult:
         if not self.sections:
             return self._failed("не заданы разделы для обхода")
 
         settings = BrowserSettings.from_config(self.settings.get("browser"))
-        region_label = self.settings.get("region_label", "")
         now = datetime.now().isoformat(timespec="seconds")
+
+        # Куки региона из настроек банка: [{name, value, domain}, ...].
+        region_cookies = self.settings.get("region_cookies") or []
+        applied = self.sets_region or bool(region_cookies)
+
+        # Подписываем регионом только то, что действительно собрано по
+        # этому региону. Иначе московские условия уехали бы в отчёт под
+        # видом луганских, и никто бы этого не заметил.
+        if applied:
+            region_label = self.settings.get("region_label", "")
+        else:
+            region_label = "регион на сайте не выбран"
+            log.warning(
+                "%s: регион на сайте не задаётся, сайт отдаст условия по "
+                "своему усмотрению (обычно московские). Данные помечены как "
+                "собранные без выбора региона. Настроить: banks.%s.region_cookies",
+                self.title, self.code,
+            )
 
         products = []
         visited = 0
         failures: list[str] = []
 
         try:
-            with browser_session(settings) as session:
+            with browser_session(settings, cookies=region_cookies or None) as session:
                 for url, category in self.sections:
                     try:
                         text = session.text(url, wait_for=self.wait_for)
@@ -81,5 +102,7 @@ class SiteAdapter(BankAdapter):
             log.warning("%s: разделов с ошибкой %s из %s",
                         self.title, len(failures), len(self.sections))
 
-        return self._result(products=products, promos=[],
-                            pages_visited=visited, collected_at=now)
+        result = self._result(products=products, promos=[],
+                              pages_visited=visited, collected_at=now)
+        object.__setattr__(result, "region_applied", applied)
+        return result

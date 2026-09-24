@@ -35,13 +35,17 @@ class CollectResult:
     error: str = ""
     collected_at: str = ""
     pages_visited: int = 0
+    #: Был ли на сайте действительно выбран нужный регион. False означает,
+    #: что условия собраны те, которые сайт отдал по умолчанию.
+    region_applied: bool = True
 
     @property
     def summary(self) -> str:
         if not self.ok:
             return f"{self.bank}: сбор не удался — {self.error}"
+        note = "" if self.region_applied else " (регион на сайте не выбран)"
         return (f"{self.bank}: продуктов {len(self.products)}, "
-                f"акций {len(self.promos)}")
+                f"акций {len(self.promos)}{note}")
 
 
 class BankAdapter(ABC):

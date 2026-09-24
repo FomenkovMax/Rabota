@@ -15,6 +15,13 @@ thresholds:
 banks:
   sber:
     enabled: true
+    # Выбор региона на сайте. Пока не задан, сайт отдаёт условия по своему
+    # усмотрению — обычно московские, и подписывать их «ЛНР» нельзя.
+    # Как заполнить: открой сайт банка в браузере, выбери нужный регион,
+    # посмотри в инструментах разработчика (F12 → Application → Cookies),
+    # какая кука за это отвечает, и перенеси её сюда.
+    # region_cookies:
+    #   - {name: "имя_куки", value: "значение", domain: ".sberbank.ru"}
   psb:
     enabled: true
     pause: 1.5            # пауза между страницами, секунды
@@ -26,6 +33,7 @@ banks:
     max_pages: 0          # 0 = без ограничения; поставь 30 для быстрой пробы
   vtb:
     enabled: false        # включи после проверки: python run.py check-bank vtb
+    # region_cookies: [{name: "user_region", value: "LNR", domain: ".vtb.ru"}]
   genbank:
     enabled: false        # включи после проверки: python run.py check-bank genbank
   cmr:
