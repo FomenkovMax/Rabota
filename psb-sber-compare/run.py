@@ -149,7 +149,7 @@ def cmd_check_bank(config: Config, code: str) -> int:
         print(f"Защита   : {cls.protection}")
     print("\nПробую собрать…\n")
 
-    result = collect_bank(config, code)
+    result = collect_bank(config, code, save=False)
     if not result.ok:
         print(f"[НЕ ОК] {result.error}")
         print("\nЧто проверить:")
@@ -159,18 +159,29 @@ def cmd_check_bank(config: Config, code: str) -> int:
         return 1
 
     print(f"[ОК] {result.summary}")
-    by_category: dict[str, int] = {}
+    with_rate = sum(1 for p in result.products if p.rate_min is not None)
+    print(f"     со ставкой {with_rate}, без ставки {len(result.products) - with_rate}")
+
+    # Весь список, а не примеры: сверять с сайтом нужно каждую цифру.
+    by_category: dict[str, list] = {}
     for product in result.products:
-        by_category[product.category] = by_category.get(product.category, 0) + 1
-    for category, count in sorted(by_category.items(), key=lambda x: -x[1]):
-        print(f"     {count:>3}  {category}")
+        by_category.setdefault(product.category or "Без категории", []).append(product)
+    for category, items in sorted(by_category.items(), key=lambda x: -len(x[1])):
+        print(f"\n  {category} — {len(items)}")
+        for product in sorted(items, key=lambda p: p.title):
+            if product.rate_min is not None:
+                low, high = product.rate_min, product.rate_max
+                rate = (f"{low:g}%" if low == high else f"{low:g}–{high:g}%")
+                source = product.terms.get("Источник ставки", "")
+                note = f"  ← «{product.rate_raw}»" + (" (с витрины)" if source else "")
+            elif product.apr_min is not None:
+                rate, note = f"ПСК {product.apr_min:g}%", "  ← ставка не указана, только ПСК"
+            else:
+                rate, note = "—", "  ← ставка на сайте не указана"
+            print(f"     {product.title[:44]:<44} {rate:>12}{note}")
 
-    print("\nПримеры извлечённых условий:")
-    for product in result.products[:6]:
-        rate = (f"{product.rate_min:g}–{product.rate_max:g}%"
-                if product.rate_min is not None else "ставка не извлечена")
-        print(f"     {product.title[:46]:<46} {rate}")
-
+    print("\nПроверка в базу не пишет: отчёт и бот по-прежнему показывают "
+          "последний полный сбор.\nПолный сбор по всем банкам: python run.py collect")
     if not cls.verified:
         print(f"\nСбор прошёл. Если цифры сходятся с сайтом, включи банк в "
               f"config/settings.yaml\nи поставь verified = True в адаптере "

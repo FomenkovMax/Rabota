@@ -90,13 +90,19 @@ def _adapter_for(config: Config, code: str) -> Any:
     return FileAdapter(adapter, source) if source else adapter
 
 
-def collect_bank(config: Config, code: str) -> Any:
-    """Собирает один банк и складывает результат в базу."""
+def collect_bank(config: Config, code: str, *, save: bool = True) -> Any:
+    """Собирает один банк и, если просят, складывает результат в базу.
+
+    Проверка банка (`check-bank`) в базу не пишет. Раньше писала — и
+    появлялся «успешный сбор», в котором был один банк. Отчёт и бот
+    берут последний успешный сбор, поэтому после проверки Сбера они
+    показывали только Сбер, а ПСБ как будто исчезал.
+    """
     adapter = _adapter_for(config, code)
     log.info("%s: %s", adapter.title, adapter.strategy)
 
     result = adapter.collect()
-    if not result.ok:
+    if not result.ok or not save:
         return result
 
     storage = Storage(config.path("storage", "db_path", default="data/psb_sber.db"))
@@ -266,6 +272,9 @@ def load_report_data(config: Config, *, competitor: str = "") -> dict[str, Any] 
             run_count=len(storage.run_summary(limit=400)),
             psb_total=len(rival_products), sber_total=len(sber_products),
             thresholds=thresholds,
+            catalog={title: by_bank.get(title, [])
+                     for title in [home_title] + competitor_titles},
+            catalog_banks=[home_title] + competitor_titles,
         )
 
         return {

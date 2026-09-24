@@ -172,6 +172,32 @@ svg{display:block;max-width:100%;overflow:visible}
 .segsrc{color:var(--ink-muted);font-size:12.5px;margin:0 0 10px;font-style:italic}
 .exp{margin:8px 0 0;padding-left:18px}
 .exp li{margin-bottom:4px}
+.cat{border-bottom:1px solid var(--grid)}
+.cat:last-of-type{border-bottom:0}
+.cat>summary{
+  cursor:pointer;display:flex;align-items:center;gap:10px;
+  padding:12px 0;font-weight:600;font-size:15px;list-style:none;user-select:none;
+}
+.cat>summary::-webkit-details-marker{display:none}
+.cat>summary::before{content:"▸";color:var(--ink-muted);font-size:12px;transition:transform .15s}
+.cat[open]>summary::before{transform:rotate(90deg)}
+.cat .cnt{color:var(--ink-muted);font-size:12.5px;font-weight:500;margin-left:auto}
+.catgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:18px;padding:0 0 16px}
+.catcol h4{
+  margin:0 0 4px;font-size:11.5px;font-weight:700;letter-spacing:.05em;
+  color:var(--ink-muted);text-transform:uppercase;
+}
+.catrow{
+  display:flex;justify-content:space-between;align-items:baseline;gap:12px;
+  padding:7px 0;border-bottom:1px dashed var(--grid);font-size:13.5px;
+}
+.catrow:last-child{border-bottom:0}
+.catrow .n{min-width:0;overflow-wrap:anywhere}
+.catrow .n a{color:var(--ink);text-decoration:none}
+.catrow .n a:hover{text-decoration:underline}
+.catrow .src{display:block;color:var(--ink-muted);font-size:11.5px}
+.catrow .r{font-variant-numeric:tabular-nums;white-space:nowrap;font-weight:600}
+.catrow .r.none{color:var(--ink-muted);font-weight:500}
 @media(max-width:640px){
   .vs{grid-template-columns:1fr;gap:10px;text-align:left}
   .vs-mid{justify-self:start}
@@ -542,6 +568,64 @@ def _promo_analysis(segments: list[Any], expired: list[Any]) -> str:
     return "".join(blocks)
 
 
+_CATEGORY_ORDER = ("Вклады", "Накопительные счета", "Кредиты", "Ипотека",
+                   "Кредитные карты", "Дебетовые карты", "Банковские карты")
+
+
+def _catalog_rate(product: Any) -> tuple[str, bool]:
+    """Ставка для каталога и признак того, что это именно ставка."""
+    low = product.rate_min
+    if low is not None:
+        high = product.rate_max if product.rate_max is not None else low
+        if low == high:
+            return fmt_rate(low), True
+        return f"{fmt_rate(low)[:-1]}–{fmt_rate(high)}", True
+    if product.apr_min is not None:
+        return f"ПСК {fmt_rate(product.apr_min)}", False
+    return "не указана", False
+
+
+def _catalog(catalog: dict[str, list[Any]], banks: list[str]) -> str:
+    """Все продукты банков по категориям — и те, у кого нет пары для светофора."""
+    def category_of(product: Any) -> str:
+        return product.category or "Прочее"
+
+    categories = {category_of(p) for items in catalog.values() for p in items}
+    if not categories:
+        return '<p class="empty">Продуктов нет: полный сбор по банкам ещё не запускался.</p>'
+
+    def rank(category: str) -> tuple[int, str]:
+        known = _CATEGORY_ORDER.index(category) if category in _CATEGORY_ORDER else 99
+        return known, category
+
+    blocks = []
+    for category in sorted(categories, key=rank):
+        columns, counts = [], []
+        for bank in banks:
+            items = sorted((p for p in catalog.get(bank, []) if category_of(p) == category),
+                           key=lambda p: p.title.lower())
+            counts.append(f"{bank} {len(items)}")
+            rows = []
+            for product in items:
+                rate, is_rate = _catalog_rate(product)
+                terms = product.terms or {}
+                source = ("ставка с карточки на витрине раздела"
+                          if terms.get("Источник ставки") else "")
+                name = (f'<a href="{e(product.source_url)}" target="_blank" rel="noopener">'
+                        f'{e(product.title)}</a>' if product.source_url else e(product.title))
+                rows.append(
+                    f'<div class="catrow"><span class="n">{name}'
+                    + (f'<span class="src">{e(source)}</span>' if source else "")
+                    + f'</span><span class="r{"" if is_rate else " none"}">{e(rate)}</span></div>')
+            body = "".join(rows) or '<p class="empty">В этой категории продуктов не найдено</p>'
+            columns.append(f'<div class="catcol"><h4>{e(bank)}</h4>{body}</div>')
+        blocks.append(
+            f'<details class="cat"><summary>{e(category)}'
+            f'<span class="cnt">{e(" · ".join(counts))}</span></summary>'
+            f'<div class="catgrid">{"".join(columns)}</div></details>')
+    return "".join(blocks)
+
+
 def render_report(
     *,
     comparisons: list[Comparison],
@@ -557,6 +641,8 @@ def render_report(
     psb_total: int,
     sber_total: int,
     thresholds: Any,
+    catalog: dict[str, list[Any]] | None = None,
+    catalog_banks: list[str] | None = None,
 ) -> str:
     total_promos = promo_active_total
     delta_chart = _delta_chart(comparisons)
@@ -607,6 +693,16 @@ def render_report(
   {_traffic_table(comparisons)}
 </section>
 
+<section class="card">
+  <h2>Каталог продуктов</h2>
+  <p class="hint">Все розничные продукты, найденные на сайтах банков, — в том числе те,
+  для которых пара в светофоре не настроена. Нажмите на категорию, чтобы раскрыть.
+  «Не указана» — на странице продукта ставки нет, цифру мы не додумываем.
+  «ПСК» — указана только полная стоимость кредита, она не равна ставке.
+  Название ведёт на страницу-источник.</p>
+  {_catalog(catalog or {}, catalog_banks or list((catalog or {}).keys()))}
+</section>
+
 {delta_section}
 
 <section class="card">
@@ -623,7 +719,7 @@ def render_report(
   Внутри сегмента сравнивается однотипная выгода: кешбэк с кешбэком, ставка со ставкой.
   Если размеченных акций у банка нет, вывод строится по условиям его продуктов —
   отсутствие промо-баннера не означает отсутствие продукта.
-  По ПСБ данные собраны с сайта, по Сберу — из предоставленной выгрузки.</p>
+  Данные собраны с публичных сайтов банков.</p>
   {_promo_analysis(promo_segments, expired_promos)}
 </section>
 

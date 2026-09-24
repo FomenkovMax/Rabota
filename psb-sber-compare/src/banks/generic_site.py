@@ -121,7 +121,7 @@ def _is_product_title(line: str) -> bool:
     return bool(_PRODUCT_WORD.search(head))
 
 
-def _rates_of(line: str) -> list[float] | None:
+def rates_of(line: str) -> list[float] | None:
     """Ставки строки, если это вообще строка про ставку."""
     if not _RATE_LINE.search(line):
         return None
@@ -153,14 +153,14 @@ def _rate_above_title(lines: list[str], titles: list[int]) -> bool:
         for step in range(index - 1, stop_up, -1):
             if step in mark:
                 break
-            if _rates_of(lines[step]) is not None:
+            if rates_of(lines[step]) is not None:
                 distance_up = index - step
                 break
 
         stop_down = titles[position + 1] if position + 1 < len(titles) else len(lines)
         distance_down = None
         for step in range(index + 1, stop_down):
-            if _rates_of(lines[step]) is not None:
+            if rates_of(lines[step]) is not None:
                 distance_down = step - index
                 break
 
@@ -198,7 +198,7 @@ def extract_products(text: str, *, window: int = 6) -> list[TextProduct]:
             above = index - 1
             if above < 0 or above in used_rate_lines or above in mark:
                 continue
-            values = _rates_of(lines[above])
+            values = rates_of(lines[above])
             if values is None or _NOISE.search(lines[above]):
                 continue
             used_rate_lines.add(above)
@@ -221,7 +221,7 @@ def extract_products(text: str, *, window: int = 6) -> list[TextProduct]:
             candidate = lines[candidate_index]
             if _NOISE.search(candidate):
                 continue
-            values = _rates_of(candidate)
+            values = rates_of(candidate)
             if values is None:
                 continue
             used_rate_lines.add(candidate_index)
@@ -249,7 +249,7 @@ _CATEGORY_BY_TITLE = (
 )
 
 
-def _category_for(title: str, page_category: str) -> str:
+def category_for(title: str, page_category: str) -> str:
     """Категория по названию продукта, если оно однозначно; иначе — по странице."""
     for pattern, category in _CATEGORY_BY_TITLE:
         if pattern.search(title):
@@ -273,7 +273,7 @@ def to_products(items: Iterable[TextProduct], *, bank: str, category: str,
             bank=bank,
             url_path=source_url,
             title=item.title,
-            category=_category_for(item.title, category),
+            category=category_for(item.title, category),
             region=region,
             rate_min=item.rate_min,
             rate_max=item.rate_max,

@@ -111,6 +111,32 @@ def find_chromium() -> str | None:
     return None
 
 
+_SNAPSHOT_JS = """() => ({
+    html: document.documentElement.outerHTML,
+    text: document.body ? document.body.innerText : ''
+})"""
+
+# Заголовок берём из h1: в тексте страницы он теряется среди меню, а
+# document.title у банков обычно с хвостом вроде «— оформить онлайн».
+_INSPECT_JS = """() => {
+    const h1 = document.querySelector('h1');
+    return {
+        text: document.body ? document.body.innerText : '',
+        h1: h1 ? h1.innerText.trim() : '',
+        title: document.title || '',
+        links: Array.from(document.querySelectorAll('a[href]')).map(a => [
+            a.href,
+            (a.innerText || a.getAttribute('aria-label') || '').trim().slice(0, 160)
+        ])
+    };
+}"""
+
+
+class PageFailed(RuntimeError):
+    """Страница не прочиталась, но браузер жив — можно идти дальше."""
+
+
+
 @dataclass
 class BrowserSettings:
     """Настройки браузерного сбора."""
@@ -215,15 +241,28 @@ class BrowserSession:
     def snapshot(self, url: str, *, wait_for: str = "") -> tuple[str, str]:
         """Разметка и видимый текст страницы за одну загрузку.
 
-        Единственный путь чтения: fetch и text — обёртки над ним. Порознь
-        они успели разъехаться, и сбор вставал там, где диагностика
+        Единственный путь чтения разметки: fetch и text — обёртки над ним.
+        Порознь они успели разъехаться, и сбор вставал там, где диагностика
         отрабатывала за секунды, потому что таймаут перехода был проставлен
         только в одном из трёх мест.
+        """
+        data = self._visit(url, wait_for, _SNAPSHOT_JS)
+        return data["html"], data["text"]
 
-        Разметка снимается через evaluate, а не через page.content(): у
-        content нет параметра таймаута, и на странице, где скрипты
-        непрерывно перерисовывают документ, он ждёт стабильного состояния
-        сколько угодно.
+    def inspect(self, url: str, *, wait_for: str = "") -> dict[str, Any]:
+        """Текст, заголовок и ссылки страницы — всё, что нужно обходу каталога.
+
+        Разметку целиком не отдаём: у Сбера она весит полтора мегабайта, а
+        обходу хватает текста и списка ссылок.
+        """
+        return self._visit(url, wait_for, _INSPECT_JS)
+
+    def _visit(self, url: str, wait_for: str, script: str) -> dict[str, Any]:
+        """Открывает страницу, ждёт скрипты и снимает с неё данные сценарием.
+
+        Данные снимаются через evaluate, а не через page.content(): у content
+        нет параметра таймаута, и на странице, где скрипты непрерывно
+        перерисовывают документ, он ждёт стабильного состояния сколько угодно.
         """
         if self._context is None:
             raise BrowserUnavailable("Сессия браузера не запущена")
@@ -247,10 +286,10 @@ class BrowserSession:
             page.wait_for_timeout(self.settings.settle_ms)
 
             with hard_limit(self._overall(), f"чтение страницы {url}"):
-                html = page.evaluate("() => document.documentElement.outerHTML")
-                text = page.evaluate(
-                    "() => document.body ? document.body.innerText : ''")
-            return html, text
+                data = page.evaluate(script)
+            data["status"] = status
+            data["url"] = page.url
+            return data
         finally:
             page.close()
             time.sleep(self.settings.pause_s)
@@ -336,3 +375,134 @@ def read_page(url: str, settings: "BrowserSettings", *,
         raise BrowserUnavailable(first)
     return first, second
 
+
+def _serve_pages(settings: "BrowserSettings", cookies: list[dict] | None,
+                 wait_for: str, channel: Any) -> None:
+    """Тело дочернего процесса: держит браузер и читает присланные адреса."""
+    try:
+        with browser_session(settings, cookies=cookies) as session:
+            channel.send(("ready", ""))
+            while True:
+                url = channel.recv()
+                if url is None:
+                    break
+                try:
+                    channel.send(("ok", session.inspect(url, wait_for=wait_for)))
+                except Exception as exc:            # noqa: BLE001
+                    channel.send(("fail", f"{type(exc).__name__}: {str(exc)[:200]}"))
+    except Exception as exc:                        # noqa: BLE001
+        try:
+            channel.send(("dead", f"{type(exc).__name__}: {str(exc)[:200]}"))
+        except Exception:                           # noqa: BLE001
+            pass
+    finally:
+        channel.close()
+
+
+class PageReader:
+    """Браузер для обхода многих страниц: один на все, но с пределом на каждую.
+
+    Запускать браузер заново на каждую страницу надёжно, но медленно, а на
+    обходе каталога страниц десятки. Держать один браузер быстро, но если
+    чужая защита подвесит его на одной странице, встанет весь обход.
+
+    Здесь оба плюса: браузер живёт в дочернем процессе и читает страницы по
+    очереди, а родитель ждёт каждую не дольше заданного. Не дождался —
+    процесс убивается, следующая страница поднимет свежий.
+    """
+
+    def __init__(self, settings: "BrowserSettings", *,
+                 cookies: list[dict] | None = None, wait_for: str = "",
+                 limit_s: float = 0, start_limit_s: float = 60) -> None:
+        self.settings = settings
+        self.cookies = cookies
+        self.wait_for = wait_for
+        self.limit_s = limit_s or (
+            (settings.timeout_ms * 2 + settings.settle_ms) / 1000 + 20)
+        self.start_limit_s = start_limit_s
+        self._process: Any = None
+        self._channel: Any = None
+
+    def __enter__(self) -> "PageReader":
+        return self
+
+    def __exit__(self, *exc: Any) -> None:
+        self.close()
+
+    def read(self, url: str) -> dict[str, Any]:
+        """Текст, заголовок и ссылки страницы.
+
+        PageTooSlow — страница не отдалась в срок, PageFailed — отдалась с
+        ошибкой; в обоих случаях можно читать следующую. BrowserUnavailable —
+        браузер не поднимается вовсе, дальше читать бесполезно.
+        """
+        if self._process is None or not self._process.is_alive():
+            self._start()
+
+        self._channel.send(url)
+        if not self._channel.poll(self.limit_s):
+            self._kill()
+            raise PageTooSlow(f"страница не отдалась за {self.limit_s:.0f} с: {url}")
+        try:
+            kind, payload = self._channel.recv()
+        except EOFError:
+            self._kill()
+            raise PageTooSlow(f"чтение страницы оборвалось: {url}") from None
+
+        if kind == "ok":
+            return payload
+        if kind == "dead":
+            self._kill()
+            raise BrowserUnavailable(payload)
+        raise PageFailed(payload)
+
+    def close(self) -> None:
+        if self._process is not None and self._process.is_alive():
+            try:
+                self._channel.send(None)
+                self._process.join(10)
+            except Exception:                       # noqa: BLE001
+                pass
+        self._kill()
+
+    def _start(self) -> None:
+        self._kill()
+        context = multiprocessing.get_context("fork")
+        ours, theirs = context.Pipe(duplex=True)
+        process = context.Process(
+            target=_serve_pages,
+            args=(self.settings, self.cookies, self.wait_for, theirs),
+            daemon=True,
+        )
+        process.start()
+        theirs.close()
+        self._process, self._channel = process, ours
+
+        if not ours.poll(self.start_limit_s):
+            self._kill()
+            raise BrowserUnavailable(
+                f"браузер не запустился за {self.start_limit_s:.0f} с")
+        try:
+            kind, payload = ours.recv()
+        except EOFError:
+            self._kill()
+            raise BrowserUnavailable("браузер завершился при запуске") from None
+        if kind != "ready":
+            self._kill()
+            raise BrowserUnavailable(payload)
+
+    def _kill(self) -> None:
+        process, channel = self._process, self._channel
+        self._process = self._channel = None
+        if channel is not None:
+            try:
+                channel.close()
+            except Exception:                       # noqa: BLE001
+                pass
+        if process is not None:
+            if process.is_alive():
+                process.terminate()
+                process.join(5)
+                if process.is_alive():
+                    process.kill()
+            process.join(5)

@@ -14,7 +14,10 @@
 
 from __future__ import annotations
 
+import re
+
 from .base import registry
+from .crawl_adapter import CrawlAdapter
 from .site_adapter import SiteAdapter
 
 
@@ -35,20 +38,50 @@ class CmrAdapter(SiteAdapter):
 
 
 @registry.register
-class SberAdapter(SiteAdapter):
+class SberAdapter(CrawlAdapter):
+    """Сбер: обход розницы по ссылкам, условия — со страницы каждого продукта.
+
+    Витрины Сбера показывают ставку не у всех продуктов: у кредитов на
+    карточке только сумма и срок. Поэтому с витрин собираются ссылки, а
+    условия берутся со страницы продукта; ставка с карточки витрины —
+    запасная, с пометкой источника.
+    """
+
     code = "sber"
     title = "Сбер"
-    strategy = "браузер: сайт показывает JS-проверку до содержимого"
+    strategy = "браузер: обход витрин и страниц продуктов"
     protection = "JS-челлендж F5 (переменная bobcmn в ответе)"
     verified = False
 
-    sections = (
-        ("https://www.sberbank.ru/ru/person/contributions", "Вклады"),
-        ("https://www.sberbank.ru/ru/person/contributions/savings", "Накопительные счета"),
-        ("https://www.sberbank.ru/ru/person/credits/money", "Кредиты"),
-        ("https://www.sberbank.ru/ru/person/credits/home", "Ипотека"),
-        ("https://www.sberbank.ru/ru/person/bank_cards/credit", "Кредитные карты"),
-        ("https://www.sberbank.ru/ru/person/bank_cards/debit", "Дебетовые карты"),
+    base_url = "https://www.sberbank.ru"
+    seeds = (
+        "https://www.sberbank.ru/ru/person/contributions",
+        "https://www.sberbank.ru/ru/person/contributions/savings",
+        "https://www.sberbank.ru/ru/person/credits/money",
+        "https://www.sberbank.ru/ru/person/credits/home",
+        "https://www.sberbank.ru/ru/person/bank_cards/credit",
+        "https://www.sberbank.ru/ru/person/bank_cards/debit",
+    )
+    families = (
+        ("/ru/person/contributions/savings", "Накопительные счета"),
+        ("/ru/person/contributions", "Вклады"),
+        ("/ru/person/credits/home", "Ипотека"),
+        ("/ru/person/credits", "Кредиты"),
+        ("/ru/person/bank_cards/credit", "Кредитные карты"),
+        ("/ru/person/bank_cards/debit", "Дебетовые карты"),
+        ("/ru/person/bank_cards", "Банковские карты"),
+    )
+    # Служебное внутри розничных разделов: из меню Сбера это «Полезное» —
+    # калькуляторы, вопросы, налоги, уведомления, компенсации, выплаты АСВ,
+    # сейфы, номинальный счёт, ИИ-помощник, кредитная история. Акции
+    # собираются отдельно и в каталог продуктов не идут.
+    skip = re.compile(
+        r"(calc|kalkul|faq|question|vopros|help|pomosh|nalog|tax|notif|uvedoml|"
+        r"compens|kompens|asv|safe|seif|sejf|nominal|assistant|gigachat|/ai\b|"
+        r"podderzh|support|potencial|potential|history|istori|archive|arhiv|"
+        r"document|dokument|tarif|stavki|prolong|prodlen|instruction|how_to|"
+        r"article|news|blog|promo|akci|action)",
+        re.I,
     )
 
 
