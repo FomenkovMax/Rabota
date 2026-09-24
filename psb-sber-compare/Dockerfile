@@ -1,5 +1,8 @@
 # Образ с браузером на борту: три банка из пяти читаются только им.
-FROM mcr.microsoft.com/playwright/python:v1.47.0-jammy
+# Версия образа и версия playwright в requirements.txt обязаны совпадать:
+# библиотека ищет браузер по пути с номером своей сборки и не находит
+# чужой. Меняешь здесь — меняй и там.
+FROM mcr.microsoft.com/playwright/python:v1.63.0-jammy
 
 WORKDIR /app
 
@@ -23,6 +26,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends libnss3-tools \
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+
+# Страховка на случай, если версии всё же разойдутся: доставит браузер
+# под установленную библиотеку. При совпадающих версиях ничего не качает.
+RUN playwright install chromium
 
 COPY . .
 
