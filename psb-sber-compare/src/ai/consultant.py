@@ -21,7 +21,18 @@ from typing import Any
 
 log = logging.getLogger(__name__)
 
-MODEL = "claude-opus-5"
+#: Модель по умолчанию. Меняется переменной AI_MODEL: у посредников
+#: набор моделей свой, и нужной там может просто не быть.
+DEFAULT_MODEL = "claude-opus-5"
+
+
+def model_name() -> str:
+    return os.environ.get("AI_MODEL", "").strip() or DEFAULT_MODEL
+
+
+def base_url() -> str:
+    """Адрес API. Пусто — официальный Anthropic."""
+    return os.environ.get("ANTHROPIC_BASE_URL", "").strip()
 
 SYSTEM_PROMPT = """\
 Ты — аналитик розничного бизнеса Сбербанка. Твой собеседник — руководитель \
@@ -48,7 +59,7 @@ class ConsultantUnavailable(RuntimeError):
 @dataclass
 class Advice:
     text: str
-    model: str = MODEL
+    model: str = DEFAULT_MODEL
     input_tokens: int = 0
     output_tokens: int = 0
 
@@ -70,6 +81,11 @@ def _client() -> Any:
             "Не задан ANTHROPIC_API_KEY.\n"
             "Положи ключ в файл .env рядом с проектом или в переменные окружения."
         )
+
+    url = base_url()
+    if url:
+        log.info("Обращаюсь к API по адресу %s", url)
+        return anthropic.Anthropic(base_url=url)
     return anthropic.Anthropic()
 
 
@@ -124,15 +140,31 @@ def ask(facts: str, question: str = "", *, effort: str = "high") -> Advice:
         f"Вопрос: {question or DEFAULT_QUESTION}"
     )
 
+    # Параметры adaptive thinking и effort появились недавно. Официальный
+    # API их принимает, а посредник может работать на более старой версии
+    # и ответить ошибкой. Поэтому при отказе по форме запроса повторяем
+    # без них: лучше ответ попроще, чем неработающая кнопка.
+    request = {
+        "model": model_name(),
+        "max_tokens": 8000,
+        "system": SYSTEM_PROMPT,
+        "messages": [{"role": "user", "content": user_text}],
+    }
+    extras = {
+        "thinking": {"type": "adaptive"},
+        "output_config": {"effort": effort},
+    }
+
+    def call(payload: dict) -> Any:
+        return client.messages.create(**payload)
+
     try:
-        response = client.messages.create(
-            model=MODEL,
-            max_tokens=16000,
-            system=SYSTEM_PROMPT,
-            thinking={"type": "adaptive"},
-            output_config={"effort": effort},
-            messages=[{"role": "user", "content": user_text}],
-        )
+        try:
+            response = call({**request, **extras})
+        except (anthropic.BadRequestError, TypeError) as exc:
+            log.warning("Сервер не принял расширенные параметры (%s), "
+                        "повторяю упрощённым запросом", str(exc)[:120])
+            response = call(request)
     except anthropic.AuthenticationError as exc:
         raise ConsultantUnavailable("Ключ ANTHROPIC_API_KEY отклонён") from exc
     except anthropic.RateLimitError as exc:
@@ -140,12 +172,19 @@ def ask(facts: str, question: str = "", *, effort: str = "high") -> Advice:
         raise ConsultantUnavailable(
             f"Превышен лимит запросов, попробуй через {retry} с"
         ) from exc
+    except anthropic.NotFoundError as exc:
+        raise ConsultantUnavailable(
+            f"Модель «{model_name()}» недоступна по этому адресу.\n"
+            "Посмотри список моделей у поставщика ключа и впиши нужную "
+            "в переменную AI_MODEL."
+        ) from exc
     except anthropic.APIStatusError as exc:
         raise ConsultantUnavailable(
             f"API вернул ошибку {exc.status_code}: {exc.message}"
         ) from exc
     except anthropic.APIConnectionError as exc:
-        raise ConsultantUnavailable("Нет связи с API Anthropic") from exc
+        target = base_url() or "api.anthropic.com"
+        raise ConsultantUnavailable(f"Нет связи с {target}") from exc
 
     if response.stop_reason == "refusal":
         detail = getattr(response.stop_details, "explanation", "") or ""
@@ -155,10 +194,12 @@ def ask(facts: str, question: str = "", *, effort: str = "high") -> Advice:
     if not text:
         raise ConsultantUnavailable("Модель вернула пустой ответ")
 
+    usage = getattr(response, "usage", None)
     return Advice(
         text=text,
-        input_tokens=response.usage.input_tokens,
-        output_tokens=response.usage.output_tokens,
+        model=model_name(),
+        input_tokens=getattr(usage, "input_tokens", 0) or 0,
+        output_tokens=getattr(usage, "output_tokens", 0) or 0,
     )
 
 
