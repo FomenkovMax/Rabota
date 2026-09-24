@@ -203,6 +203,29 @@ class BrowserSession:
             page.close()
             time.sleep(self.settings.pause_s)
 
+    def snapshot(self, url: str, *, wait_for: str = "") -> tuple[str, str]:
+        """Разметка и видимый текст одной страницы за одну загрузку.
+
+        Порознь fetch и text открывают её дважды, а это лишний поход на
+        чужой сервер и двойное ожидание скриптов.
+        """
+        if self._context is None:
+            raise BrowserUnavailable("Сессия браузера не запущена")
+
+        page = self._context.new_page()
+        try:
+            page.goto(url, wait_until="domcontentloaded")
+            if wait_for:
+                try:
+                    page.wait_for_selector(wait_for, timeout=self.settings.timeout_ms)
+                except Exception:
+                    log.debug("Не дождались селектора %s на %s", wait_for, url)
+            page.wait_for_timeout(self.settings.settle_ms)
+            return page.content(), page.inner_text("body")
+        finally:
+            page.close()
+            time.sleep(self.settings.pause_s)
+
     def close(self) -> None:
         for item in (self._context, self._browser, self._playwright):
             if item is None:

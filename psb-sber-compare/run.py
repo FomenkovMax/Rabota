@@ -20,6 +20,7 @@ import argparse
 import logging
 import re
 import sys
+import time
 import webbrowser
 from pathlib import Path
 
@@ -90,12 +91,20 @@ def cmd_dump(config: Config, code: str, section: str) -> int:
     print(f"Раздел  : {index} — {category}")
     print(f"Адрес   : {url}")
     print(f"Куки    : {len(cookies)}")
-    print("\nОткрываю…\n")
+    print("\nЗапускаю браузер…", flush=True)
 
-    with browser_session(BrowserSettings.from_config(settings.get("browser")),
-                         cookies=cookies or None) as session:
-        html = session.fetch(url)
-        text = session.text(url)
+    started = time.monotonic()
+    browser = BrowserSettings.from_config(settings.get("browser"))
+    print(f"Таймаут {browser.timeout_ms} мс, ожидание скриптов "
+          f"{browser.settle_ms} мс", flush=True)
+
+    with browser_session(browser, cookies=cookies or None) as session:
+        print(f"Браузер поднялся за {time.monotonic() - started:.1f} с, "
+              f"открываю страницу…", flush=True)
+        opened = time.monotonic()
+        html, text = session.snapshot(url)
+        print(f"Страница прочитана за {time.monotonic() - opened:.1f} с\n",
+              flush=True)
 
     out = Path("data") / f"dump-{code}-{index}.html"
     out.parent.mkdir(parents=True, exist_ok=True)
