@@ -59,9 +59,25 @@ def compare_text(bank_code: str) -> str:
         "",
     ]
 
+    counts_by_bank = data["product_counts"]
+    rival_count = sum(counts_by_bank.get(t, 0) for t in data["competitor_titles"])
+    home_count = counts_by_bank.get(data["home_title"], 0)
+
     comparisons = data["comparisons"]
     if not comparisons:
-        lines.append("Пары продуктов не настроены — заполни config/product_map.yaml.")
+        # Различаем две разные причины пустого сравнения: нет данных
+        # по банку и данные есть, но пары не сопоставлены.
+        if rival_count == 0:
+            lines.append(f"Данных по банку {_esc(title)} в последнем сборе нет.\n"
+                         f"Собери их: «Обновить данные» → {_esc(title)}.")
+        elif home_count == 0:
+            lines.append("Данных по Сберу в последнем сборе нет — "
+                         "собери их в меню «Обновить данные».")
+        else:
+            lines.append(f"Данные есть ({_esc(title)} — {rival_count}, "
+                         f"Сбер — {home_count}), но пары продуктов "
+                         "не сопоставлены.\n"
+                         "Заполни config/product_map.yaml.")
     else:
         lines.append("<b>Продукты</b>")
         for c in comparisons[:12]:
@@ -81,9 +97,10 @@ def compare_text(bank_code: str) -> str:
         for s in segments:
             lines.append(f"🔴 {_esc(s.segment)}: {_esc(s.headline[:110])}")
 
-    if not data["verified"]:
-        lines += ["", "⚠️ <i>Адаптер этого банка ещё не подтверждён на живых "
-                      "данных — сверься с первоисточником.</i>"]
+    if data["unverified"]:
+        names = ", ".join(data["unverified"])
+        lines += ["", f"⚠️ <i>Сбор не подтверждён на живых данных: {_esc(names)}. "
+                      "Цифры по этим банкам сверь с первоисточником.</i>"]
 
     return "\n".join(lines)
 

@@ -12,6 +12,7 @@ from typing import Any
 import yaml
 
 from .banks import registry
+from .banks.from_file import FileAdapter
 from .changes import detect_changes, format_digest
 from .compare import Thresholds, build_comparisons, suggest_pairs, summarize
 from .promos import EXPIRED, classify_all, compare_segments
@@ -81,9 +82,17 @@ def load_pairs(path: str | Path = ROOT / "config" / "product_map.yaml") -> list[
 
 # --- сбор -----------------------------------------------------------------
 
+def _adapter_for(config: Config, code: str) -> Any:
+    """Адаптер банка: с сайта или из файла, если файл задан в настройках."""
+    settings = config.bank_settings(code)
+    adapter = registry.create(code, region=None, settings=settings)
+    source = settings.get("source")
+    return FileAdapter(adapter, source) if source else adapter
+
+
 def collect_bank(config: Config, code: str) -> Any:
     """Собирает один банк и складывает результат в базу."""
-    adapter = registry.create(code, region=None, settings=config.bank_settings(code))
+    adapter = _adapter_for(config, code)
     log.info("%s: %s", adapter.title, adapter.strategy)
 
     result = adapter.collect()
@@ -113,8 +122,7 @@ def collect_all(config: Config) -> dict[str, Any]:
     """Обходит все включённые банки. Падение одного не ломает остальные."""
     results: dict[str, Any] = {}
     for code in config.enabled_banks():
-        adapter = registry.create(code, region=None,
-                                  settings=config.bank_settings(code))
+        adapter = _adapter_for(config, code)
         log.info("=== %s: %s", adapter.title, adapter.strategy)
         try:
             results[code] = adapter.collect()
@@ -217,9 +225,24 @@ def load_report_data(config: Config, *, competitor: str = "") -> dict[str, Any] 
         collected_at = (run_row["started_at"][:16].replace("T", " ")
                         if run_row else "")
 
-        verified = all(getattr(registry.get(c), "verified", False)
-                       for c in competitor_codes + [HOME_BANK]
-                       if registry.get(c))
+        # Называем неподтверждённые банки поимённо. Общий флаг «данные не
+        # подтверждены» на карточке ЦМР читался как «не подтверждён ЦМР»,
+        # хотя не подтверждён был Сбер — и это вводило в заблуждение.
+        unverified = []
+        for code in competitor_codes + [HOME_BANK]:
+            cls = registry.get(code)
+            if cls is None:
+                continue
+            # Банк, который читается из файла, подтверждать нечем и незачем:
+            # за содержимое файла отвечает тот, кто его положил.
+            if (config.bank_settings(code) or {}).get("source"):
+                continue
+            if not getattr(cls, "verified", False):
+                unverified.append(titles.get(code, code))
+
+        # Сколько продуктов собрано по каждому банку — чтобы отличить
+        # «пары не настроены» от «данных по банку вообще нет».
+        product_counts = {title: len(items) for title, items in by_bank.items()}
 
         html = render_report(
             comparisons=comparisons, counts=counts, changes=changes,
@@ -244,7 +267,11 @@ def load_report_data(config: Config, *, competitor: str = "") -> dict[str, Any] 
             "products": all_products,
             "history": history,
             "html": html,
-            "verified": verified,
+            "unverified": unverified,
+            "verified": not unverified,
+            "product_counts": product_counts,
+            "competitor_titles": competitor_titles,
+            "home_title": home_title,
         }
     finally:
         storage.close()

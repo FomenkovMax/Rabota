@@ -1,0 +1,31 @@
+# Юнит systemd для бота. Установка:
+#   sudo cp deploy/bank-compare-bot.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now bank-compare-bot
+#
+# Правь User, WorkingDirectory и путь к python под свою машину.
+
+[Unit]
+Description=Бот сравнения розничных банковских продуктов
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=bank
+WorkingDirectory=/opt/bank-compare
+Environment=PYTHONUNBUFFERED=1
+EnvironmentFile=/opt/bank-compare/.env
+ExecStart=/opt/bank-compare/.venv/bin/python run.py bot
+Restart=always
+RestartSec=10
+
+# Бот ничего не пишет вне своей папки — ограничиваем ему доступ к системе.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/bank-compare/data
+
+[Install]
+WantedBy=multi-user.target
