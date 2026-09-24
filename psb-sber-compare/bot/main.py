@@ -319,7 +319,34 @@ async def run() -> None:
     log.info("Доступ открыт %s пользователям", len(ALLOWED))
     bot = Bot(token=token,
               default=DefaultBotProperties(parse_mode=ParseMode.HTML))
-    await dp.start_polling(bot)
+
+    # Сетевые и токенные ошибки показываем человеческим текстом: бота
+    # ставит на сервер не разработчик, и простыня трейсбека ему ничего
+    # не объясняет.
+    from aiogram.exceptions import (TelegramNetworkError,  # noqa: PLC0415
+                                    TelegramUnauthorizedError)
+    try:
+        me = await bot.get_me()
+        log.info("Бот @%s на связи", me.username)
+        await dp.start_polling(bot)
+    except TelegramUnauthorizedError:
+        raise SystemExit(
+            "Telegram отклонил токен.\n"
+            "Проверь BOT_TOKEN в .env — его выдаёт @BotFather, "
+            "формат «123456:AA…»."
+        ) from None
+    except TelegramNetworkError as exc:
+        hint = ""
+        if "CERTIFICATE_VERIFY_FAILED" in str(exc):
+            hint = ("\nПохоже на перехват TLS: сеть подменяет сертификаты.\n"
+                    "Укажи корневой сертификат своей сети через "
+                    "SSL_CERT_FILE\nили выпусти бота в интернет напрямую.")
+        raise SystemExit(
+            f"Нет связи с api.telegram.org.\n"
+            f"Проверь интернет на сервере и доступность Telegram.{hint}"
+        ) from None
+    finally:
+        await bot.session.close()
 
 
 if __name__ == "__main__":
