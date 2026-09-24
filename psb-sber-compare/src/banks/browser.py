@@ -37,6 +37,30 @@ USER_AGENT = (
 )
 
 
+
+def _normalise_cookies(cookies: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Приводит куки из настроек к виду, который принимает Playwright.
+
+    В YAML значение куки пишется как есть: 94 разбирается в число, true —
+    в булево. Playwright ждёт строки и отвергает остальное. Отдельно
+    важен регистр: у булева Python строковый вид «True», а сайты ждут
+    «true». Ещё Playwright требует пару domain + path, а path в
+    настройках банка обычно не указывают — подставляем корень.
+    """
+    ready = []
+    for cookie in cookies:
+        item = dict(cookie)
+        value = item.get("value")
+        if isinstance(value, bool):
+            item["value"] = "true" if value else "false"
+        elif not isinstance(value, str):
+            item["value"] = str(value)
+        if "url" not in item:
+            item.setdefault("path", "/")
+        ready.append(item)
+    return ready
+
+
 class BrowserUnavailable(RuntimeError):
     """Playwright не установлен или браузер не найден."""
 
@@ -132,7 +156,7 @@ class BrowserSession:
         )
         self._context.set_default_timeout(self.settings.timeout_ms)
         if self.cookies:
-            self._context.add_cookies(self.cookies)
+            self._context.add_cookies(_normalise_cookies(self.cookies))
 
     def fetch(self, url: str, *, wait_for: str = "") -> str:
         """Открывает страницу и возвращает её HTML после отработки скриптов."""
