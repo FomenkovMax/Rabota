@@ -65,12 +65,16 @@ class Thresholds:
 
 @dataclass
 class Comparison:
-    """Одна строка отчёта: пара продуктов и вердикт."""
+    """Одна строка отчёта: пара продуктов и вердикт.
+
+    Поле `psb` исторически названо по первому банку в сравнении; сейчас
+    в нём лежит продукт любого банка-конкурента, а `sber` — наш.
+    """
 
     pair_id: str
     label: str                    # как называем пару в отчёте
     category: str
-    psb: Any | None = None
+    psb: Any | None = None       # продукт банка-конкурента
     sber: Any | None = None
 
     # Ставки, которые реально сравнивались (граница зависит от категории).
@@ -156,16 +160,24 @@ def _index(products: Iterable[Any], key_attr: str) -> dict[str, Any]:
     return out
 
 
-def build_comparisons(psb_products: Iterable[Any], sber_products: Iterable[Any],
-                      pairs: list[dict[str, Any]], thresholds: Thresholds) -> list[Comparison]:
-    """Строит строки отчёта строго по подтверждённым парам из конфига."""
-    psb_index = _index(psb_products, "url_path")
+def build_comparisons(competitor_products: Iterable[Any], sber_products: Iterable[Any],
+                      pairs: list[dict[str, Any]], thresholds: Thresholds,
+                      *, competitor_code: str = "") -> list[Comparison]:
+    """Строит строки отчёта строго по подтверждённым парам из конфига.
+
+    `competitor_code` отбирает пары нужного банка: в product_map.yaml
+    лежат пары ко всем конкурентам сразу, и смешивать их в одном отчёте
+    нельзя — ставка ВТБ в строке про ПСБ была бы прямой ошибкой.
+    """
+    psb_index = _index(competitor_products, "url_path")
     sber_index = _index(sber_products, "product_key")
 
     results: list[Comparison] = []
 
     for pair in pairs:
-        psb_key = str(pair.get("psb") or "")
+        if competitor_code and str(pair.get("bank", "psb")) != competitor_code:
+            continue
+        psb_key = str(pair.get("competitor") or pair.get("psb") or "")
         sber_key = str(pair.get("sber") or "")
         label = pair.get("label") or psb_key or sber_key
         category = pair.get("category") or ""
@@ -182,7 +194,8 @@ def build_comparisons(psb_products: Iterable[Any], sber_products: Iterable[Any],
         )
 
         if psb is None:
-            comparison.notes.append(f"В данных ПСБ не найден продукт «{psb_key}»")
+            comparison.notes.append(
+                f"В данных конкурента не найден продукт «{psb_key}»")
         if sber is None:
             comparison.notes.append(f"В выгрузке Сбера не найден продукт «{sber_key}»")
 
@@ -225,7 +238,7 @@ def _evaluate(comparison: Comparison, thresholds: Thresholds) -> None:
 
     if psb_rate is None or sber_rate is None:
         comparison.light = GREY
-        missing = "ПСБ" if psb_rate is None else "Сбера"
+        missing = "конкурента" if psb_rate is None else "Сбера"
         comparison.reason = f"Не удалось извлечь ставку {missing}"
         return
 
@@ -246,7 +259,7 @@ def _evaluate(comparison: Comparison, thresholds: Thresholds) -> None:
         comparison.reason = f"Сбер выгоднее клиенту на {pp(abs(delta))}"
     elif abs(delta) >= thresholds.loss:
         comparison.light = RED
-        comparison.reason = f"Проигрываем ПСБ {pp(abs(delta))}"
+        comparison.reason = f"Проигрываем конкуренту {pp(abs(delta))}"
     else:
         comparison.light = YELLOW
         comparison.reason = f"Небольшое отставание — {pp(abs(delta))}"

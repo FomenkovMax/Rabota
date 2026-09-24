@@ -7,3 +7,5 @@ data/*.html
 data/*.txt
 data/sber.*
 data/pairs_suggested.yaml
+.env
+data/export/
