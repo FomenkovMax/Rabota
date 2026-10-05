@@ -13,9 +13,10 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 # Цвет кнопки — по смыслу действия. Telegram даёт три цвета; старые
 # версии приложения их не показывают и рисуют кнопку обычной.
 #   зелёный — обновить все банки, главное действие бота;
-#   синий   — сравнения и выгрузка готовых файлов.
+#   синий   — выгрузка готовых файлов;
+#   без цвета — сравнения и всё остальное.
 REFRESH = ButtonStyle.SUCCESS
-COMPARE = ButtonStyle.PRIMARY
+COMPARE = None
 EXPORT = ButtonStyle.PRIMARY
 
 # Код банка → подпись на кнопке. Порядок кнопок = порядок в этом списке.
