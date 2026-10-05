@@ -1,6 +1,6 @@
 ---
 created: 2026-10-05
-status: draft
+status: approved
 size: L
 type: feature
 source: собрано из диалога, prompts/lnr-bank-retail-agent/system-prompt.txt и теста доступа от 05.10.2026
@@ -62,7 +62,7 @@ source: собрано из диалога, prompts/lnr-bank-retail-agent/system
 ## Constraints
 
 - Сертификат НУЦ Минцифры должен быть установлен на машине агента: нужен и сайтам банков, и GigaChat API.
-- Платформа: Linux, macOS или сервер в РФ. Python.
+- Платформа: основная — VPS в РФ с Ubuntu, управление с телефона через SSH; также Linux или macOS. Python.
 - Нагрузка на сайты минимальная: последовательные запросы с паузами, раз в неделю.
 
 ## Testing Strategy (agreed for size L)

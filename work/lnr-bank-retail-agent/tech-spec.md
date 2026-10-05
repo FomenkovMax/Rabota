@@ -1,6 +1,6 @@
 ---
 created: 2026-10-05
-status: draft
+status: approved
 size: L
 branch: dev
 ---
@@ -9,7 +9,7 @@ branch: dev
 
 ## Overview
 
-Python-агент на машине пользователя (Linux, macOS или сервер в РФ) с установленным корневым сертификатом Минцифры. Раз в неделю и по команде он:
+Python-агент на VPS в РФ с Ubuntu (основная платформа; также поддерживаются Linux и macOS) с установленным корневым сертификатом Минцифры. Раз в неделю и по команде он:
 - открывает официальные сайты Сбера, ВТБ, ПСБ и Т-Банка в браузере Chromium (Playwright);
 - выбирает ЛНР и собирает страницы продуктов и PDF-тарифы;
 - извлекает параметры через GigaChat и проверяет, что каждая цитата дословно есть в источнике;
@@ -147,6 +147,7 @@ lnr-bank-agent/
 - **D-18. Код живёт в `lnr-bank-agent/` этого репозитория.** Отдельный `pyproject.toml`, сборку лендинга проект не затрагивает. При желании папку можно вынести в отдельный репозиторий без изменений. *[TECHNICAL]*
 - **D-19. Контракт промптов.** Промпты лежат в `extract/prompts/`: `system.md` и `extract_{BLOCK}.md`. Версия промпта указана в первой строке файла и входит в ключ кэша (D-9), поэтому после правки промпта страницы разбираются заново. *[TECHNICAL]*
 - **D-20. Общие файлы фиксируются в первой волне.** Зависимости, полная схема `settings.yaml` и словарь `parameters.yaml` создаются в T1 целиком. Параллельные задачи следующих волн их только читают и не конфликтуют. *[TECHNICAL]*
+- **D-22. Основная платформа — VPS в РФ с Ubuntu, управление с телефона.** Пользователь работает с телефона, а облачная среда Claude не пускает браузер на сайты с сертификатами Минцифры. Поэтому агент живёт на VPS: установка одной командой (`curl … | bash` или `bash deploy.sh`), настройка `.env` и проверка доступны через SSH-клиент на телефоне (например, Termius). Разработка и офлайн-тесты идут в облачной сессии Claude Code, живой сбор — только на VPS. *Serves: US-7.*
 - **D-21. Присутствие банков и watchlist.**
   - Присутствие четырёх банков подтверждается по их официальным сайтам: офисы, МФЦ, банкоматы, онлайн-доступность.
   - Watchlist в MVP — список кандидатов в `settings.yaml` с URL их страниц офисов. Для каждого кандидата агент проверяет, упоминаются ли на этой странице ЛНР или города ЛНР, и пишет результат в `banks`.
@@ -219,7 +220,7 @@ Tools required: bash, Playwright (локально, для HTML-дашборда
 
 ## Prerequisites (действия пользователя до старта)
 
-- Машина с Python 3.11+ (Linux, macOS или сервер в РФ) и правами на установку сертификата.
+- VPS в РФ с Ubuntu (root-доступ по SSH) и SSH-клиент на телефоне, например Termius. Альтернатива — ПК с Linux или macOS.
 - Ключ авторизации GigaChat API (Authorization key) и scope (для физлиц — `GIGACHAT_API_PERS`), записать в `.env`.
 - Telegram-бот через @BotFather: токен и `chat_id` получателя записать в `.env`.
 
@@ -333,11 +334,11 @@ Tools required: bash, Playwright (локально, для HTML-дашборда
 - Reviewers: none
 
 **T14. Deploy на целевую машину**
-- Description: Скрипт и инструкция развёртывания на Linux, macOS или сервере в РФ: Python и uv, Chromium для Playwright, `install_certs.sh`, `.env` с правами 600, запуск от непривилегированного пользователя, cron раз в неделю с логом в `data/logs/`.
+- Description: Скрипт развёртывания на VPS с Ubuntu (D-22), запускаемый одной командой: Python и uv, Chromium для Playwright, `install_certs.sh`, `.env` с правами 600, непривилегированный пользователь, cron раз в неделю с логом в `data/logs/`. Пошаговая инструкция для телефона: аренда VPS, подключение через Termius, установка, заполнение `.env`, первый `lnrbank check`. Linux и macOS на ПК поддерживаются той же инструкцией.
 - Skill: deploy-pipeline
 - Reviewers: code-reviewer, security-auditor, deploy-reviewer
 - Verify-user: на целевой машине `crontab -l` показывает расписание, ручной запуск `lnrbank check` проходит.
-- Files to modify: `lnr-bank-agent/scripts/deploy.sh`, `lnr-bank-agent/scripts/crontab.example`, `lnr-bank-agent/README.md`
+- Files to modify: `lnr-bank-agent/scripts/deploy.sh`, `lnr-bank-agent/scripts/crontab.example`, `lnr-bank-agent/README.md`, `lnr-bank-agent/docs/setup-from-phone.md`
 - Files to read: `work/lnr-bank-retail-agent/tech-spec.md` (D-6, D-16, Prerequisites)
 
 **T15. Post-deploy verification**
