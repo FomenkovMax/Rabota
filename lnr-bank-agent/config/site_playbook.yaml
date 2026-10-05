@@ -1,0 +1,15 @@
+# Шаги привязки к ЛНР по банку и разделу. Заполняется в задаче 5 (движок) и задаче 6 (разделы).
+# Стартовые сведения — тест доступа 05.10.2026 (prompts/lnr-bank-retail-agent/runs/2026-10-05_test-dostupa).
+SBER:
+  home: {url: "https://www.sberbank.ru/ru/person", region_method: not_confirmed, steps: [],
+         notes: "Сначала JS-проверка браузера (антибот). Нужен настоящий браузер."}
+VTB:
+  home: {url: "https://www.vtb.ru/", region_method: not_confirmed, steps: [],
+         notes: "Селектора в исходном HTML нет; ипотека новых регионов — vtb.ru/personal/ipoteka/new-regions/"}
+PSB:
+  home: {url: "https://www.psbank.ru/personal", region_method: not_confirmed, steps: [],
+         city_id: 811307, region_id: 811561,
+         notes: "Выбор города: 56 нас. пунктов ЛНР, Луганск — 811307"}
+TBANK:
+  home: {url: "https://www.tbank.ru/", region_method: not_confirmed, steps: [],
+         notes: "Регион не выбирается; путь federal_confirmed"}

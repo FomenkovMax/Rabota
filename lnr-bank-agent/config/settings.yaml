@@ -1,0 +1,68 @@
+# Настройки агента без секретов. Секреты — в .env (см. .env.example).
+region:
+  name: Луганская Народная Республика
+  aliases: [ЛНР, Луганская Народная Республика, Луганск]
+  default_city: Луганск
+  # Варианты названий городов: ищем по обоим
+  city_aliases:
+    Стаханов: [Кадиевка]
+    Красный Луч: [Хрустальный]
+    Краснодон: [Сорокино]
+    Свердловск: [Должанск]
+    Кировск: [Голубовка]
+
+base_bank: SBER
+banks:
+  SBER: {name: Сбербанк, domains: [sberbank.ru], home: "https://www.sberbank.ru/ru/person"}
+  VTB: {name: ВТБ, domains: [vtb.ru], home: "https://www.vtb.ru/"}
+  PSB: {name: ПСБ, domains: [psbank.ru], home: "https://www.psbank.ru/personal"}
+  TBANK: {name: Т-Банк, domains: [tbank.ru], home: "https://www.tbank.ru/"}
+
+# Кандидаты в watchlist (D-21): заполняет пользователь. Агент проверяет упоминание ЛНР на странице офисов.
+watchlist: []
+#  - {code: EXAMPLE, name: Пример банка, offices_url: "https://example.ru/offices"}
+
+blocks_mvp: [DEP, CARD, LOAN, MTG, CHANNEL]
+
+thresholds:
+  in_market_rate_pp: 0.5      # «в рынке» для ставок, п.п. от медианы остальных
+  in_market_amount_pct: 5     # «в рынке» для сумм, %
+  alert_rate_pp: 0.25         # алерт при изменении ставки
+  plausibility_deposit_over_key_pp: 3
+
+scenarios:
+  DEP-1: {block: DEP, product: deposit, amount: 100000, term_months: 6, channel: online, subscription: false, new_money: false}
+  DEP-2: {block: DEP, product: deposit, amount: 1000000, term_months: 12, channel: online, subscription: false, new_money: false}
+  SAV-1: {block: DEP, product: savings_account, amount: 300000, term_months: 3}
+  DC-1: {block: CARD, product: debit_card, monthly_spend: 30000, balance: 50000}
+  CC-1: {block: CARD, product: credit_card, monthly_spend: 30000, repay_in_grace: true, cash_withdrawal: 10000}
+  CL-1: {block: LOAN, product: cash_loan, amount: 300000, term_months: 36, variants: [no_insurance, insurance]}
+  CL-2: {block: LOAN, product: cash_loan, amount: 1000000, term_months: 60}
+  CAR-1: {block: LOAN, product: car_loan, price: 2000000, down_payment_pct: 20, term_months: 60}
+  MTG-1: {block: MTG, product: mortgage, market: primary, price: 5000000, down_payment_pct: 20, term_months: 240, programs: all_available}
+  MTG-2: {block: MTG, product: mortgage, market: secondary, price: 4000000, down_payment_pct: 20, term_months: 240, programs: where_allowed}
+
+llm:
+  provider: gigachat
+  model: null            # null — старшая из доступных по get_models()
+  timeout_s: 60
+  max_retries: 1
+
+browser:
+  headless: true
+  delay_s: [3, 6]
+  locale: ru-RU
+  timezone: Europe/Moscow
+
+storage:
+  db_path: data/lnr_bank.db
+  raw_dir: data/raw
+  out_dir: data/out
+  raw_retention_snapshots: 8
+
+tls:
+  ca_bundle: data/certs/ca-bundle.pem
+  check_hosts: [www.sberbank.ru, www.vtb.ru, www.psbank.ru, www.tbank.ru, api.giga.chat]
+
+schedule:
+  cron: "0 7 * * 1"      # пн 07:00 (время сервера — МСК)

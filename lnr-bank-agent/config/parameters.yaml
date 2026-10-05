@@ -1,0 +1,64 @@
+# Словарь параметров по блокам. Условия, от которых зависит значение, входят в имя.
+# better: higher — больше лучше, lower — меньше лучше, none — не сравнивается.
+DEP:
+  rate_3m_online: {unit: "% годовых", better: higher, description: "Ставка по вкладу на 3 мес, онлайн, без подписки"}
+  rate_6m_online: {unit: "% годовых", better: higher, description: "Ставка на 6 мес, онлайн, без подписки"}
+  rate_12m_online: {unit: "% годовых", better: higher, description: "Ставка на 12 мес, онлайн, без подписки"}
+  rate_24m_online: {unit: "% годовых", better: higher, description: "Ставка на 24 мес, онлайн, без подписки"}
+  rate_max_promo: {unit: "% годовых", better: higher, description: "Максимальная ставка с надбавками (условия — в condition)"}
+  amount_min: {unit: "₽", better: lower, description: "Минимальная сумма"}
+  amount_max: {unit: "₽", better: higher, description: "Максимальная сумма"}
+  topup_allowed: {unit: bool, better: none, description: "Пополнение"}
+  withdrawal_allowed: {unit: bool, better: none, description: "Частичное снятие"}
+  capitalization: {unit: bool, better: none, description: "Капитализация процентов"}
+  early_termination_rate: {unit: "% годовых", better: higher, description: "Ставка при досрочном расторжении"}
+  savings_rate_base: {unit: "% годовых", better: higher, description: "Базовая ставка накопительного счёта"}
+  savings_rate_welcome: {unit: "% годовых", better: higher, description: "Приветственная ставка накопительного счёта"}
+  savings_welcome_months: {unit: мес, better: higher, description: "Срок приветственной ставки"}
+CARD:
+  service_fee_month: {unit: "₽", better: lower, description: "Обслуживание в месяц без выполнения условий"}
+  free_service_condition: {unit: text, better: none, description: "Условие бесплатного обслуживания"}
+  cashback_base_pct: {unit: "%", better: higher, description: "Базовый кэшбэк"}
+  cashback_limit_month: {unit: "₽", better: higher, description: "Лимит кэшбэка в месяц"}
+  balance_rate: {unit: "% годовых", better: higher, description: "Процент на остаток по карте"}
+  cash_own_atm_fee_pct: {unit: "%", better: lower, description: "Комиссия за снятие в своих банкоматах"}
+  cash_other_atm_fee_pct: {unit: "%", better: lower, description: "Комиссия за снятие в чужих банкоматах"}
+  cc_limit_max: {unit: "₽", better: higher, description: "Максимальный кредитный лимит"}
+  cc_rate_purchases: {unit: "% годовых", better: lower, description: "Ставка по покупкам вне льготного периода"}
+  cc_grace_days: {unit: дней, better: higher, description: "Льготный период"}
+  cc_psk_max: {unit: "% годовых", better: lower, description: "ПСК, верхняя граница"}
+  cc_cash_fee: {unit: text, better: lower, description: "Комиссия за снятие наличных по кредитной карте"}
+  cc_grace_kept_after_cash: {unit: bool, better: none, description: "Сохраняется ли льготный период после снятия"}
+  card_delivery_lnr: {unit: text, better: none, description: "Как получить карту в ЛНР"}
+LOAN:
+  rate_min: {unit: "% годовых", better: lower, description: "Минимальная ставка"}
+  rate_max: {unit: "% годовых", better: lower, description: "Максимальная ставка"}
+  psk_min: {unit: "% годовых", better: lower, description: "ПСК, нижняя граница"}
+  psk_max: {unit: "% годовых", better: lower, description: "ПСК, верхняя граница"}
+  amount_max: {unit: "₽", better: higher, description: "Максимальная сумма"}
+  term_max_months: {unit: мес, better: higher, description: "Максимальный срок"}
+  insurance_rate_discount_pp: {unit: п.п., better: none, description: "Снижение ставки при страховании"}
+  income_proof: {unit: text, better: none, description: "Какие подтверждения дохода принимаются"}
+  borrower_requirements: {unit: text, better: none, description: "Возраст, гражданство, регистрация, стаж"}
+  car_down_payment_min_pct: {unit: "%", better: lower, description: "Минимальный ПВ по автокредиту"}
+  car_kasko_required: {unit: bool, better: none, description: "Обязательно ли КАСКО"}
+MTG:
+  rate_new_regions: {unit: "% годовых", better: lower, description: "Ставка по льготной ипотеке для новых регионов"}
+  rate_family: {unit: "% годовых", better: lower, description: "Ставка по семейной ипотеке"}
+  rate_market_primary: {unit: "% годовых", better: lower, description: "Рыночная ставка, новостройка"}
+  rate_market_secondary: {unit: "% годовых", better: lower, description: "Рыночная ставка, вторичка"}
+  down_payment_min_pct: {unit: "%", better: lower, description: "Минимальный ПВ"}
+  loan_max: {unit: "₽", better: higher, description: "Максимальная сумма кредита"}
+  term_max_months: {unit: мес, better: higher, description: "Максимальный срок"}
+  property_requirements: {unit: text, better: none, description: "Требования к объекту"}
+  borrower_requirements: {unit: text, better: none, description: "Требования к заёмщику"}
+  secondary_allowed_settlements: {unit: text, better: none, description: "Где разрешена вторичка"}
+  insurance_required: {unit: text, better: none, description: "Обязательное страхование"}
+  deal_registration: {unit: text, better: none, description: "Способ регистрации сделки"}
+CHANNEL:
+  offices_full: {unit: шт, better: higher, description: "Полноформатные офисы в ЛНР"}
+  offices_mfc: {unit: шт, better: higher, description: "Точки в МФЦ"}
+  offices_mobile: {unit: шт, better: higher, description: "Мобильные офисы"}
+  atms: {unit: шт, better: higher, description: "Банкоматы в ЛНР"}
+  app_availability: {unit: text, better: none, description: "Где скачать приложение"}
+  online_products_lnr: {unit: text, better: none, description: "Что житель ЛНР может оформить онлайн"}
