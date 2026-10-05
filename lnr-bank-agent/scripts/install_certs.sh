@@ -13,7 +13,7 @@ SUDO=""; [ "$(id -u)" -ne 0 ] && SUDO="sudo"
 # Пользователь, от имени которого работает агент (deploy.sh передаёт LNRBANK_USER=lnrbank).
 TARGET_USER="${LNRBANK_USER:-$(id -un)}"
 TARGET_HOME="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
-as_user() { if [ "$TARGET_USER" = "$(id -un)" ]; then "$@"; else sudo -u "$TARGET_USER" -H "$@"; fi; }
+as_user() { if [ "$TARGET_USER" = "$(id -un)" ]; then "$@"; else sudo -u "$TARGET_USER" -H --preserve-env="${PASS_ENV:-HTTPS_PROXY}" "$@"; fi; }
 UV="$(as_user bash -lc 'command -v uv' || true)"; UV="${UV:-$TARGET_HOME/.local/bin/uv}"
 
 mkdir -p "$CERT_DIR"
@@ -51,7 +51,7 @@ case "$(uname -s)" in
   *) echo "✗ Неподдерживаемая ОС $(uname -s)" >&2; exit 1 ;;
 esac
 
-CERTIFI="$(cd "$PROJECT_DIR" && as_user "$UV" run --quiet python -c 'import certifi; print(certifi.where())')"
+CERTIFI="$(cd "$PROJECT_DIR" && as_user "$UV" run --quiet --no-dev python -c 'import certifi; print(certifi.where())')"
 cat "$CERTIFI" "$ROOT_FILE" > "$BUNDLE_FILE"
 [ "$TARGET_USER" = "$(id -un)" ] || chown -R "$TARGET_USER": "$CERT_DIR"
 echo "✓ CA-бандл для Python: $BUNDLE_FILE"
