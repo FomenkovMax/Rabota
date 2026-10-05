@@ -33,7 +33,7 @@ class GigaChatProvider:
                 raise RuntimeError("Нет GIGACHAT_CREDENTIALS в .env")
             client = GigaChat(
                 credentials=secrets.gigachat_credentials.get_secret_value(),
-                scope=secrets.gigachat_scope,
+                scope=secrets.gigachat_scope or "GIGACHAT_API_PERS",
                 ca_bundle_file=str(ca_bundle_path(settings)),
                 timeout=settings.llm.timeout_s,
             )

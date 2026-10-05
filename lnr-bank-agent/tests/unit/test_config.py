@@ -46,3 +46,15 @@ def test_secrets_from_env_only(monkeypatch):
     s = Secrets(_env_file=None)
     assert s.gigachat_credentials.get_secret_value() == "secret-value"
     assert "secret-value" not in repr(s)
+
+
+def test_empty_env_values_are_unset(monkeypatch):
+    monkeypatch.setenv("LNRBANK_CA_BUNDLE", "")
+    monkeypatch.setenv("GIGACHAT_CREDENTIALS", "")
+    s = Secrets(_env_file=None)
+    assert s.lnrbank_ca_bundle is None and s.gigachat_credentials is None
+
+
+def test_empty_scope_allowed(monkeypatch):
+    monkeypatch.setenv("GIGACHAT_SCOPE", "")
+    assert Secrets(_env_file=None).gigachat_scope is None

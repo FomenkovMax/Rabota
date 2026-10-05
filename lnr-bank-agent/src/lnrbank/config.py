@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, SecretStr
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 PROJECT_ROOT = Path(os.environ.get("LNRBANK_HOME", Path(__file__).resolve().parents[2]))
@@ -108,10 +108,16 @@ class Secrets(BaseSettings):
     model_config = SettingsConfigDict(env_file=PROJECT_ROOT / ".env", extra="ignore")
 
     gigachat_credentials: SecretStr | None = None
-    gigachat_scope: str = "GIGACHAT_API_PERS"
+    gigachat_scope: str | None = None  # None — GIGACHAT_API_PERS (физлица)
     telegram_bot_token: SecretStr | None = None
     telegram_chat_id: str | None = None
     lnrbank_ca_bundle: Path | None = None
+
+    @field_validator("*", mode="before")
+    @classmethod
+    def _empty_is_unset(cls, value):
+        # Пустая строка в .env (как в .env.example) значит «не задано», а не путь «.».
+        return None if value == "" else value
 
 
 def _read_yaml(path: Path) -> dict:
