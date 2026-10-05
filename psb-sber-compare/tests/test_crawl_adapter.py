@@ -194,3 +194,29 @@ def test_categories(collected):
     products, _ = collected
     assert products["Кредит наличными"].category == "Кредиты"
     assert products["Вклад Лучший %"].category == "Вклады"
+
+
+def test_single_bank_refresh_keeps_other_banks(tmp_path):
+    """«Обновить данные → Только ПСБ» не должно стирать Сбер из свода."""
+    from src.psb.parser import Product
+    from src.storage import Storage
+
+    storage = Storage(tmp_path / "db.sqlite")
+    first = storage.start_run("ЛНР")
+    storage.save_products(first, [
+        Product(bank="Сбер", title="Вклад «Сбер Рядом»", rate_max=14.0,
+                collected_at="2026-10-01T07:00"),
+        Product(bank="ПСБ", title="Вклад «Мой доход»", rate_max=13.8,
+                collected_at="2026-10-01T07:00"),
+    ])
+    storage.finish_run(first, psb=1, sber=1, promos=0)
+
+    second = storage.start_run("ЛНР")
+    storage.save_products(second, [Product(bank="ПСБ", title="Вклад «Мой доход»",
+                                           rate_max=14.1, collected_at="2026-10-05T12:00")])
+    assert storage.carry_over(first, second, except_bank="ПСБ") == 1
+
+    rows = {r["bank"]: r for r in storage.products_of_run(second)}
+    assert set(rows) == {"Сбер", "ПСБ"}
+    assert rows["ПСБ"]["rate_max"] == 14.1                       # свежее
+    assert rows["Сбер"]["collected_at"] == "2026-10-01T07:00"     # дата прежняя

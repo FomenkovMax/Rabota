@@ -130,6 +130,31 @@ class Storage:
         self.conn.commit()
         return int(cur.lastrowid)
 
+    def carry_over(self, from_run: int, to_run: int, *, except_bank: str) -> int:
+        """Переносит продукты и акции остальных банков из прошлого сбора.
+
+        Обновление одного банка создаёт новый сбор, а отчёт строится по
+        последнему сбору. Без переноса в нём оказывался один банк, и после
+        «Обновить данные → Только ПСБ» Сбер из свода пропадал. Перенесённые
+        строки сохраняют свою дату сбора, так что видно, какие данные свежие.
+        Возвращает число перенесённых продуктов.
+        """
+        moved = 0
+        for table in ("products", "promos"):
+            columns = [row["name"] for row in
+                       self.conn.execute(f"PRAGMA table_info({table})")
+                       if row["name"] not in ("id", "run_id")]
+            listed = ", ".join(columns)
+            cur = self.conn.execute(
+                f"INSERT INTO {table} (run_id, {listed}) "
+                f"SELECT ?, {listed} FROM {table} WHERE run_id=? AND bank != ?",
+                (to_run, from_run, except_bank),
+            )
+            if table == "products":
+                moved = cur.rowcount
+        self.conn.commit()
+        return moved
+
     def finish_run(self, run_id: int, *, psb: int, sber: int, promos: int,
                    status: str = "ok", note: str = "") -> None:
         self.conn.execute(

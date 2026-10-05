@@ -107,8 +107,15 @@ def collect_bank(config: Config, code: str, *, save: bool = True) -> Any:
 
     storage = Storage(config.path("storage", "db_path", default="data/psb_sber.db"))
     try:
+        previous = storage.last_successful_run_id()
         run_id = storage.start_run(config.get("region_label", default=""))
         storage.save_products(run_id, result.products)
+        # Остальные банки берём из прошлого сбора, иначе свод после
+        # обновления одного банка показал бы только его.
+        if previous is not None:
+            moved = storage.carry_over(previous, run_id, except_bank=adapter.title)
+            log.info("Остальные банки перенесены из сбора #%s: продуктов %s",
+                     previous, moved)
         insights = classify_all(result.promos, adapter.title)
         by_title = {i.title: i for i in insights}
         storage.save_promos(
