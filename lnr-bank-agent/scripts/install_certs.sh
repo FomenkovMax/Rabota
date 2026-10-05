@@ -10,6 +10,11 @@ CERT_DIR="$PROJECT_DIR/data/certs"
 ROOT_FILE="$CERT_DIR/russian_trusted_root_ca.pem"
 BUNDLE_FILE="$CERT_DIR/ca-bundle.pem"
 SUDO=""; [ "$(id -u)" -ne 0 ] && SUDO="sudo"
+# Пользователь, от имени которого работает агент (deploy.sh передаёт LNRBANK_USER=lnrbank).
+TARGET_USER="${LNRBANK_USER:-$(id -un)}"
+TARGET_HOME="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
+as_user() { if [ "$TARGET_USER" = "$(id -un)" ]; then "$@"; else sudo -u "$TARGET_USER" -H "$@"; fi; }
+UV="$(as_user bash -lc 'command -v uv' || true)"; UV="${UV:-$TARGET_HOME/.local/bin/uv}"
 
 mkdir -p "$CERT_DIR"
 echo "→ Скачиваю корень Минцифры с $ROOT_URL"
@@ -32,10 +37,11 @@ case "$(uname -s)" in
     if ! command -v certutil >/dev/null; then
       $SUDO apt-get install -y -q libnss3-tools >/dev/null
     fi
-    mkdir -p "$HOME/.pki/nssdb"
-    [ -f "$HOME/.pki/nssdb/cert9.db" ] || certutil -d "sql:$HOME/.pki/nssdb" -N --empty-password
-    certutil -d "sql:$HOME/.pki/nssdb" -D -n "Russian Trusted Root CA" 2>/dev/null || true
-    certutil -d "sql:$HOME/.pki/nssdb" -A -t "C,," -n "Russian Trusted Root CA" -i "$ROOT_FILE"
+    NSS="$TARGET_HOME/.pki/nssdb"
+    as_user mkdir -p "$NSS"
+    [ -f "$NSS/cert9.db" ] || as_user certutil -d "sql:$NSS" -N --empty-password
+    as_user certutil -d "sql:$NSS" -D -n "Russian Trusted Root CA" 2>/dev/null || true
+    as_user certutil -d "sql:$NSS" -A -t "C,," -n "Russian Trusted Root CA" -i "$ROOT_FILE"
     echo "✓ хранилище браузера (NSS)"
     ;;
   Darwin)
@@ -45,6 +51,7 @@ case "$(uname -s)" in
   *) echo "✗ Неподдерживаемая ОС $(uname -s)" >&2; exit 1 ;;
 esac
 
-CERTIFI="$(cd "$PROJECT_DIR" && uv run --quiet python -c 'import certifi; print(certifi.where())')"
+CERTIFI="$(cd "$PROJECT_DIR" && as_user "$UV" run --quiet python -c 'import certifi; print(certifi.where())')"
 cat "$CERTIFI" "$ROOT_FILE" > "$BUNDLE_FILE"
+[ "$TARGET_USER" = "$(id -un)" ] || chown -R "$TARGET_USER": "$CERT_DIR"
 echo "✓ CA-бандл для Python: $BUNDLE_FILE"
