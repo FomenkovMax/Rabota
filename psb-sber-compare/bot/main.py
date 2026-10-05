@@ -31,7 +31,10 @@ from aiogram import Bot, Dispatcher, F  # noqa: E402
 from aiogram.client.default import DefaultBotProperties  # noqa: E402
 from aiogram.enums import ParseMode  # noqa: E402
 from aiogram.filters import Command  # noqa: E402
-from aiogram.types import BufferedInputFile, CallbackQuery, Message  # noqa: E402
+from aiogram.client.session.middlewares.base import BaseRequestMiddleware  # noqa: E402
+from aiogram.exceptions import TelegramBadRequest  # noqa: E402
+from aiogram.types import (BufferedInputFile, CallbackQuery,  # noqa: E402
+                           InlineKeyboardMarkup, Message)
 
 from bot import keyboards as kb  # noqa: E402
 from bot import service  # noqa: E402
@@ -83,6 +86,9 @@ dp = Dispatcher()
 # Идёт ли сбор: второй поверх первого делил бы с ним машину и базу.
 collecting = asyncio.Lock()
 
+# Кого ждём с эмодзи после /emoji_id.
+awaiting_emoji: set[int] = set()
+
 # Кого ждём с текстовым вопросом к консультанту: user_id.
 awaiting_question: set[int] = set()
 
@@ -98,6 +104,27 @@ async def cmd_start(message: Message) -> None:
         return
     awaiting_question.discard(message.from_user.id)
     await message.answer(WELCOME, reply_markup=kb.main_menu())
+
+
+@dp.message(Command("emoji_id"))
+async def on_emoji_id(message: Message) -> None:
+    if not permitted(message.from_user.id if message.from_user else None):
+        return
+    awaiting_emoji.add(message.from_user.id)
+    await message.answer("Отправь одним сообщением эмодзи из набора — "
+                         "отвечу id каждого. Их вставляют в config/bot_icons.yaml.")
+
+
+@dp.message(lambda m: m.from_user is not None and m.from_user.id in awaiting_emoji)
+async def on_emoji_sample(message: Message) -> None:
+    awaiting_emoji.discard(message.from_user.id)
+    found = [e for e in (message.entities or []) if e.type == "custom_emoji"]
+    if not found:
+        await message.answer("Эмодзи из набора не нашёл. Обычные эмодзи id не имеют — "
+                             "нужны именно из набора. Попробуй ещё раз: /emoji_id")
+        return
+    lines = [f"{i}. <code>{e.custom_emoji_id}</code>" for i, e in enumerate(found, 1)]
+    await message.answer("id по порядку:\n" + "\n".join(lines))
 
 
 @dp.message(Command("id"))
@@ -307,6 +334,27 @@ async def on_collect(call: CallbackQuery) -> None:
     await call.message.answer(report, reply_markup=kb.main_menu())
 
 
+class IconFallback(BaseRequestMiddleware):
+    """Если Telegram отказал в значках на кнопках — шлём то же без них.
+
+    Значки из набора разрешены не каждому боту. Без этой страховки отказ
+    ломал бы любое меню, и бот переставал бы отвечать на кнопки.
+    """
+
+    async def __call__(self, make_request, bot, method):  # type: ignore[override]
+        try:
+            return await make_request(bot, method)
+        except TelegramBadRequest as exc:
+            markup = getattr(method, "reply_markup", None)
+            used = isinstance(markup, InlineKeyboardMarkup) and any(
+                item.icon_custom_emoji_id for row in markup.inline_keyboard for item in row)
+            if not used:
+                raise
+            kb.disable_icons(str(exc)[:200])
+            kb.strip_icons(markup)
+            return await make_request(bot, method)
+
+
 # --- запуск ----------------------------------------------------------------
 
 async def run() -> None:
@@ -371,6 +419,7 @@ async def run() -> None:
 
     bot = Bot(token=token, session=session,
               default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+    bot.session.middleware(IconFallback())
 
     # Сетевые и токенные ошибки показываем человеческим текстом: бота
     # ставит на сервер не разработчик, и простыня трейсбека ему ничего
