@@ -104,6 +104,11 @@ def compare_text(bank_code: str) -> str:
                       "Показаны условия, которые сайт отдал по умолчанию — "
                       "обычно московские, а не луганские.</i>"]
 
+    federal = data.get("federal") or []
+    if federal:
+        lines += ["", f"ℹ️ <i>Единые условия по РФ: {_esc(', '.join(federal))}. "
+                      "Отдельных условий для ЛНР на сайте банка нет.</i>"]
+
     if data["unverified"]:
         names = ", ".join(data["unverified"])
         lines += ["", f"⚠️ <i>Сбор не подтверждён на живых данных: {_esc(names)}. "

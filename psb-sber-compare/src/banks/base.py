@@ -38,14 +38,44 @@ class CollectResult:
     #: Был ли на сайте действительно выбран нужный регион. False означает,
     #: что условия собраны те, которые сайт отдал по умолчанию.
     region_applied: bool = True
+    #: Как условия привязаны к региону: selector | federal | not_confirmed.
+    region_method: str = "selector"
 
     @property
     def summary(self) -> str:
         if not self.ok:
             return f"{self.bank}: сбор не удался — {self.error}"
-        note = "" if self.region_applied else " (регион на сайте не выбран)"
+        note = {"federal": " (единые условия по РФ)",
+                "not_confirmed": " (регион на сайте не выбран)"}.get(self.region_method, "")
+        if not self.region_applied and not note:
+            note = " (регион на сайте не выбран)"
         return (f"{self.bank}: продуктов {len(self.products)}, "
                 f"акций {len(self.promos)}{note}")
+
+
+#: Подписи способов привязки к региону — для лога, отчёта и бота.
+FEDERAL_LABEL = "единые условия по РФ — отдельных для ЛНР на сайте нет"
+NOT_CONFIRMED_LABEL = "регион на сайте не выбран"
+
+
+def region_binding(sets_region: bool, settings: dict[str, Any]) -> tuple[str, str]:
+    """Способ привязки условий к региону и подпись к продуктам.
+
+    selector      — регион выбран на сайте (селектор или его куки);
+    federal       — на сайте про ЛНР и новые территории ничего нет, и по
+                    правилу заказчика действуют единые условия по России.
+                    Ставится в настройках банка только после того, как
+                    проверено, что регион на сайте действительно не
+                    выбирается: region_mode: federal;
+    not_confirmed — регион выбирается, но мы его не настроили. Сайт отдал
+                    регион по адресу сервера, то есть Москву, и выдавать
+                    это за ЛНР или за единые условия нельзя.
+    """
+    if sets_region or settings.get("region_cookies"):
+        return "selector", settings.get("region_label", "")
+    if str(settings.get("region_mode", "")).strip().lower() == "federal":
+        return "federal", FEDERAL_LABEL
+    return "not_confirmed", NOT_CONFIRMED_LABEL
 
 
 class BankAdapter(ABC):

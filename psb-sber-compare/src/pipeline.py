@@ -12,6 +12,7 @@ from typing import Any
 import yaml
 
 from .banks import registry
+from .banks.base import region_binding
 from .banks.from_file import FileAdapter
 from .changes import detect_changes, format_digest
 from .compare import Thresholds, build_comparisons, suggest_pairs, summarize
@@ -257,18 +258,20 @@ def load_report_data(config: Config, *, competitor: str = "") -> dict[str, Any] 
         # «пары не настроены» от «данных по банку вообще нет».
         product_counts = {title: len(items) for title, items in by_bank.items()}
 
-        # Банки, у которых регион на сайте не выбирается: их условия
-        # собраны по умолчанию сайта и луганскими не являются.
-        no_region = []
+        # Как привязаны условия банков к ЛНР. «Не выбран» — предупреждение:
+        # это условия по адресу сервера. «Единые по РФ» — правило заказчика
+        # для сайтов, где про ЛНР ничего нет; такие условия сравниваются.
+        no_region, federal = [], []
         for code in competitor_codes + [HOME_BANK]:
             cls = registry.get(code)
-            if cls is None or (config.bank_settings(code) or {}).get("source"):
+            settings = config.bank_settings(code) or {}
+            if cls is None or settings.get("source"):
                 continue
-            if getattr(cls, "sets_region", False):
-                continue
-            if (config.bank_settings(code) or {}).get("region_cookies"):
-                continue
-            no_region.append(titles.get(code, code))
+            method, _ = region_binding(getattr(cls, "sets_region", False), settings)
+            if method == "not_confirmed":
+                no_region.append(titles.get(code, code))
+            elif method == "federal":
+                federal.append(titles.get(code, code))
 
         html = render_report(
             comparisons=comparisons, counts=counts, changes=changes,
@@ -298,6 +301,7 @@ def load_report_data(config: Config, *, competitor: str = "") -> dict[str, Any] 
             "html": html,
             "unverified": unverified,
             "no_region": no_region,
+            "federal": federal,
             "verified": not unverified,
             "product_counts": product_counts,
             "competitor_titles": competitor_titles,

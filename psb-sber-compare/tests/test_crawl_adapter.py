@@ -220,3 +220,29 @@ def test_single_bank_refresh_keeps_other_banks(tmp_path):
     assert set(rows) == {"Сбер", "ПСБ"}
     assert rows["ПСБ"]["rate_max"] == 14.1                       # свежее
     assert rows["Сбер"]["collected_at"] == "2026-10-01T07:00"     # дата прежняя
+
+
+def test_region_rule_three_cases():
+    """Правило заказчика: про ЛНР на сайте ничего — единые условия по РФ."""
+    from src.banks.base import region_binding
+
+    cookies = {"region_cookies": [{"name": "r", "value": "94"}],
+               "region_label": "Луганская Народная Республика"}
+    assert region_binding(False, cookies) == ("selector", "Луганская Народная Республика")
+    assert region_binding(True, {"region_label": "ЛНР"}) == ("selector", "ЛНР")
+
+    method, label = region_binding(False, {"region_mode": "federal"})
+    assert method == "federal" and "единые условия по РФ" in label
+
+    # Регион выбирается, но не задан: это Москва по адресу сервера, а не
+    # «единые условия», — правило сюда не относится.
+    assert region_binding(False, {})[0] == "not_confirmed"
+
+
+def test_federal_bank_is_compared_not_warned(monkeypatch):
+    monkeypatch.setattr(crawl, "PageReader", FakeReader)
+    result = OnlyCredits(region=None, settings={"max_pages": 50,
+                                                "region_mode": "federal"}).collect()
+    assert result.region_applied and result.region_method == "federal"
+    assert all("единые условия по РФ" in p.region for p in result.products)
+    assert "единые условия по РФ" in result.summary

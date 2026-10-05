@@ -25,7 +25,7 @@ from typing import Any
 from urllib.parse import urlsplit, urlunsplit
 
 from ..psb.parser import Product, parse_money, parse_term_months
-from .base import BankAdapter, CollectResult
+from .base import BankAdapter, CollectResult, region_binding
 from .browser import (BrowserSettings, BrowserUnavailable, PageFailed,
                       PageReader, PageTooSlow)
 from .generic_site import category_for, extract_products, rates_of
@@ -197,14 +197,13 @@ class CrawlAdapter(BankAdapter):
         settings = BrowserSettings.from_config(self.settings.get("browser"))
         now = datetime.now().isoformat(timespec="seconds")
         region_cookies = self.settings.get("region_cookies") or []
-        applied = self.sets_region or bool(region_cookies)
-        if applied:
-            region_label = self.settings.get("region_label", "")
-        else:
-            region_label = "регион на сайте не выбран"
-            log.warning("%s: регион на сайте не задаётся — условия будут те, что "
-                        "сайт отдаёт по умолчанию. Настроить: banks.%s.region_cookies",
-                        self.title, self.code)
+        method, region_label = region_binding(self.sets_region, self.settings)
+        applied = method != "not_confirmed"
+        if method == "not_confirmed":
+            log.warning("%s: регион на сайте не задан — условия будут те, что сайт "
+                        "отдаёт по адресу сервера. Настроить: banks.%s.region_cookies, "
+                        "а если про ЛНР на сайте ничего нет — banks.%s.region_mode: federal",
+                        self.title, self.code, self.code)
 
         max_pages = int(self.settings.get("max_pages") or 80)
         limit_s = float(self.settings.get("section_timeout_s") or 0)
@@ -279,7 +278,7 @@ class CrawlAdapter(BankAdapter):
             return self._failed("ни одного продукта не найдено: "
                                 + ("; ".join(failures[:3]) or "проверьте витрины"))
         return self._result(products=merged, pages_visited=visited,
-                            region_applied=applied)
+                            region_applied=applied, region_method=method)
 
     def _merge(self, products: dict[str, Product],
                showcase: dict[str, tuple[Any, str, str]],

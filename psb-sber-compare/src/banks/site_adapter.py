@@ -13,7 +13,7 @@ import logging
 import time
 from datetime import datetime
 
-from .base import BankAdapter, CollectResult
+from .base import BankAdapter, CollectResult, region_binding
 from .browser import BrowserSettings, BrowserUnavailable, read_page
 from .generic_site import extract_products, to_products
 
@@ -43,21 +43,18 @@ class SiteAdapter(BankAdapter):
 
         # Куки региона из настроек банка: [{name, value, domain}, ...].
         region_cookies = self.settings.get("region_cookies") or []
-        applied = self.sets_region or bool(region_cookies)
+        method, region_label = region_binding(self.sets_region, self.settings)
+        applied = method != "not_confirmed"
 
         # Подписываем регионом только то, что действительно собрано по
         # этому региону. Иначе московские условия уехали бы в отчёт под
         # видом луганских, и никто бы этого не заметил.
-        if applied:
-            region_label = self.settings.get("region_label", "")
-        else:
-            region_label = "регион на сайте не выбран"
+        if method == "not_confirmed":
             log.warning(
-                "%s: регион на сайте не задаётся, сайт отдаст условия по "
-                "своему усмотрению (обычно московские). Данные помечены как "
-                "собранные без выбора региона. Настроить: banks.%s.region_cookies",
-                self.title, self.code,
-            )
+                "%s: регион на сайте не задан — сайт отдаст условия по адресу "
+                "сервера, обычно московские. Настроить: banks.%s.region_cookies, "
+                "а если про ЛНР на сайте ничего нет — banks.%s.region_mode: federal",
+                self.title, self.code, self.code)
 
         products = []
         visited = 0
@@ -124,4 +121,5 @@ class SiteAdapter(BankAdapter):
         result = self._result(products=products, promos=[],
                               pages_visited=visited, collected_at=now)
         object.__setattr__(result, "region_applied", applied)
+        object.__setattr__(result, "region_method", method)
         return result
