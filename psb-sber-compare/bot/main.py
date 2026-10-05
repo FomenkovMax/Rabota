@@ -41,7 +41,11 @@ log = logging.getLogger("bot")
 WELCOME = (
     "<b>Сравнение розничных продуктов</b>\n"
     "Сбер против конкурентов в Луганской Народной Республике.\n\n"
-    "Выбери, что показать."
+    "🔄 <b>Обновить все банки</b> — свежий сбор с сайтов, 15–25 мин\n"
+    "🏦 <b>Сравнить</b> — светофор Сбера против одного банка\n"
+    "📊 <b>Выгрузить свод</b> — Excel, PDF или HTML по всем банкам\n"
+    "🤖 <b>AI-консультант</b> — совет по собранным цифрам\n"
+    "🔁 <b>Обновить один банк</b> — быстрее, остальные из прошлого сбора"
 )
 
 
@@ -75,6 +79,9 @@ def permitted(user_id: int | None) -> bool:
 
 
 dp = Dispatcher()
+
+# Идёт ли сбор: второй поверх первого делил бы с ним машину и базу.
+collecting = asyncio.Lock()
 
 # Кого ждём с текстовым вопросом к консультанту: user_id.
 awaiting_question: set[int] = set()
@@ -259,7 +266,8 @@ def _split(text: str, limit: int = 3800) -> list[str]:
 @dp.callback_query(F.data == "collect:menu")
 async def on_collect_menu(call: CallbackQuery) -> None:
     await call.message.edit_text(
-        "Сбор занимает несколько минут — бот напишет, когда закончит.",
+        "Какой банк обновить? Один банк — 5–12 минут, остальные банки "
+        "останутся из прошлого сбора. Бот напишет, когда закончит.",
         reply_markup=kb.collect_menu())
     await call.answer()
 
@@ -274,14 +282,27 @@ async def on_collect(call: CallbackQuery) -> None:
     if code == "menu":
         return
 
-    await call.answer("Запустил сбор")
-    await call.message.edit_text("Собираю данные. Это займёт несколько минут…")
+    # Два сбора разом делили бы одну машину и одну базу — второй ждёт.
+    if collecting.locked():
+        await call.answer("Сбор уже идёт — дождись сообщения о завершении",
+                          show_alert=True)
+        return
 
-    try:
-        report = await asyncio.to_thread(service.collect, code)
-    except Exception as exc:                      # noqa: BLE001
-        log.exception("Сбор %s не удался", code)
-        report = f"Сбор не удался: {html.escape(str(exc))[:400]}"
+    async with collecting:
+        await call.answer("Запустил сбор")
+        if code == "all":
+            await call.message.edit_text(
+                "🔄 Обновляю все банки. Это 15–25 минут — напишу, когда закончу.\n"
+                "Ботом можно пользоваться и сейчас: выгрузка покажет прошлый сбор.")
+        else:
+            await call.message.edit_text(
+                "🔁 Обновляю банк. Это 5–12 минут — напишу, когда закончу.")
+
+        try:
+            report = await asyncio.to_thread(service.collect, code)
+        except Exception as exc:                  # noqa: BLE001
+            log.exception("Сбор %s не удался", code)
+            report = f"Сбор не удался: {html.escape(str(exc))[:400]}"
 
     await call.message.answer(report, reply_markup=kb.main_menu())
 

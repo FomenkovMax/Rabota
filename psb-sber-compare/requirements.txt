@@ -2,7 +2,8 @@ requests>=2.31
 certifi>=2024.2.2
 PyYAML>=6.0
 openpyxl>=3.1
-aiogram>=3.13
+# 3.31 — цвета кнопок (style)
+aiogram>=3.31
 aiohttp-socks>=0.9
 # Версия закреплена: должна совпадать с образом в Dockerfile.
 playwright==1.63.0

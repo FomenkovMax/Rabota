@@ -7,7 +7,17 @@
 
 from __future__ import annotations
 
+from aiogram.enums import ButtonStyle
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+
+# Цвет кнопки — по смыслу действия. Telegram даёт три цвета; старые
+# версии приложения их не показывают и рисуют кнопку обычной.
+#   красный — тяжёлое действие на 15–25 минут, его видно сразу;
+#   синий   — сравнения, основная работа с ботом;
+#   зелёный — выгрузка готовых файлов.
+REFRESH = ButtonStyle.DANGER
+COMPARE = ButtonStyle.PRIMARY
+EXPORT = ButtonStyle.SUCCESS
 
 # Код банка → подпись на кнопке. Порядок кнопок = порядок в этом списке.
 COMPARE_TARGETS: list[tuple[str, str]] = [
@@ -25,22 +35,26 @@ EXPORT_FORMATS: list[tuple[str, str]] = [
 
 
 def main_menu() -> InlineKeyboardMarkup:
-    rows = [[InlineKeyboardButton(text=title, callback_data=f"cmp:{code}")]
-            for code, title in COMPARE_TARGETS]
-    rows.append([InlineKeyboardButton(text="Выгрузить общий свод",
-                                      callback_data="export:menu")])
-    rows.append([InlineKeyboardButton(text="AI-консультант",
+    rows = [[InlineKeyboardButton(text="🔄 Обновить все банки",
+                                  callback_data="collect:all", style=REFRESH)]]
+    rows += [[InlineKeyboardButton(text=f"🏦 {title}", callback_data=f"cmp:{code}",
+                                   style=COMPARE)]
+             for code, title in COMPARE_TARGETS]
+    rows.append([InlineKeyboardButton(text="📊 Выгрузить общий свод",
+                                      callback_data="export:menu", style=EXPORT)])
+    rows.append([InlineKeyboardButton(text="🤖 AI-консультант",
                                       callback_data="ai:menu")])
-    rows.append([InlineKeyboardButton(text="Обновить данные",
+    rows.append([InlineKeyboardButton(text="🔁 Обновить один банк",
                                       callback_data="collect:menu")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def export_menu() -> InlineKeyboardMarkup:
-    rows = [[InlineKeyboardButton(text=title, callback_data=f"export:{code}")]
+    rows = [[InlineKeyboardButton(text=title, callback_data=f"export:{code}",
+                                  style=EXPORT)]
             for code, title in EXPORT_FORMATS]
     rows.append([InlineKeyboardButton(text="Все форматы сразу",
-                                      callback_data="export:all")])
+                                      callback_data="export:all", style=EXPORT)])
     rows.append([InlineKeyboardButton(text="Назад", callback_data="menu")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -61,11 +75,11 @@ def ai_menu() -> InlineKeyboardMarkup:
 
 
 def collect_menu() -> InlineKeyboardMarkup:
-    rows = [[InlineKeyboardButton(text=f"Только {title.split(' и ')[-1]}",
-                                  callback_data=f"collect:{code}")]
-            for code, title in COMPARE_TARGETS]
-    rows.append([InlineKeyboardButton(text="Все банки",
-                                      callback_data="collect:all")])
+    """Обновление одного банка. Все банки — отдельной кнопкой в главном меню."""
+    rows = [[InlineKeyboardButton(text="Только Сбер", callback_data="collect:sber")]]
+    rows += [[InlineKeyboardButton(text=f"Только {title.split(' и ')[-1]}",
+                                   callback_data=f"collect:{code}")]
+             for code, title in COMPARE_TARGETS]
     rows.append([InlineKeyboardButton(text="Назад", callback_data="menu")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
