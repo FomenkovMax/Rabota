@@ -12,7 +12,7 @@ APP_DIR="$REPO_DIR/lnr-bank-agent"
 
 step() { printf '\n\033[1m==> %s\033[0m\n' "$*"; }
 # Если сервер ходит в интернет через прокси, его настройки передаются пользователю агента.
-PASS_ENV="HTTPS_PROXY,https_proxy,HTTP_PROXY,http_proxy,NO_PROXY,no_proxy,SSL_CERT_FILE,UV_NATIVE_TLS,UV_SYSTEM_CERTS"
+PASS_ENV="HTTPS_PROXY,https_proxy,HTTP_PROXY,http_proxy,NO_PROXY,no_proxy,SSL_CERT_FILE,UV_NATIVE_TLS,UV_SYSTEM_CERTS,NODE_EXTRA_CA_CERTS"
 as_agent() { sudo -u "$AGENT_USER" -H --preserve-env="$PASS_ENV" "$@"; }
 
 [ "$(id -u)" -eq 0 ] || { echo "Запусти от root: sudo bash deploy.sh" >&2; exit 1; }
