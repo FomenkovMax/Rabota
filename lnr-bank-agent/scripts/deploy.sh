@@ -11,7 +11,9 @@ REPO_DIR="$AGENT_HOME/Rabota"
 APP_DIR="$REPO_DIR/lnr-bank-agent"
 
 step() { printf '\n\033[1m==> %s\033[0m\n' "$*"; }
-as_agent() { sudo -u "$AGENT_USER" -H "$@"; }
+# Если сервер ходит в интернет через прокси, его настройки передаются пользователю агента.
+PASS_ENV="HTTPS_PROXY,https_proxy,HTTP_PROXY,http_proxy,NO_PROXY,no_proxy,SSL_CERT_FILE,UV_NATIVE_TLS"
+as_agent() { sudo -u "$AGENT_USER" -H --preserve-env="$PASS_ENV" "$@"; }
 
 [ "$(id -u)" -eq 0 ] || { echo "Запусти от root: sudo bash deploy.sh" >&2; exit 1; }
 grep -qi ubuntu /etc/os-release || echo "⚠ Скрипт проверен на Ubuntu; на другой ОС возможны отличия."
