@@ -27,7 +27,9 @@ CARD:
   cc_rate_purchases: {unit: "% годовых", better: lower, description: "Ставка по покупкам вне льготного периода"}
   cc_grace_days: {unit: дней, better: higher, description: "Льготный период"}
   cc_psk_max: {unit: "% годовых", better: lower, description: "ПСК, верхняя граница"}
-  cc_cash_fee: {unit: text, better: lower, description: "Комиссия за снятие наличных по кредитной карте"}
+  cc_cash_fee: {unit: text, better: none, description: "Комиссия за снятие наличных по кредитной карте"}
+  cc_cash_fee_pct: {unit: "%", better: lower, description: "Комиссия за снятие наличных с кредитной карты, процент"}
+  cc_cash_fee_min: {unit: "₽", better: lower, description: "Комиссия за снятие наличных с кредитной карты, минимум"}
   cc_grace_kept_after_cash: {unit: bool, better: none, description: "Сохраняется ли льготный период после снятия"}
   card_delivery_lnr: {unit: text, better: none, description: "Как получить карту в ЛНР"}
 LOAN:
