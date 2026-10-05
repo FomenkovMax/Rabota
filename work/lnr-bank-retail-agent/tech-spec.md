@@ -93,7 +93,7 @@ lnr-bank-agent/
 
 ## Decisions
 
-- **D-1. Детерминированная навигация, LLM только для извлечения.** Обход сайтов и выбор ЛНР выполняют адаптеры по сценариям из `site_playbook.yaml`, а не LLM-агент, который сам решает, куда кликать. Так срезы повторяемы и сопоставимы, а обход не зависит от прихотей модели. *Serves: US-2, US-6.*
+- **D-1. Детерминированная навигация, LLM только для извлечения.** Обход сайтов и выбор ЛНР выполняют адаптеры по сценариям из `site_playbook.yaml`, а не LLM-агент, который сам решает, куда кликать. Так срезы повторяемы и сопоставимы, а обход не зависит от прихотей модели. *Serves: US-1, US-2, US-6.*
 - **D-2. Привязка к ЛНР — декларативный playbook с проверкой.** Шаги выбора региона лежат в YAML по банку и разделу. После шагов движок проверяет, что регион применился: название в шапке, параметр в URL, изменение списка программ. Сайт поменялся — правится конфиг, а не код. *Serves: US-2.*
 - **D-3. Значения без подтверждённой ЛНР не участвуют в анализе.** `not_confirmed` и `confidence = low` сохраняются, но фильтруются в `gaps` и выводах. *Serves: US-2, US-3.*
 - **D-4. Защита от выдумок LLM.** Каждое извлечённое значение сопровождается цитатой. Цитата должна дословно (после нормализации пробелов) встречаться в тексте источника, иначе значение отбрасывается. Ответ валидируется pydantic-схемой. Разрешены только параметры из `parameters.yaml`, единицы проверяются. Невалидный ответ — один повтор с текстом ошибки, затем «н/д». *Serves: US-3.*
@@ -129,23 +129,37 @@ lnr-bank-agent/
   *Serves: US-4.* Отклонение — см. User-Spec Deviations.
 - **D-11. Выводы в MVP строятся по шаблонам, без LLM.** Сводка формируется из `gaps` по шаблону «факт + цифра + источник». Например: «Вклад 1 млн ₽ на 12 мес: Сбер — 14,2 %, 3-е место из 4; лучший — ПСБ, 15,0 % (+0,8 п.п.)». В выводах не может появиться непроверенная формулировка. *Serves: US-5, US-3.* Отклонение — см. User-Spec Deviations.
 - **D-12. Excel на openpyxl, HTML одним файлом.**
-  - Excel: нативные графики openpyxl, закреплённые заголовки, автофильтр, форматы % и ₽, без объединённых ячеек в таблицах данных.
-  - HTML: шаблон Jinja2 с autoescape, данные внутри файла в JSON, Chart.js вложен в файл, поэтому дашборд работает без интернета.
+  - Вкладки Excel:
+    - «Сводка»: дата среза, ключевая ставка, покрытие, выводы, светофор;
+    - «Продуктовые линейки»: матрица «продукт × банк» и каталог;
+    - по вкладке на каждый блок MVP — таблица и график;
+    - «Сценарии», «Gap Сбера», «Изменения» (алерты подсвечены), «Качество данных», «Источники» (кликабельные ссылки), «Справочник полей».
+  - Оформление Excel: нативные графики openpyxl, закреплённые заголовки, автофильтр, форматы % и ₽, без объединённых ячеек в таблицах данных.
+  - HTML: шаблон Jinja2 с autoescape, данные внутри файла в JSON. Chart.js фиксированной версии лежит в репозитории с проверкой SHA-256 и вкладывается в файл, поэтому дашборд работает без интернета.
   - У каждого банка постоянный цвет во всех графиках.
 
-  *Serves: US-8.*
-- **D-13. Защита выходов от внедрения.** Текст с сайтов экранируется в HTML. В Excel значения, начинающиеся с `=`, `+`, `-`, `@`, сохраняются как текст: это защита от формульных инъекций. Сообщения в Telegram отправляются без разметки или с экранированием. *[TECHNICAL]* Безопасность.
+  *Serves: US-8, US-12.*
+- **D-13. Защита выходов от внедрения.** Текст с сайтов экранируется в HTML. Данные внутри `<script>` вставляются через фильтр Jinja2 `tojson`, который экранирует `<`, `>` и `&`: так строка `</script>` из источника не выйдет за пределы блока данных. В Excel значения, начинающиеся с `=`, `+`, `-`, `@`, сохраняются как текст: это защита от формульных инъекций. Сообщения в Telegram отправляются без разметки или с экранированием. *[TECHNICAL]* Безопасность.
 - **D-14. Защита от prompt-injection.** Текст страницы передаётся модели только как данные внутри разделителей. У модели нет инструментов, она возвращает только JSON по схеме, и всё проверяется по D-4. *[TECHNICAL]* Безопасность.
-- **D-15. Telegram через Bot API напрямую (httpx).** После запуска — `sendMessage` со сводкой, затем `sendDocument` с Excel и HTML. Токен и `chat_id` хранятся в `.env`. Ошибка или блокировка сайта — отдельное сообщение. *Serves: US-9.*
+- **D-15. Telegram через Bot API напрямую (httpx).** После запуска — `sendMessage` со сводкой, затем `sendDocument` с Excel и HTML. Ошибка или блокировка сайта — отдельное сообщение. Бот только отправляет в заданный `chat_id` и не обрабатывает входящие команды, поэтому у него нет поверхности атаки. Токен и `chat_id` хранятся в `.env` и маскируются в логах. *Serves: US-9.*
 - **D-16. Расписание через cron и блокировка запусков.** Запуск раз в неделю (по умолчанию пн 07:00 МСК; на macOS допустим launchd). Lock-файл не даёт двум запускам идти одновременно. *Serves: US-7.*
 - **D-17. Режимы повторяют системный промпт.** `check` — этапы 0–1, `run --mode block` — один блок, `run --mode full` — все блоки MVP, `run --mode update` — полный сбор с изменениями и алертами (для cron), `build` — пересборка выходов из БД. *Serves: US-7.*
 - **D-18. Код живёт в `lnr-bank-agent/` этого репозитория.** Отдельный `pyproject.toml`, сборку лендинга проект не затрагивает. При желании папку можно вынести в отдельный репозиторий без изменений. *[TECHNICAL]*
+- **D-19. Контракт промптов.** Промпты лежат в `extract/prompts/`: `system.md` и `extract_{BLOCK}.md`. Версия промпта указана в первой строке файла и входит в ключ кэша (D-9), поэтому после правки промпта страницы разбираются заново. *[TECHNICAL]*
+- **D-20. Общие файлы фиксируются в первой волне.** Зависимости, полная схема `settings.yaml` и словарь `parameters.yaml` создаются в T1 целиком. Параллельные задачи следующих волн их только читают и не конфликтуют. *[TECHNICAL]*
+- **D-21. Присутствие банков и watchlist.**
+  - Присутствие четырёх банков подтверждается по их официальным сайтам: офисы, МФЦ, банкоматы, онлайн-доступность.
+  - Watchlist в MVP — список кандидатов в `settings.yaml` с URL их страниц офисов. Для каждого кандидата агент проверяет, упоминаются ли на этой странице ЛНР или города ЛНР, и пишет результат в `banks`.
+  - Автоматического поиска новых банков в MVP нет: надёжного официального перечня банков ЛНР в открытом виде не найдено.
+
+  *Serves: US-13.* Отклонение — см. User-Spec Deviations.
 
 ## User-Spec Deviations
 
 1. **US-4.** User-spec: сценарии считаются в калькуляторе банка, если он есть. Tech-spec: в MVP калькуляторы автоматизируются только для DEP и MTG, остальные сценарии считаются формулами по опубликованным условиям, даже если у банка есть калькулятор (`calc_method = agent_formula`). Почему: автоматизация каждого калькулятора — хрупкая работа с интерфейсом конкретного банка, а для DEP и MTG регион влияет сильнее всего. Остальные калькуляторы — в Extension. `[PENDING USER APPROVAL]`
 2. **US-5, US-8.** Исходные требования предполагают выводы для руководства. Tech-spec: в MVP выводы на «Сводке» формируются по шаблонам из данных, без текста от LLM. Почему: исключён риск выдуманных формулировок. Текстовый отчёт с выводами от LLM (помечены как гипотезы) — в Extension вместе с docx. `[PENDING USER APPROVAL]`
 3. **US-11 (расширение).** Tech-spec дополнительно соблюдает robots.txt: страницы, запрещённые для всех агентов, не собираются. Покрытие данных может снизиться — это видно в `data_quality`. `[PENDING USER APPROVAL]`
+4. **US-13.** User-spec: агент сам находит другие банки в ЛНР. Tech-spec: в MVP watchlist — заданный пользователем список кандидатов, агент проверяет их присутствие по страницам офисов (D-21). Почему: надёжного официального перечня банков ЛНР в открытом виде нет, а поиск по СМИ дал бы непроверяемый результат. `[PENDING USER APPROVAL]`
 
 ## Technical Acceptance Criteria
 
@@ -189,6 +203,7 @@ Tools required: bash, Playwright (локально, для HTML-дашборда
 5. **Playwright:** открыть `dashboard_{дата}.html` по `file://` без сети → KPI-плитки и светофор видны, фильтр по банку меняет таблицу.
 6. **Telegram:** `lnrbank notify --test`, затем реальный запуск → пользователь получает сводку и файлы.
 7. **bash:** `crontab -l` содержит расписание; два одновременных запуска → второй завершается с сообщением о блокировке.
+8. **bash:** `time lnrbank run --mode full` → укладывается в 2 часа (TAC-10); в `run_log.md` есть покрытие по банкам и блокам.
 
 ## Risks
 
@@ -213,7 +228,7 @@ Tools required: bash, Playwright (локально, для HTML-дашборда
 ### Wave 1
 
 **T1. Каркас проекта, настройки и сертификаты**
-- Description: Создать проект `lnr-bank-agent/` со структурой, всеми зависимостями MVP, CLI-заготовкой и загрузкой настроек (`settings.yaml`, `parameters.yaml`, `.env`). Здесь же — скрипт установки корня Минцифры и проверка TLS к банкам и GigaChat. Полная схема настроек и зависимостей фиксируется сразу, чтобы следующие волны не правили общие файлы параллельно.
+- Description: Создать проект `lnr-bank-agent/` со структурой, всеми зависимостями MVP, CLI-заготовкой и загрузкой настроек (`settings.yaml`, `parameters.yaml`, `.env`), как требует D-20. Добавить скрипт установки корня Минцифры и проверку TLS к банкам и GigaChat (D-6). На этом каркасе строятся все следующие волны.
 - Skill: infrastructure-setup
 - Reviewers: code-reviewer, security-auditor, infrastructure-reviewer
 - Verify-smoke: `bash scripts/install_certs.sh` → «fingerprint OK»; `lnrbank --help`; `lnrbank check --tls-only` → OK для sberbank.ru, vtb.ru, psbank.ru, tbank.ru, api.giga.chat; `pytest -q` и `pre-commit run --all-files` проходят.
@@ -230,33 +245,33 @@ Tools required: bash, Playwright (локально, для HTML-дашборда
 - Files to read: `config/parameters.yaml`, `prompts/lnr-bank-retail-agent/system-prompt.txt` (`<data_model>`)
 
 **T3. Формулы сценариев и правила качества**
-- Description: Реализовать формулы сценариев MVP и правила качества: обязательные поля, правдоподобие относительно ключевой ставки, покрытие. Формулы нужны там, где калькулятор банка не автоматизирован, правила — чтобы непроверенные значения не попадали в сравнение.
+- Description: Реализовать формулы сценариев MVP (D-10) и правила качества: обязательные поля, правдоподобие относительно ключевой ставки, покрытие. Формулы нужны там, где калькулятор банка не автоматизирован, правила — чтобы непроверенные значения не попадали в сравнение (D-3).
 - Skill: code-writing
 - Reviewers: code-reviewer, security-auditor, test-reviewer
 - Files to modify: `src/lnrbank/calc/formulas.py`, `src/lnrbank/calc/scenarios.py`, `src/lnrbank/quality/rules.py`, `tests/unit/test_formulas.py`, `tests/unit/test_quality.py`
 - Files to read: `config/settings.yaml`, `config/parameters.yaml`, `prompts/lnr-bank-retail-agent/system-prompt.txt` (`<scenarios>`, `<quality>`)
 
 **T4. LLM-провайдер и конвейер извлечения**
-- Description: Сделать сменный интерфейс LLM и реализацию на GigaChat, а также конвейер извлечения: очистка текста и таблиц, структурированный ответ, валидация, проверка цитат, кэш. Это единственное место, где LLM влияет на данные, поэтому все защиты от выдумок собраны здесь. Промпты читаются из `extract/prompts/` по контракту `extract_{BLOCK}.md` и `system.md`; до T5 используются заглушки.
+- Description: Сделать сменный интерфейс LLM и реализацию на GigaChat (D-5), а также конвейер извлечения с защитами D-4, D-9 и D-14: очистка текста и таблиц, структурированный ответ, валидация, проверка цитат, кэш. Это единственное место, где LLM влияет на данные. Промпты подключаются по контракту D-19; до T7 используются заглушки.
 - Skill: code-writing
 - Reviewers: code-reviewer, security-auditor, test-reviewer
 - Verify-smoke: `python -m lnrbank.llm.smoke` → список моделей GigaChat; фрагмент «Ставка 14,2 % на 12 месяцев» даёт `rate_12m = 14.2` с дословной цитатой.
-- Files to modify: `src/lnrbank/llm/base.py`, `src/lnrbank/llm/gigachat.py`, `src/lnrbank/llm/smoke.py`, `src/lnrbank/extract/pipeline.py`, `src/lnrbank/extract/clean.py`, `src/lnrbank/extract/schema.py`, `tests/unit/test_extract_pipeline.py`, `tests/unit/test_evidence_check.py`
+- Files to modify: `src/lnrbank/llm/base.py`, `src/lnrbank/llm/gigachat.py`, `src/lnrbank/llm/smoke.py`, `src/lnrbank/extract/pipeline.py`, `src/lnrbank/extract/clean.py`, `src/lnrbank/extract/schema.py`, `src/lnrbank/extract/prompts/*.md` (заглушки), `tests/unit/test_extract_pipeline.py`, `tests/unit/test_evidence_check.py`
 - Files to read: `config/parameters.yaml`, `work/lnr-bank-retail-agent/code-research.md` (GigaChat SDK)
 
-**T6. Браузерный движок и привязка к ЛНР**
-- Description: Сделать слой браузера (один Chromium, паузы, robots.txt, распознавание антибота и капчи, скриншоты) и движок `site_playbook` для выбора и проверки ЛНР. Заполнить playbook для четырёх банков по результатам теста доступа. Команда `lnrbank check` выполняет этапы 0–1: доступ, привязку и присутствие банков в ЛНР.
+**T5. Браузерный движок, привязка к ЛНР и проверка доступа**
+- Description: Сделать слой браузера по D-7 и движок `site_playbook` для выбора и проверки ЛНР (D-2). Заполнить playbook для четырёх банков по результатам теста доступа. Команда `lnrbank check` выполняет этапы 0–1: TLS, ключевая ставка ЦБ, загрузка, привязка, присутствие банков и проверка watchlist (D-21).
 - Skill: code-writing
 - Reviewers: code-reviewer, security-auditor, test-reviewer
-- Verify-smoke: `lnrbank check` на целевой машине → по каждому банку TLS, загрузка, привязка (способ или причина), скриншоты в `data/raw/`.
+- Verify-smoke: `lnrbank check` на целевой машине → по каждому банку TLS, загрузка, привязка (способ или причина), скриншоты в `data/raw/`; ключевая ставка ЦБ на дату.
 - Verify-user: открыть скриншоты и убедиться, что на сайтах выбраны Луганск или ЛНР.
-- Files to modify: `src/lnrbank/browser/engine.py`, `src/lnrbank/browser/region.py`, `src/lnrbank/browser/robots.py`, `src/lnrbank/browser/antibot.py`, `src/lnrbank/cli.py`, `config/site_playbook.yaml`, `tests/integration/test_region_engine.py`, `tests/fixtures/region/`
-- Files to read: `prompts/lnr-bank-retail-agent/runs/2026-10-05_test-dostupa/` (все файлы), `prompts/lnr-bank-retail-agent/system-prompt.txt` (`<region_rules>`, `<boundaries>`)
+- Files to modify: `src/lnrbank/browser/engine.py`, `src/lnrbank/browser/region.py`, `src/lnrbank/browser/robots.py`, `src/lnrbank/browser/antibot.py`, `src/lnrbank/net/cbr.py`, `src/lnrbank/cli.py`, `config/site_playbook.yaml`, `tests/integration/test_region_engine.py`, `tests/unit/test_cbr.py`, `tests/fixtures/region/`
+- Files to read: `prompts/lnr-bank-retail-agent/runs/2026-10-05_test-dostupa/` (все файлы), `prompts/lnr-bank-retail-agent/system-prompt.txt` (`<region_rules>`, `<boundaries>`), `work/lnr-bank-retail-agent/code-research.md`
 
 ### Wave 3
 
-**T7. Адаптеры банков: каталог, документы, инфраструктура, калькуляторы**
-- Description: Реализовать адаптеры SBER, VTB, PSB и TBANK. Каждый собирает продуктовую линейку блоков MVP с отметкой доступности в ЛНР, страницы продуктов и PDF-тарифы, офисы и банкоматы по городам ЛНР; калькуляторы автоматизируются для сценариев DEP и MTG. Сохранить по каждому банку набор страниц как фикстуры для офлайн-тестов и для проверки промптов.
+**T6. Адаптеры банков: каталог, документы, инфраструктура, калькуляторы**
+- Description: Реализовать адаптеры SBER, VTB, PSB и TBANK. Каждый собирает продуктовую линейку блоков MVP с отметкой доступности в ЛНР, страницы продуктов и PDF-тарифы, офисы и банкоматы по городам ЛНР; калькуляторы автоматизируются для сценариев DEP и MTG (D-10). Сохранить по каждому банку набор страниц как фикстуры для офлайн-тестов и для проверки промптов в T7.
 - Skill: code-writing
 - Reviewers: code-reviewer, security-auditor, test-reviewer
 - Verify-smoke: `lnrbank run --mode block --block DEP --collect-only` → страницы и PDF каждого банка в `data/raw/{snapshot}/{bank}/`, строки `products` с `available_in_lnr`.
@@ -265,8 +280,8 @@ Tools required: bash, Playwright (локально, для HTML-дашборда
 
 ### Wave 4
 
-**T5. Промпты извлечения**
-- Description: Написать системный промпт и промпты извлечения для блоков MVP по правилам системного промпта: только написанное в источнике, дословная цитата, условия, «н/д». Добавить 1–2 примера на блок. Разметить эталонный набор из фикстур T7 и добиться на нём метрик TAC-12.
+**T7. Промпты извлечения**
+- Description: Написать системный промпт и промпты извлечения для блоков MVP по правилам системного промпта: только написанное в источнике, дословная цитата, условия, «н/д». Добавить 1–2 примера на блок. Разметить эталонный набор из фикстур T6 и добиться на нём метрик TAC-12.
 - Skill: prompt-master
 - Reviewers: prompt-reviewer
 - Verify-smoke: `python -m lnrbank.llm.smoke --golden` → точность ≥ 0,9, 100 % цитат найдено.
@@ -275,7 +290,7 @@ Tools required: bash, Playwright (локально, для HTML-дашборда
 - Files to read: `prompts/lnr-bank-retail-agent/system-prompt.txt`, `config/parameters.yaml`, `src/lnrbank/extract/schema.py`, `tests/fixtures/`
 
 **T8. Оркестрация конвейера и анализ**
-- Description: Собрать режимы `run --mode block|full|update` и `build`: сбор → извлечение → сценарии → качество → запись среза → изменения и алерты → позиция Сбера и светофор → выводы по шаблонам → `run_log.md`. Добавить блокировку параллельных запусков и итоговый статус запуска для уведомлений. Это и есть конвейер обновления данных.
+- Description: Собрать режимы из D-17: сбор → извлечение → сценарии → качество → запись среза → изменения и алерты → позиция Сбера и светофор → выводы по шаблонам (D-11) → `run_log.md`. Добавить блокировку параллельных запусков (D-16) и итоговый статус запуска для уведомлений. Это и есть конвейер обновления данных.
 - Skill: code-writing
 - Reviewers: code-reviewer, security-auditor, test-reviewer
 - Verify-smoke: `lnrbank run --mode block --block DEP` → новый срез, строки с источниками и цитатами, `run_log.md` с покрытием; повторный запуск → 0 изменений, 0 вызовов LLM.
@@ -285,7 +300,7 @@ Tools required: bash, Playwright (локально, для HTML-дашборда
 ### Wave 5
 
 **T9. Выходы и доставка: Excel, HTML, Telegram**
-- Description: Сформировать Excel с вкладками и графиками из D-12 и самодостаточный HTML-дашборд с фильтрами, KPI, светофором и графиками. Защитить выходы от внедрения (D-13). Отправлять в Telegram сводку запуска (алерты, покрытие, главные выводы, ошибки) и файлы отчёта.
+- Description: Сформировать Excel и самодостаточный HTML-дашборд по D-12 с защитой от внедрения по D-13. Отправлять в Telegram сводку запуска и файлы отчёта по D-15.
 - Skill: code-writing
 - Reviewers: code-reviewer, security-auditor, test-reviewer
 - Verify-smoke: `lnrbank build` → файлы в `data/out/{snapshot}/`, `openpyxl` открывает книгу; `lnrbank notify --test` → сообщение пришло.
@@ -295,20 +310,40 @@ Tools required: bash, Playwright (локально, для HTML-дашборда
 
 ### Wave 6 — Audit Wave
 
-**T10. Code Audit** — Description: целостная проверка качества кода всей фичи, отчёт с замечаниями. Skill: code-reviewing. Reviewers: none.
+**T10. Code Audit**
+- Description: Целостная проверка качества кода всей фичи, отчёт с замечаниями.
+- Skill: code-reviewing
+- Reviewers: none
 
-**T11. Security Audit** — Description: проверка по OWASP Top 10 всех компонентов: секреты, TLS, внедрение в HTML и Excel, prompt-injection, работа с внешним контентом. Skill: security-auditor. Reviewers: none.
+**T11. Security Audit**
+- Description: Проверка по OWASP Top 10 всех компонентов: секреты, TLS, внедрение в HTML и Excel, prompt-injection, работа с внешним контентом.
+- Skill: security-auditor
+- Reviewers: none
 
-**T12. Test Audit** — Description: проверка качества и покрытия тестов по Testing Strategy. Skill: test-master. Reviewers: none.
+**T12. Test Audit**
+- Description: Проверка качества и покрытия тестов по Testing Strategy.
+- Skill: test-master
+- Reviewers: none
 
 ### Wave 7 — Final Wave
 
-**T13. QA** — Description: прогнать все тесты и проверить acceptance criteria из user-spec и tech-spec; то, что требует живой среды, перенести в post-deploy. Skill: pre-deploy-qa. Reviewers: none.
+**T13. QA**
+- Description: Прогнать все тесты и проверить acceptance criteria из user-spec и tech-spec. То, что требует живой среды, отложить в post-deploy.
+- Skill: pre-deploy-qa
+- Reviewers: none
 
-**T14. Deploy на целевую машину** — Description: инструкция и скрипт развёртывания на Linux, macOS или сервере в РФ: Python и uv, Chromium для Playwright, `install_certs.sh`, `.env` с правами 600, запуск от непривилегированного пользователя, cron раз в неделю с логом в `data/logs/`. Skill: deploy-pipeline. Reviewers: code-reviewer, security-auditor, deploy-reviewer.
+**T14. Deploy на целевую машину**
+- Description: Скрипт и инструкция развёртывания на Linux, macOS или сервере в РФ: Python и uv, Chromium для Playwright, `install_certs.sh`, `.env` с правами 600, запуск от непривилегированного пользователя, cron раз в неделю с логом в `data/logs/`.
+- Skill: deploy-pipeline
+- Reviewers: code-reviewer, security-auditor, deploy-reviewer
+- Verify-user: на целевой машине `crontab -l` показывает расписание, ручной запуск `lnrbank check` проходит.
 - Files to modify: `lnr-bank-agent/scripts/deploy.sh`, `lnr-bank-agent/scripts/crontab.example`, `lnr-bank-agent/README.md`
+- Files to read: `work/lnr-bank-retail-agent/tech-spec.md` (D-6, D-16, Prerequisites)
 
-**T15. Post-deploy verification** — Description: выполнить Agent Verification Plan на целевой машине и проверить отложенные критерии. Skill: post-deploy-qa. Reviewers: none.
+**T15. Post-deploy verification**
+- Description: Выполнить Agent Verification Plan на целевой машине и проверить отложенные критерии.
+- Skill: post-deploy-qa
+- Reviewers: none
 
 ## Extension (следующий tech-spec)
 
