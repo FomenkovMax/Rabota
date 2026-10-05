@@ -53,5 +53,5 @@ esac
 
 CERTIFI="$(cd "$PROJECT_DIR" && as_user "$UV" run --quiet --no-dev python -c 'import certifi; print(certifi.where())')"
 cat "$CERTIFI" "$ROOT_FILE" > "$BUNDLE_FILE"
-[ "$TARGET_USER" = "$(id -un)" ] || chown -R "$TARGET_USER": "$CERT_DIR"
+[ "$TARGET_USER" = "$(id -un)" ] || chown -R "$TARGET_USER": "$PROJECT_DIR/data"
 echo "✓ CA-бандл для Python: $BUNDLE_FILE"

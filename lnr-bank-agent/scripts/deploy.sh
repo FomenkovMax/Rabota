@@ -50,6 +50,7 @@ step "6/8 Браузер Chromium для Playwright"
 as_agent bash -c "cd '$APP_DIR' && .venv/bin/playwright install chromium"
 
 step "7/8 Сертификат Минцифры"
+as_agent mkdir -p "$APP_DIR/data/certs" "$APP_DIR/data/logs"
 PASS_ENV="$PASS_ENV" LNRBANK_USER="$AGENT_USER" bash "$APP_DIR/scripts/install_certs.sh"
 
 step "8/8 Секреты, команда lnrbank, расписание"
