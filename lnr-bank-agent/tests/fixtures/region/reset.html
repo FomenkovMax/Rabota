@@ -1,0 +1,6 @@
+<html><body><header><button id="city">Москва</button></header>
+<ul id="list" hidden><li>Луганск</li></ul>
+<script>
+document.getElementById('city').onclick = () => document.getElementById('list').hidden = false;
+document.querySelector('#list li').onclick = () => document.getElementById('city').textContent = 'Луганск';
+</script></body></html>

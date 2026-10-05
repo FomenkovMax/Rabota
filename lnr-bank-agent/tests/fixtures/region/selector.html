@@ -1,0 +1,13 @@
+<html><body><header><button id="city">Москва</button></header>
+<div id="popup" hidden><input id="q" placeholder="Найти город">
+<ul id="list"><li>Москва</li><li>Луганск</li><li>Алчевск</li></ul></div>
+<main>Ставки для вашего региона</main>
+<script>
+const city = document.getElementById('city');
+city.onclick = () => document.getElementById('popup').hidden = false;
+document.querySelectorAll('#list li').forEach(li => li.onclick = () => {
+  city.textContent = li.textContent; document.getElementById('popup').hidden = true;
+  localStorage.setItem('city', li.textContent);
+});
+const saved = localStorage.getItem('city'); if (saved) city.textContent = saved;
+</script></body></html>

@@ -57,6 +57,8 @@ class Browser(_Strict):
     delay_s: tuple[float, float] = (3, 6)
     locale: str = "ru-RU"
     timezone: str = "Europe/Moscow"
+    # Путь к Chromium, если не тот, что ставит `playwright install` (переменная LNRBANK_CHROMIUM).
+    executable_path: Path | None = None
 
 
 class Storage(_Strict):

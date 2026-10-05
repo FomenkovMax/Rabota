@@ -1,15 +1,41 @@
-# Шаги привязки к ЛНР по банку и разделу. Заполняется в задаче 5 (движок) и задаче 6 (разделы).
+# Шаги привязки к ЛНР по банку и разделу (D-2).
+# steps: список действий (goto, click, click_text, fill, select, check, wait) или "auto" —
+#        общая стратегия: открыть выбор города, найти «Луганск», кликнуть.
+# verify: any_text — что должно появиться; within — где искать (шапка, а не весь сайт:
+#         «Луганск» в списке офисов внизу страницы не доказывает выбор региона).
+# verified: false — шаги ещё не проверены на живом сайте. Проверка — `lnrbank check` на VPS.
 # Стартовые сведения — тест доступа 05.10.2026 (prompts/lnr-bank-retail-agent/runs/2026-10-05_test-dostupa).
 SBER:
-  home: {url: "https://www.sberbank.ru/ru/person", region_method: not_confirmed, steps: [],
-         notes: "Сначала JS-проверка браузера (антибот). Нужен настоящий браузер."}
+  home:
+    url: "https://www.sberbank.ru/ru/person"
+    region_method: selector
+    steps: auto
+    verify: {any_text: [Луганск, ЛНР, Луганская Народная Республика], within: header}
+    verified: false
+    notes: "Сначала JS-проверка браузера (антибот). Нужен настоящий браузер."
 VTB:
-  home: {url: "https://www.vtb.ru/", region_method: not_confirmed, steps: [],
-         notes: "Селектора в исходном HTML нет; ипотека новых регионов — vtb.ru/personal/ipoteka/new-regions/"}
+  home:
+    url: "https://www.vtb.ru/"
+    region_method: selector
+    steps: auto
+    verify: {any_text: [Луганск, ЛНР, Луганская Народная Республика], within: header}
+    verified: false
+    notes: "Селектора в исходном HTML нет. Ипотека новых регионов — vtb.ru/personal/ipoteka/new-regions/"
 PSB:
-  home: {url: "https://www.psbank.ru/personal", region_method: not_confirmed, steps: [],
-         city_id: 811307, region_id: 811561,
-         notes: "Выбор города: 56 нас. пунктов ЛНР, Луганск — 811307"}
+  home:
+    url: "https://www.psbank.ru/personal"
+    region_method: selector
+    steps: auto
+    verify: {any_text: [Луганск], within: header}
+    verified: false
+    city_id: 811307
+    region_id: 811561
+    notes: "Выбор города: 56 нас. пунктов ЛНР (psb_lnr_cities.csv), Луганск — 811307"
 TBANK:
-  home: {url: "https://www.tbank.ru/", region_method: not_confirmed, steps: [],
-         notes: "Регион не выбирается; путь federal_confirmed"}
+  home:
+    url: "https://www.tbank.ru/"
+    region_method: federal_confirmed
+    steps: []
+    verify: {any_text: [ЛНР, Луганская Народная Республика, новых регионах]}
+    verified: false
+    notes: "Регион не выбирается. Нужна страница, подтверждающая выдачу карт в ЛНР (МФЦ) — найти на VPS."

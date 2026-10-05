@@ -37,7 +37,9 @@ def check(tls_only: bool = typer.Option(False, "--tls-only", help="Только 
     if not all(r.ok for r in results):
         raise typer.Exit(code=1)
     if not tls_only:
-        _not_ready(5)
+        from lnrbank.check import format_report, run_check
+
+        typer.echo(format_report(run_check(settings)))
 
 
 @app.command()
