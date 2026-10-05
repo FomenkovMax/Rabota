@@ -6,7 +6,9 @@
 
 ## Статус
 
-Готова задача 1 — каркас, настройки, сертификат Минцифры, проверка TLS. Команды `check` (полная), `run`, `build` и `notify` появятся в задачах 5, 8 и 9.
+Готовы задачи 1–5 и установка на VPS (задача 14). Команды `run`, `build`, `notify` появятся в задачах 8 и 9.
+
+**Установка на VPS с телефона:** [docs/setup-from-phone.md](docs/setup-from-phone.md).
 
 ## Установка (Linux или macOS)
 
@@ -19,7 +21,7 @@ chmod 600 .env
 uv run lnrbank check --tls-only  # TLS к банкам и GigaChat
 ```
 
-Нужен [uv](https://docs.astral.sh/uv/). Пошаговая инструкция для VPS с телефона появится в задаче 14.
+Нужен [uv](https://docs.astral.sh/uv/). На VPS всё ставит `scripts/deploy.sh`.
 
 ## Зачем сертификат Минцифры
 
