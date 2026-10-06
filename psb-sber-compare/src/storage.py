@@ -33,7 +33,9 @@ CREATE TABLE IF NOT EXISTS runs (
     products_sber INTEGER DEFAULT 0,
     promos        INTEGER DEFAULT 0,
     status        TEXT DEFAULT 'running',
-    note          TEXT
+    note          TEXT,
+    key_rate      REAL,
+    key_rate_date TEXT
 );
 
 CREATE TABLE IF NOT EXISTS products (
@@ -51,7 +53,8 @@ CREATE TABLE IF NOT EXISTS products (
     terms_json   TEXT,
     source_url   TEXT,
     fingerprint  TEXT,
-    collected_at TEXT
+    collected_at TEXT,
+    region_method TEXT
 );
 CREATE INDEX IF NOT EXISTS ix_products_run  ON products(run_id);
 CREATE INDEX IF NOT EXISTS ix_products_key  ON products(bank, product_key);
@@ -106,8 +109,14 @@ class Storage:
 
     def _migrate(self) -> None:
         """Добавляет колонки, появившиеся после создания базы."""
+        existing = {row["name"] for row in self.conn.execute("PRAGMA table_info(runs)")}
+        for column, ddl in (("key_rate", "REAL"), ("key_rate_date", "TEXT")):
+            if column not in existing:
+                self.conn.execute(f"ALTER TABLE runs ADD COLUMN {column} {ddl}")
+                log.info("База обновлена: runs.%s", column)
+
         existing = {row["name"] for row in self.conn.execute("PRAGMA table_info(products)")}
-        for column, ddl in (("rate_conditions", "TEXT"),):
+        for column, ddl in (("rate_conditions", "TEXT"), ("region_method", "TEXT")):
             if column not in existing:
                 self.conn.execute(f"ALTER TABLE products ADD COLUMN {column} {ddl}")
                 log.info("База обновлена: products.%s", column)
@@ -155,6 +164,29 @@ class Storage:
         self.conn.commit()
         return moved
 
+    def set_key_rate(self, run_id: int, rate: Any) -> None:
+        """Ключевая ставка ЦБ на дату сбора — ориентир для проверок."""
+        if rate is None:
+            return
+        self.conn.execute("UPDATE runs SET key_rate=?, key_rate_date=? WHERE id=?",
+                          (rate.value, rate.on, run_id))
+        self.conn.commit()
+
+    def key_rate_of(self, run_id: int) -> tuple[float | None, str]:
+        row = self.conn.execute("SELECT key_rate, key_rate_date FROM runs WHERE id=?",
+                                (run_id,)).fetchone()
+        if row is None:
+            return None, ""
+        return row["key_rate"], row["key_rate_date"] or ""
+
+    def snapshots(self) -> list[sqlite3.Row]:
+        """Последний успешный сбор каждого дня — один срез на дату для BI."""
+        return self.conn.execute(
+            "SELECT * FROM runs WHERE id IN ("
+            " SELECT MAX(id) FROM runs WHERE status='ok'"
+            " GROUP BY substr(started_at, 1, 10)) ORDER BY id"
+        ).fetchall()
+
     def finish_run(self, run_id: int, *, psb: int, sber: int, promos: int,
                    status: str = "ok", note: str = "") -> None:
         self.conn.execute(
@@ -191,6 +223,7 @@ class Storage:
                 p.term_min_months, p.term_max_months, p.term_raw,
                 json.dumps(p.terms, ensure_ascii=False),
                 p.source_url, p.fingerprint(), p.collected_at,
+                getattr(p, "region_method", "") or "",
             ))
         self.conn.executemany(
             "INSERT INTO products (run_id, bank, product_key, title, category, region,"
@@ -198,8 +231,8 @@ class Storage:
             " apr_min, apr_max, apr_raw,"
             " amount_min, amount_max, amount_raw,"
             " term_min_months, term_max_months, term_raw,"
-            " terms_json, source_url, fingerprint, collected_at)"
-            " VALUES (" + ",".join("?" * 23) + ")",
+            " terms_json, source_url, fingerprint, collected_at, region_method)"
+            " VALUES (" + ",".join("?" * 24) + ")",
             rows,
         )
         self.conn.commit()

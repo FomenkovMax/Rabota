@@ -98,6 +98,7 @@ EXPORT_FORMATS: list[tuple[str, str]] = [
     ("xlsx", "Excel"),
     ("pdf", "PDF"),
     ("html", "Дашборд HTML"),
+    ("bi", "Данные для BI (CSV)"),
 ]
 
 

@@ -271,7 +271,9 @@ def to_products(items: Iterable[TextProduct], *, bank: str, category: str,
 
         product = Product(
             bank=bank,
-            url_path=source_url,
+            # Страница одна на несколько продуктов: ключ — адрес плюс
+            # название, иначе история изменений склеит продукты в один.
+            url_path=f"{source_url}#{key}",
             title=item.title,
             category=category_for(item.title, category),
             region=region,

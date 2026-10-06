@@ -2,6 +2,8 @@
 
 Листы:
   Светофор   — пары продуктов, дельты, вердикт;
+  Место Сбера — все банки по программам: место, лучший, медиана, статус;
+  Качество данных — покрытие и «Нужна ручная проверка»;
   Акции      — действующие предложения по сегментам;
   Изменения  — что поменялось с прошлого сбора;
   Продукты   — полная выгрузка по каждому банку.
@@ -21,6 +23,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
+from .. import market
 from ..compare import GREEN, GREY, LIGHT_LABEL, RED, YELLOW
 
 log = logging.getLogger(__name__)
@@ -160,11 +163,17 @@ def _sheet_products(book: Workbook, data: dict[str, Any]) -> None:
         sheet,
         ["Банк", "Категория", "Продукт", "Ставка от", "Ставка до",
          "Условия лучшей ставки", "ПСК от", "Сумма до", "Срок до, мес",
-         "Источник"],
-        [10, 22, 40, 12, 12, 40, 11, 14, 14, 44],
+         "Источник", "product_id", "Привязка к региону", "Достоверность",
+         "Замечания"],
+        [10, 22, 40, 12, 12, 40, 11, 14, 14, 44, 30, 14, 13, 50],
     )
 
+    ids = data.get("product_ids") or {}
+    methods = data.get("region_methods") or {}
     for product in data["products"]:
+        method = market.method_of(product, methods)
+        check = market.assess(product, key_rate=data.get("key_rate"),
+                              region_method=method)
         sheet.append([
             product.bank,
             product.category,
@@ -176,6 +185,10 @@ def _sheet_products(book: Workbook, data: dict[str, Any]) -> None:
             product.amount_max,
             product.term_max_months,
             product.source_url,
+            ids.get(id(product), ""),
+            method,
+            market.CONFIDENCE_LABEL[check.confidence],
+            "; ".join(check.issues),
         ])
         for column in (4, 5, 7):
             cell = sheet.cell(row=sheet.max_row, column=column)
@@ -185,7 +198,77 @@ def _sheet_products(book: Workbook, data: dict[str, Any]) -> None:
         if isinstance(cell.value, (int, float)):
             cell.number_format = "# ##0"
 
-    _finish(sheet, 10)
+    _finish(sheet, 14)
+
+
+GAP_FILL = {
+    market.LEADER: LIGHT_FILL[GREEN],
+    market.IN_MARKET: LIGHT_FILL[YELLOW],
+    market.BEHIND: LIGHT_FILL[RED],
+    market.NO_SBER: LIGHT_FILL[RED],
+}
+
+
+def _sheet_gaps(book: Workbook, data: dict[str, Any]) -> None:
+    sheet = book.create_sheet("Место Сбера")
+    _write_header(
+        sheet,
+        ["Блок", "Программа", "Параметр", "Лучше", "Ставка Сбера", "Продукт Сбера",
+         "Место", "Банков в сравнении", "Лучший банк", "Лучшая ставка",
+         "Продукт лучшего", "Медиана остальных", "Сбер − лучший, п.п.",
+         "Сбер − медиана, п.п.", "Статус", "Комментарий"],
+        [12, 28, 11, 9, 13, 30, 8, 11, 12, 13, 30, 13, 13, 13, 16, 40],
+    )
+    for gap in data.get("gaps") or []:
+        sheet.append([
+            gap.block, gap.program,
+            "ставка до" if gap.metric == "rate_max" else "ставка от",
+            "выше" if gap.better == "higher" else "ниже",
+            gap.sber.value if gap.sber else None,
+            gap.sber.title if gap.sber else "",
+            gap.rank, gap.banks_compared,
+            gap.best.bank if gap.best else "",
+            gap.best.value if gap.best else None,
+            gap.best.title if gap.best else "",
+            gap.others_median, gap.delta_vs_best, gap.delta_vs_median,
+            gap.status, gap.comment,
+        ])
+        for column in (5, 10, 12, 13, 14):
+            cell = sheet.cell(row=sheet.max_row, column=column)
+            if isinstance(cell.value, (int, float)):
+                cell.number_format = "0.00"
+        fill = GAP_FILL.get(gap.status)
+        if fill:
+            sheet.cell(row=sheet.max_row, column=15).fill = fill
+    _finish(sheet, 16)
+
+
+def _sheet_quality(book: Workbook, data: dict[str, Any]) -> None:
+    sheet = book.create_sheet("Качество данных")
+    _write_header(
+        sheet,
+        ["Банк", "Блок", "Продуктов", "Со ставкой (ключевой параметр)",
+         "Ставка проверена", "Покрытие, %", "Регион не подтверждён",
+         "Низкая достоверность", "Замечания"],
+        [10, 12, 11, 16, 13, 12, 13, 13, 60],
+    )
+    for row in data.get("quality") or []:
+        sheet.append([
+            row.bank, row.block, row.products, row.rated, row.usable,
+            row.coverage_pct, row.not_confirmed, row.low,
+            "; ".join(f"{k} — {v}" for k, v in row.issues.items()),
+        ])
+    _finish(sheet, 9)
+
+    manual = book.create_sheet("Ручная проверка")
+    _write_header(manual, ["Банк", "Категория", "Продукт", "Ставка от", "Ставка до",
+                           "ПСК от", "Что не так", "Источник"],
+                  [10, 20, 40, 11, 11, 10, 70, 44])
+    for product, check in data.get("manual") or []:
+        manual.append([product.bank, product.category, product.title,
+                       product.rate_min, product.rate_max, product.apr_min,
+                       "; ".join(check.issues), product.source_url])
+    _finish(manual, 8)
 
 
 def build(path: str | Path, data: dict[str, Any]) -> Path:
@@ -195,6 +278,8 @@ def build(path: str | Path, data: dict[str, Any]) -> Path:
 
     book = Workbook()
     _sheet_traffic(book, data)
+    _sheet_gaps(book, data)
+    _sheet_quality(book, data)
     _sheet_promos(book, data)
     _sheet_changes(book, data)
     _sheet_products(book, data)

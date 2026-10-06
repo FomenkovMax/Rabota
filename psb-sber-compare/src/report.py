@@ -211,7 +211,7 @@ svg{display:block;max-width:100%;overflow:visible}
 def _tiles(counts: dict[str, int], changes: list[Any], total_promos: int) -> str:
     high = sum(1 for c in changes if c["severity"] == "high")
     items = [
-        (counts[RED], "Проигрываем ПСБ", "--st-critical"),
+        (counts[RED], "Проигрываем", "--st-critical"),
         (counts[YELLOW], "Паритет", "--st-warning"),
         (counts[GREEN], "Выигрываем", "--st-good"),
         (counts[GREY], "Нет данных", "--ink-muted"),
@@ -265,7 +265,7 @@ def _traffic_table(comparisons: list[Comparison]) -> str:
         )
     return (
         '<div class="scroll"><table><thead><tr>'
-        "<th>Продукт</th><th>Ставка ПСБ</th><th>Ставка Сбера</th>"
+        "<th>Продукт</th><th>Ставка конкурента</th><th>Ставка Сбера</th>"
         "<th>Дельта</th><th>Светофор</th><th>Комментарий</th>"
         "</tr></thead><tbody>" + "".join(rows) + "</tbody></table></div>"
     )
@@ -626,6 +626,137 @@ def _catalog(catalog: dict[str, list[Any]], banks: list[str]) -> str:
     return "".join(blocks)
 
 
+# --- место Сбера на рынке -------------------------------------------------
+
+GAP_STYLE = {
+    "лидер": ("--st-good", "▲"),
+    "в рынке": ("--st-warning", "■"),
+    "отстаёт": ("--st-critical", "▼"),
+    "нет у Сбера": ("--st-critical", "○"),
+    "нет у конкурентов": ("--s1", "●"),
+    "нет данных": ("--ink-muted", "—"),
+}
+
+
+def _pp(value: float) -> str:
+    return f"{abs(value):.2f}".replace(".", ",") + " п.п."
+
+
+def _versus_median(gap: Any) -> str:
+    advantage = gap.advantage
+    if advantage is None:
+        return "—"
+    if abs(advantage) < 0.005:
+        return "на уровне медианы"
+    side = "лучше" if advantage > 0 else "хуже"
+    return f"{side} медианы на {_pp(advantage)}"
+
+
+def _gap_tiles(gaps: list[Any]) -> str:
+    counts: dict[str, int] = {}
+    for gap in gaps:
+        counts[gap.status] = counts.get(gap.status, 0) + 1
+    items = [(status, counts.get(status, 0)) for status in
+             ("лидер", "в рынке", "отстаёт", "нет у Сбера")]
+    cells = "".join(
+        f'<div class="tile"><div class="v" style="color:var({GAP_STYLE[s][0]})">{n}</div>'
+        f'<div class="k">{e(s[:1].upper() + s[1:])}</div></div>'
+        for s, n in items)
+    return f'<div class="tiles">{cells}</div>'
+
+
+def _gaps_table(gaps: list[Any], home: str) -> str:
+    if not gaps:
+        return ('<p class="empty">Сравнивать пока нечего: нужен сбор, в котором есть '
+                'Сбер и хотя бы один конкурент.</p>')
+    rows = []
+    for gap in gaps:
+        var, icon = GAP_STYLE.get(gap.status, ("--ink-muted", "—"))
+        chip = (f'<span class="chip" style="color:var({var})">'
+                f'<span class="ic">{icon}</span>{e(gap.status)}</span>')
+        prefix = "до " if gap.better == "higher" else "от "
+
+        def offer(o: Any) -> str:
+            if o is None:
+                return "—"
+            name = (f'<a href="{e(o.url)}" target="_blank" rel="noopener">{e(o.title)}</a>'
+                    if o.url else e(o.title))
+            return (f'<span class="num">{e(prefix + fmt_rate(o.value))}</span>'
+                    f'<div class="pmeta">{e(o.bank)} · {name}</div>')
+
+        best = offer(gap.best) if gap.best and gap.best.bank != home else (
+            "Сбер" if gap.best else "—")
+        median = (prefix + fmt_rate(gap.others_median)
+                  if gap.others_median is not None else "—")
+        comment = gap.comment
+        if gap.status == "отстаёт" and gap.delta_vs_best is not None:
+            comment = f"до лучшего {_pp(gap.delta_vs_best)}"
+        rows.append(
+            "<tr>"
+            f'<td><div class="pname">{e(gap.program)}</div>'
+            f'<div class="pmeta">{e(BLOCK_NAME.get(gap.block, gap.block))}</div></td>'
+            f"<td>{offer(gap.sber)}</td>"
+            f'<td class="num">{e(gap.place)}</td>'
+            f"<td>{best}</td>"
+            f'<td class="num">{e(median)}<div class="pmeta">{e(_versus_median(gap))}</div></td>'
+            f"<td>{chip}</td>"
+            f'<td class="pmeta">{e(comment)}</td>'
+            "</tr>")
+    return (
+        '<div class="scroll"><table><thead><tr>'
+        "<th>Программа</th><th>Сбер</th><th>Место</th><th>Лучший на рынке</th>"
+        "<th>Медиана остальных</th><th>Статус</th><th>Комментарий</th>"
+        "</tr></thead><tbody>" + "".join(rows) + "</tbody></table></div>")
+
+
+BLOCK_NAME = {
+    "DEP": "Сбережения", "CARD": "Карты", "LOAN": "Кредиты", "MTG": "Ипотека",
+    "DAILY": "Повседневный банкинг", "INV": "Инвестиции и страхование",
+    "SEG": "Сегментные предложения", "OTHER": "Прочее",
+}
+
+
+def _quality_block(rows: list[Any], manual: list[Any]) -> str:
+    if not rows:
+        return '<p class="empty">Данных пока нет.</p>'
+    body = []
+    for row in rows:
+        coverage = ("—" if row.coverage_pct is None
+                    else f"{row.coverage_pct:.0f} %".replace(".", ","))
+        issues = "; ".join(f"{k} — {v}" for k, v in sorted(
+            row.issues.items(), key=lambda kv: -kv[1]))
+        body.append(
+            "<tr>"
+            f"<td>{e(row.bank)}</td>"
+            f"<td>{e(BLOCK_NAME.get(row.block, row.block))}</td>"
+            f'<td class="num">{row.products}</td>'
+            f'<td class="num">{row.usable} из {row.rated}</td>'
+            f'<td class="num">{e(coverage)}</td>'
+            f'<td class="pmeta">{e(issues or "—")}</td>'
+            "</tr>")
+    table = (
+        '<div class="scroll"><table><thead><tr>'
+        "<th>Банк</th><th>Блок</th><th>Продуктов</th><th>Ставка проверена</th>"
+        "<th>Покрытие</th><th>Замечания</th>"
+        "</tr></thead><tbody>" + "".join(body) + "</tbody></table></div>")
+
+    if not manual:
+        checks = '<p class="empty">Подозрительных значений не найдено.</p>'
+    else:
+        items = []
+        for product, check in manual:
+            name = (f'<a href="{e(product.source_url)}" target="_blank" rel="noopener">'
+                    f'{e(product.title)}</a>' if product.source_url else e(product.title))
+            rate, _ = _catalog_rate(product)
+            items.append(
+                f'<div class="chg high"><div class="t">{e(product.bank)} · {name} — '
+                f'{e(rate)}</div><div class="d">{e("; ".join(check.issues))}</div></div>')
+        checks = "".join(items)
+    return (table + '<h3 style="margin:22px 0 10px;font-size:15px">Нужна ручная проверка</h3>'
+            '<p class="hint">Эти значения есть в данных, но в место Сбера и выводы '
+            "не идут, пока их не сверят с сайтом.</p>" + checks)
+
+
 def render_report(
     *,
     comparisons: list[Comparison],
@@ -643,6 +774,11 @@ def render_report(
     thresholds: Any,
     catalog: dict[str, list[Any]] | None = None,
     catalog_banks: list[str] | None = None,
+    key_rate: str = "",
+    gaps: list[Any] | None = None,
+    quality_rows: list[Any] | None = None,
+    manual: list[Any] | None = None,
+    home: str = "Сбер",
 ) -> str:
     total_promos = promo_active_total
     delta_chart = _delta_chart(comparisons)
@@ -670,17 +806,32 @@ def render_report(
     return f"""<!DOCTYPE html>
 <html lang="ru"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ПСБ vs Сбер — {e(region)}</title>
+<title>Сбер и конкуренты — {e(region)}</title>
 <style>{CSS}</style></head>
 <body>
 <button class="tg" onclick="var r=document.documentElement;
   r.dataset.theme = r.dataset.theme==='dark' ? 'light' : 'dark';">Тема</button>
 <div class="wrap">
 <header>
-  <h1>Сравнение розничных продуктов: ПСБ и Сбер</h1>
+  <h1>Сравнение розничных продуктов: Сбер и конкуренты</h1>
   <div class="sub">Регион: <b>{e(region)}</b> · Отчёт сформирован {e(generated_at)} ·
-  Собрано продуктов: ПСБ {psb_total}, Сбер {sber_total} · Запусков в истории: {run_count}</div>
+  Собрано продуктов: конкуренты {psb_total}, Сбер {sber_total} · Запусков в истории: {run_count}
+  · Ключевая ставка ЦБ: <b>{e(key_rate or "н/д")}</b></div>
 </header>
+
+<section class="card">
+  <h2>Место Сбера на рынке</h2>
+  <p class="hint">Все банки сразу, без ручных пар. Продукты разложены по программам:
+  семейная ипотека сравнивается с семейной, рыночная — с рыночной. По каждой программе
+  у банка берётся лучшая витринная ставка: «до» для вкладов и счетов, «от» для кредитов.
+  «В рынке» — отклонение от медианы остальных банков не больше
+  {str(thresholds.parity).replace(".", ",")} п.п. В расчёт не идут ставки, которые
+  не прошли проверку (раздел «Качество данных»), и условия не ЛНР.
+  Витринная ставка — это лучший случай: условия её получения у банков разные,
+  поэтому перед выводом смотрите продукт по ссылке.</p>
+  {_gap_tiles(gaps or [])}
+  {_gaps_table(gaps or [], home)}
+</section>
 
 {_tiles(counts, changes, total_promos)}
 
@@ -701,6 +852,15 @@ def render_report(
   «ПСК» — указана только полная стоимость кредита, она не равна ставке.
   Название ведёт на страницу-источник.</p>
   {_catalog(catalog or {}, catalog_banks or list((catalog or {}).keys()))}
+</section>
+
+<section class="card">
+  <h2>Качество данных</h2>
+  <p class="hint">Покрытие — доля продуктов, у которых ставка найдена и прошла проверки:
+  вклад не выше ключевой ЦБ больше чем на 3 п.п., кредит не дешевле ключевой без
+  госпрограммы, ПСК не ниже ставки, регион подтверждён. Для карт без ставки,
+  страховки и акций покрытие не считается — у них ключевой параметр не ставка.</p>
+  {_quality_block(quality_rows or [], manual or [])}
 </section>
 
 {delta_section}

@@ -287,8 +287,12 @@ class CrawlAdapter(BankAdapter):
         for key, (item, url, family) in showcase.items():
             product = products.get(key)
             if product is None:
+                # Своей страницы у продукта нет, витрина общая на несколько
+                # продуктов — к адресу добавляем название, иначе у них
+                # совпадёт ключ и история изменений склеит их в один.
                 product = Product(
-                    bank=self.title, url_path=urlsplit(url).path, title=item.title,
+                    bank=self.title, url_path=f"{urlsplit(url).path}#{key}",
+                    title=item.title,
                     category=category_for(item.title, family), region=region,
                     source_url=url, collected_at=now,
                 )

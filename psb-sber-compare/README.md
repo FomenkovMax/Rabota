@@ -205,7 +205,8 @@ AI_MODEL=                          # пусто = claude-opus-5
 | `python run.py check-bank sber` | Пробный сбор по одному банку с показом извлечённого |
 | `python run.py collect` | Сбор по всем включённым банкам |
 | `python run.py collect --bank psb` | Сбор по одному банку |
-| `python run.py export --fmt all` | Свод в Excel, PDF и HTML |
+| `python run.py export --fmt all` | Свод в Excel, PDF, HTML и CSV для BI |
+| `python run.py export --fmt bi` | Только CSV для BI: `data/bi/*.csv` + справочник полей + архив |
 | `python run.py suggest` | Черновые пары продуктов для ручной проверки |
 | `python run.py history` | История запусков |
 
@@ -269,7 +270,9 @@ src/
     psb.py                 ПСБ (SSR-состояние)
     others.py              Сбер, ВТБ, ГенБанк, ЦМР
   psb/                     разбор SSR-состояния ПСБ
-  export/                  Excel, PDF, сборка выгрузок
+  export/                  Excel, PDF, CSV для BI, сборка выгрузок
+  market.py                место Сбера на рынке, проверки правдоподобия, product_id
+  keyrate.py               ключевая ставка ЦБ с cbr.ru
   ai/consultant.py         AI-консультант
   compare.py               сопоставление и светофор
   promos.py                акции: актуальность, сегменты, сравнение

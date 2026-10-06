@@ -47,10 +47,22 @@ def detect_changes(storage: Any, current_run: int, previous_run: int | None) -> 
     return changes
 
 
+def _banks(storage: Any, table: str, *runs: int) -> list[str]:
+    """Банки, которые есть хотя бы в одном из сборов.
+
+    Раньше список был вписан руками — ПСБ и Сбер, — и изменения у ВТБ,
+    ЦМР и остальных не ловились вовсе.
+    """
+    marks = ",".join("?" * len(runs))
+    rows = storage.conn.execute(
+        f"SELECT DISTINCT bank FROM {table} WHERE run_id IN ({marks})", runs).fetchall()
+    return sorted(row[0] for row in rows)
+
+
 def _diff_products(storage: Any, current_run: int, previous_run: int) -> list[dict[str, Any]]:
     changes: list[dict[str, Any]] = []
 
-    for bank in ("ПСБ", "Сбер"):
+    for bank in _banks(storage, "products", current_run, previous_run):
         now = _rows_by_key(storage.products_of_run(current_run, bank))
         before = _rows_by_key(storage.products_of_run(previous_run, bank))
 
@@ -81,19 +93,34 @@ def _diff_products(storage: Any, current_run: int, previous_run: int) -> list[di
 
 
 def _diff_rate(bank: str, key: str, row: Any, old: Any) -> list[dict[str, Any]]:
-    new_rate, old_rate = row["rate_min"], old["rate_min"]
-    if new_rate is None or old_rate is None or new_rate == old_rate:
-        return []
+    """Сдвиг ставки «от» и «до».
 
-    delta = round(new_rate - old_rate, 3)
-    severity = HIGH if abs(delta) >= SIGNIFICANT_RATE_PP else INFO
-    return [{
-        "bank": bank, "kind": "rate", "product_key": key, "title": row["title"],
-        "field": "Ставка",
-        "old_value": old["rate_raw"] or f"{old_rate}%",
-        "new_value": row["rate_raw"] or f"{new_rate}%",
-        "delta": delta, "severity": severity,
-    }]
+    Раньше смотрели только «от». У вклада витринная ставка — «до», и её
+    снижение с 18 до 16 % при неизменной нижней границе проходило мимо.
+    Верхнюю границу сверяем, только если ставка задана диапазоном, —
+    иначе одно изменение дало бы два одинаковых алерта.
+    """
+    out: list[dict[str, Any]] = []
+    single = (row["rate_max"] in (None, row["rate_min"])
+              and old["rate_max"] in (None, old["rate_min"]))
+    bounds = [("rate_min", "Ставка" if single else "Ставка от")]
+    if not single:
+        bounds.append(("rate_max", "Ставка до"))
+
+    for column, label in bounds:
+        new_rate, old_rate = row[column], old[column]
+        if new_rate is None or old_rate is None or new_rate == old_rate:
+            continue
+        delta = round(new_rate - old_rate, 3)
+        out.append({
+            "bank": bank, "kind": "rate", "product_key": key, "title": row["title"],
+            "field": label,
+            "old_value": old["rate_raw"] or f"{old_rate}%",
+            "new_value": row["rate_raw"] or f"{new_rate}%",
+            "delta": delta,
+            "severity": HIGH if abs(delta) >= SIGNIFICANT_RATE_PP else INFO,
+        })
+    return out
 
 
 def _diff_terms(bank: str, key: str, row: Any, old: Any) -> list[dict[str, Any]]:
@@ -125,7 +152,7 @@ def _diff_terms(bank: str, key: str, row: Any, old: Any) -> list[dict[str, Any]]
 def _diff_promos(storage: Any, current_run: int, previous_run: int) -> list[dict[str, Any]]:
     changes: list[dict[str, Any]] = []
 
-    for bank in ("ПСБ", "Сбер"):
+    for bank in _banks(storage, "promos", current_run, previous_run):
         now = _promo_by_key(storage.promos_of_run(current_run, bank))
         before = _promo_by_key(storage.promos_of_run(previous_run, bank))
 

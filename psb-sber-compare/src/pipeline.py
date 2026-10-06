@@ -14,6 +14,7 @@ import yaml
 from .banks import registry
 from .banks.base import region_binding
 from .banks.from_file import FileAdapter
+from . import keyrate, market
 from .changes import detect_changes, format_digest
 from .compare import Thresholds, build_comparisons, suggest_pairs, summarize
 from .promos import EXPIRED, classify_all, compare_segments
@@ -110,6 +111,8 @@ def collect_bank(config: Config, code: str, *, save: bool = True) -> Any:
     try:
         previous = storage.last_successful_run_id()
         run_id = storage.start_run(config.get("region_label", default=""))
+        storage.set_key_rate(run_id, keyrate.fetch(config.get("key_rate")))
+        _mark_region(result)
         storage.save_products(run_id, result.products)
         # Остальные банки берём из прошлого сбора, иначе свод после
         # обновления одного банка показал бы только его.
@@ -147,6 +150,13 @@ def collect_all(config: Config) -> dict[str, Any]:
     return results
 
 
+def _mark_region(result: Any) -> None:
+    """Каждому продукту — способ привязки к ЛНР, с которым его собрали."""
+    for product in result.products:
+        if not getattr(product, "region_method", ""):
+            product.region_method = getattr(result, "region_method", "") or "selector"
+
+
 # --- история --------------------------------------------------------------
 
 def build_history(storage: Storage, comparisons: list[Any], days: int) -> dict[str, list[tuple[str, float]]]:
@@ -174,6 +184,24 @@ def build_history(storage: Storage, comparisons: list[Any], days: int) -> dict[s
 
 
 # --- данные для отчёта ----------------------------------------------------
+
+def bank_region_methods(config: Config, codes: list[str] | None = None) -> dict[str, str]:
+    """Как условия банка привязаны к ЛНР по текущим настройкам: название → способ.
+
+    Банк из файла сюда не попадает: за его содержимое отвечает тот, кто
+    положил файл, и для расчётов он считается привязанным (selector).
+    """
+    titles = registry.titles()
+    out: dict[str, str] = {}
+    for code in codes if codes is not None else config.enabled_banks():
+        cls = registry.get(code)
+        settings = config.bank_settings(code) or {}
+        if cls is None or settings.get("source"):
+            continue
+        method, _ = region_binding(getattr(cls, "sets_region", False), settings)
+        out[titles.get(code, code)] = method
+    return out
+
 
 def load_report_data(config: Config, *, competitor: str = "") -> dict[str, Any] | None:
     """Собирает всё нужное для отчёта из последнего успешного сбора.
@@ -261,17 +289,21 @@ def load_report_data(config: Config, *, competitor: str = "") -> dict[str, Any] 
         # Как привязаны условия банков к ЛНР. «Не выбран» — предупреждение:
         # это условия по адресу сервера. «Единые по РФ» — правило заказчика
         # для сайтов, где про ЛНР ничего нет; такие условия сравниваются.
-        no_region, federal = [], []
-        for code in competitor_codes + [HOME_BANK]:
-            cls = registry.get(code)
-            settings = config.bank_settings(code) or {}
-            if cls is None or settings.get("source"):
-                continue
-            method, _ = region_binding(getattr(cls, "sets_region", False), settings)
-            if method == "not_confirmed":
-                no_region.append(titles.get(code, code))
-            elif method == "federal":
-                federal.append(titles.get(code, code))
+        region_methods = bank_region_methods(config, competitor_codes + [HOME_BANK])
+        no_region = [t for t, m in region_methods.items() if m == "not_confirmed"]
+        federal = [t for t, m in region_methods.items() if m == "federal"]
+
+        # Ключевая ставка — та, что действовала на дату сбора.
+        key = keyrate.ensure(storage, run_id, run_row["started_at"] if run_row else "",
+                             config.get("key_rate"))
+        key_rate = key.value if key else None
+
+        scope = [p for t in [home_title] + competitor_titles for p in by_bank.get(t, [])]
+        gaps = market.build_gaps(scope, home=home_title, key_rate=key_rate,
+                                 region_methods=region_methods,
+                                 parity_pp=thresholds.parity)
+        quality_rows, manual = market.quality(scope, key_rate=key_rate,
+                                              region_methods=region_methods)
 
         html = render_report(
             comparisons=comparisons, counts=counts, changes=changes,
@@ -285,6 +317,8 @@ def load_report_data(config: Config, *, competitor: str = "") -> dict[str, Any] 
             catalog={title: by_bank.get(title, [])
                      for title in [home_title] + competitor_titles},
             catalog_banks=[home_title] + competitor_titles,
+            key_rate=key.label if key else "",
+            gaps=gaps, quality_rows=quality_rows, manual=manual, home=home_title,
         )
 
         return {
@@ -306,6 +340,13 @@ def load_report_data(config: Config, *, competitor: str = "") -> dict[str, Any] 
             "product_counts": product_counts,
             "competitor_titles": competitor_titles,
             "home_title": home_title,
+            "key_rate": key_rate,
+            "key_rate_label": key.label if key else "",
+            "gaps": gaps,
+            "quality": quality_rows,
+            "manual": manual,
+            "region_methods": region_methods,
+            "product_ids": market.product_ids(all_products),
         }
     finally:
         storage.close()
@@ -317,6 +358,7 @@ def run(config: Config) -> dict[str, Any]:
     """Сбор по всем банкам плюс отчёт."""
     storage = Storage(config.path("storage", "db_path", default="data/psb_sber.db"))
     run_id = storage.start_run(config.get("region_label", default=""))
+    storage.set_key_rate(run_id, keyrate.fetch(config.get("key_rate")))
 
     products_total = promos_total = 0
     banks_ok: list[str] = []
@@ -328,6 +370,7 @@ def run(config: Config) -> dict[str, Any]:
                 failures.append(result.summary)
                 continue
             banks_ok.append(result.bank)
+            _mark_region(result)
             storage.save_products(run_id, result.products)
 
             insights = classify_all(result.promos, result.bank)
@@ -448,6 +491,8 @@ def _rows_to_products(rows: list[Any]) -> list[Any]:
         keys = row.keys()
         if "rate_conditions" in keys:
             product.rate_conditions = row["rate_conditions"] or ""
+        if "region_method" in keys:
+            product.region_method = row["region_method"] or ""
         object.__setattr__(product, "product_key", row["product_key"])
         out.append(product)
     return out

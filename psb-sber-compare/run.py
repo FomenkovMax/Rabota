@@ -7,7 +7,8 @@
     python run.py check-bank psb       проверить, берутся ли данные банка
     python run.py banks                список банков и способов сбора
     python run.py report               пересобрать отчёт без похода на сайты
-    python run.py export --fmt all     выгрузить свод: xlsx, pdf, html
+    python run.py export --fmt all     выгрузить свод: xlsx, pdf, html и CSV для BI
+    python run.py export --fmt bi      только CSV для BI (data/bi + архив)
     python run.py suggest              черновые пары продуктов
     python run.py history              история запусков
     python run.py bot                  запустить Telegram-бота
@@ -197,7 +198,9 @@ def cmd_export(config: Config, fmt: str, open_after: bool) -> int:
         print("Данных нет. Сначала: python run.py collect")
         return 1
 
-    formats = ["xlsx", "pdf", "html"] if fmt == "all" else [fmt]
+    from src.export import ALL
+
+    formats = ALL if fmt == "all" else [fmt]
     files = build_exports(config, data, formats)
     if not files:
         print("Ничего не выгрузилось — смотри лог выше.")
@@ -246,7 +249,7 @@ def main() -> int:
                         help="номер раздела для dump, по умолчанию 0")
     parser.add_argument("--bank", default="", help="собрать только этот банк")
     parser.add_argument("--fmt", default="all",
-                        choices=["xlsx", "pdf", "html", "all"])
+                        choices=["xlsx", "pdf", "html", "bi", "all"])
     parser.add_argument("--config", default=str(ROOT / "config" / "settings.yaml"))
     parser.add_argument("--open", action="store_true")
     parser.add_argument("-v", "--verbose", action="store_true")

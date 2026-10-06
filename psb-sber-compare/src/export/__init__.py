@@ -1,4 +1,4 @@
-"""Выгрузка свода в Excel, PDF и HTML."""
+"""Выгрузка свода в Excel, PDF, HTML и CSV для BI."""
 
 from __future__ import annotations
 
@@ -9,7 +9,10 @@ from typing import Any
 
 log = logging.getLogger(__name__)
 
-SUPPORTED = ("xlsx", "pdf", "html")
+SUPPORTED = ("xlsx", "pdf", "html", "bi")
+
+#: Что выгружать по «все форматы».
+ALL = ["xlsx", "pdf", "html", "bi"]
 
 
 def build_exports(config: Any, data: dict[str, Any],
@@ -43,5 +46,12 @@ def build_exports(config: Any, data: dict[str, Any],
             produced.append(pdf.build(html_path, out_dir / f"{base}.pdf"))
         except Exception as exc:                   # noqa: BLE001
             log.error("PDF не собрался: %s", exc)
+
+    if "bi" in formats:
+        from . import bi
+        try:
+            produced.append(bi.build(config))
+        except Exception as exc:                   # noqa: BLE001
+            log.error("Выгрузка для BI не собралась: %s", exc)
 
     return produced

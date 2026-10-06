@@ -120,15 +120,15 @@ def compare_text(bank_code: str) -> str:
 # --- выгрузка --------------------------------------------------------------
 
 def export_files(fmt: str) -> list[Path]:
-    """Готовит файлы свода. fmt: xlsx | pdf | html | all."""
-    from src.export import build_exports
+    """Готовит файлы свода. fmt: xlsx | pdf | html | bi | all."""
+    from src.export import ALL, build_exports
 
     config = _config()
     data = load_report_data(config)
     if data is None:
         return []
 
-    formats = ["xlsx", "pdf", "html"] if fmt == "all" else [fmt]
+    formats = ALL if fmt == "all" else [fmt]
     return build_exports(config, data, formats)
 
 
