@@ -317,3 +317,58 @@ def test_local_bank_counts_as_lnr():
     method, label = region_binding(False, {"region_mode": "local"})
     assert method == "local" and "только в ЛНР" in label
     assert bank_region_methods(Config.load(), ["cmr"]) == {"ЦМР": "local"}
+
+
+def test_seo_duplicates_are_skipped():
+    skip = SberAdapter.skip
+    for path in ("/ru/person/credits/money/na_50000_rublej",
+                 "/ru/person/credits/money/kredit_s_18_let",
+                 "/ru/person/contributions/deposits/vklad-na-3-mesyaca",
+                 "/ru/person/bank_cards/credit_cards/s_limitom_30000",
+                 "/ru/person/credits/money/kazan"):
+        assert skip.search(path), path
+    for path in ("/ru/person/credits/money/consumer_unsecured",
+                 "/ru/person/bank_cards/credit_cards/credit_sberkarta",
+                 "/ru/person/credits/home/family",
+                 "/ru/person/contributions/deposits/vklad_kluchevoy"):
+        assert not skip.search(path), path
+
+
+def test_most_linked_page_is_read_first():
+    from collections import deque
+
+    queue = deque(["https://x/seo-1", "https://x/product", "https://x/seo-2"])
+    popularity = {"https://x/seo-1": 1, "https://x/product": 30, "https://x/seo-2": 1}
+    assert crawl.CrawlAdapter._next(queue, popularity) == "https://x/product"
+    assert crawl.CrawlAdapter._next(queue, popularity) == "https://x/seo-1"
+
+
+BLOCK_PAGE = {"h1": "", "title": "sberbank.ru", "links": [],
+              "text": "Возникла проблема при открытии сайта Сбербанка в этом браузере.\n"
+                      "Support ID: <8935934556078563006>"}
+
+
+def test_protection_stub_is_not_a_product_and_stops_politely(monkeypatch, tmp_path):
+    """Заглушка защиты: пауза, повтор, при повторной заглушке — стоп без мусора."""
+    class Blocking(FakeReader):
+        reads = 0
+
+        def close(self):
+            pass
+
+        def read(self, url):
+            Blocking.reads += 1
+            if Blocking.reads > 3:
+                return dict(BLOCK_PAGE)
+            return super().read(url)
+
+    monkeypatch.setattr(crawl, "PageReader", Blocking)
+    adapter = OnlyCredits(region=None, settings={
+        "region_cookies": [{"name": "r", "value": "94"}], "max_pages": 50,
+        "block_pause_s": 0, "pages_dir": str(tmp_path / "pages"),
+    })
+    result = adapter.collect()
+    assert result.ok
+    assert all(p.title != "sberbank.ru" for p in result.products)
+    summary = (tmp_path / "pages" / "000-summary.txt").read_text(encoding="utf-8")
+    assert "закрыл доступ" in summary

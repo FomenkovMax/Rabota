@@ -55,16 +55,18 @@ class SberAdapter(CrawlAdapter):
 
     base_url = "https://www.sberbank.ru"
     seeds = (
-        "https://www.sberbank.ru/ru/person/contributions",
-        "https://www.sberbank.ru/ru/person/contributions/savings",
+        # Проверено по обходу 06.10.2026: /contributions/savings отдаёт 404,
+        # а /credits/homenew — витрина всех ипотечных программ.
+        "https://www.sberbank.ru/ru/person/contributions/deposits",
         "https://www.sberbank.ru/ru/person/credits/money",
-        "https://www.sberbank.ru/ru/person/credits/home",
-        "https://www.sberbank.ru/ru/person/bank_cards/credit",
+        "https://www.sberbank.ru/ru/person/credits/homenew",
+        "https://www.sberbank.ru/ru/person/bank_cards/credit_cards",
         "https://www.sberbank.ru/ru/person/bank_cards/debit",
     )
     families = (
         ("/ru/person/contributions/savings", "Накопительные счета"),
         ("/ru/person/contributions", "Вклады"),
+        ("/ru/person/contributions/deposits/nakopi", "Накопительные счета"),
         ("/ru/person/credits/home", "Ипотека"),
         ("/ru/person/credits", "Кредиты"),
         ("/ru/person/bank_cards/credit", "Кредитные карты"),
@@ -80,7 +82,20 @@ class SberAdapter(CrawlAdapter):
         r"compens|kompens|asv|safe|seif|sejf|nominal|assistant|gigachat|/ai\b|"
         r"podderzh|support|potencial|potential|history|istori|archive|arhiv|"
         r"document|dokument|tarif|stavki|prolong|prodlen|instruction|how_to|"
-        r"article|news|blog|promo|akci|action)",
+        r"article|news|blog|promo|akci|action|"
+        # Рекламные дубли одного продукта: «кредит на 50 000 рублей», «на 2
+        # года», «с 18 лет», «в Казани», «без справок», «по паспорту»… В
+        # первом сборе они съели половину лимита страниц, а до семейной
+        # ипотеки и кредитных карт обход так и не дошёл.
+        r"[/_-]na[_-]\d|rublej|/s[_-]\d+[_-](let|goda)|/kredit[_-]s[_-]|/\d+[_-]dn|"
+        r"/s[_-]limitom|/kreditnaya-karta-\d|-million|"
+        r"/(sankt-peterburg|novosibirsk|ekaterinburg|kazan|nizhny-novgorod|"
+        r"chelyabinsk|samara|omsk|perm|ufa|rostov-na-donu|krasnoyarsk|voronezh|"
+        r"volgograd|moskva|krasnodar|saratov|tyumen|izhevsk|barnaul|irkutsk)\b|"
+        r"/vklad-v-|/bez-|/bez_|/po-pasportu|/na-kartu|/v-den-|/na-otpusk|"
+        r"/credit-na-svadbu|/na-telefon|/na-lecheniye|/tehnika$|/remont$|"
+        r"/necelevoy|/na-pokupku|/ekspress|/dlya-samozanyat|/dlya_samozanyat|"
+        r"/gallery|/izmenenie|onlajn-zayavka|/design_konstructor|/services/)",
         re.I,
     )
 
