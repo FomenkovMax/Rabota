@@ -21,6 +21,7 @@ import re
 import time
 from collections import deque
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit, urlunsplit
 
@@ -255,6 +256,7 @@ class CrawlAdapter(BankAdapter):
 
                     family = self._family(url)
                     links = self._links(data.get("links") or [])
+                    self._save_page(visited, url, data, links)
                     path = urlsplit(url).path
                     deeper = {l for l in links if urlsplit(l).path.startswith(path + "/")}
                     is_listing = url in seed_set or len(deeper) >= 3
@@ -278,6 +280,7 @@ class CrawlAdapter(BankAdapter):
                         if link not in seen:
                             seen.add(link)
                             queue.append(link)
+            self._save_summary(visited, queue, failures)
         except BrowserUnavailable as exc:
             if not products and not showcase:
                 return self._failed(str(exc))
@@ -299,6 +302,39 @@ class CrawlAdapter(BankAdapter):
                                 + ("; ".join(failures[:3]) or "проверьте витрины"))
         return self._result(products=merged, pages_visited=visited,
                             region_applied=applied, region_method=method)
+
+    def _pages_dir(self) -> Path | None:
+        folder = self.settings.get("pages_dir")
+        return Path(folder) if folder else None
+
+    def _save_page(self, number: int, url: str, data: dict[str, Any],
+                   links: list[str]) -> None:
+        """Текст прочитанной страницы в файл — для разбора, почему чего-то нет.
+
+        Включается только проверкой банка (check-bank): при обычном сборе
+        pages_dir не задан и на диск ничего не пишется.
+        """
+        folder = self._pages_dir()
+        if folder is None:
+            return
+        folder.mkdir(parents=True, exist_ok=True)
+        name = re.sub(r"[^a-z0-9]+", "-", urlsplit(url).path.lower()).strip("-")[:80]
+        body = [f"URL: {url}", f"H1: {data.get('h1', '')}",
+                f"TITLE: {data.get('title', '')}",
+                f"ССЫЛКИ ДЛЯ ОБХОДА ({len(links)}):", *links, "", "ТЕКСТ:",
+                data.get("text") or ""]
+        (folder / f"{number:03d}-{name or 'root'}.txt").write_text(
+            "\n".join(body), encoding="utf-8")
+
+    def _save_summary(self, visited: int, queue: Any, failures: list[str]) -> None:
+        folder = self._pages_dir()
+        if folder is None:
+            return
+        folder.mkdir(parents=True, exist_ok=True)
+        lines = [f"Прочитано страниц: {visited}",
+                 f"Осталось в очереди (упёрлись в max_pages): {len(queue)}", *queue,
+                 "", f"Не прочитались ({len(failures)}):", *failures]
+        (folder / "000-summary.txt").write_text("\n".join(lines), encoding="utf-8")
 
     def _merge(self, products: dict[str, Product],
                showcase: dict[str, tuple[Any, str, str]],

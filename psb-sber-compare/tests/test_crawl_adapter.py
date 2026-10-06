@@ -293,3 +293,17 @@ def test_showcase_caption_above_rate_is_respected():
     found = {p.title: p.rate_min for p in extract_products(text)}
     assert found.get("Вклад «Сбер Рядом»") == 14.0
     assert "Семейная ипотека" not in found
+
+
+def test_check_bank_saves_page_texts(monkeypatch, tmp_path):
+    """check-bank кладёт тексты страниц в папку — для разбора по архиву."""
+    monkeypatch.setattr(crawl, "PageReader", FakeReader)
+    adapter = OnlyCredits(region=None, settings={
+        "region_cookies": [{"name": "r", "value": "94"}], "max_pages": 50,
+        "pages_dir": str(tmp_path / "pages"),
+    })
+    assert adapter.collect().ok
+    files = sorted(p.name for p in (tmp_path / "pages").iterdir())
+    assert files[0] == "000-summary.txt" and len(files) > 2
+    page = (tmp_path / "pages" / files[1]).read_text(encoding="utf-8")
+    assert page.startswith("URL: https://") and "ТЕКСТ:" in page

@@ -20,9 +20,11 @@ from __future__ import annotations
 import argparse
 import logging
 import re
+import shutil
 import sys
 import time
 import webbrowser
+import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
@@ -138,6 +140,18 @@ def cmd_dump(config: Config, code: str, section: str) -> int:
     return 0
 
 
+def _pack_pages(folder: Path, code: str) -> Path | None:
+    """Складывает тексты страниц в один архив data/pages-<банк>.zip."""
+    files = sorted(folder.glob("*.txt")) if folder.exists() else []
+    if not files:
+        return None
+    archive = ROOT / "data" / f"pages-{code}.zip"
+    with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as zf:
+        for path in files:
+            zf.write(path, arcname=f"pages-{code}/{path.name}")
+    return archive
+
+
 def cmd_check_bank(config: Config, code: str) -> int:
     cls = registry.get(code)
     if cls is None:
@@ -150,7 +164,18 @@ def cmd_check_bank(config: Config, code: str) -> int:
         print(f"Защита   : {cls.protection}")
     print("\nПробую собрать…\n")
 
+    # Тексты прочитанных страниц — в архив, чтобы по нему можно было
+    # разобрать, почему какой-то продукт не нашёлся или ставка не та.
+    pages = ROOT / "data" / "pages" / code
+    if pages.exists():
+        shutil.rmtree(pages)
+    config.raw.setdefault("banks", {}).setdefault(code, {})
+    if config.raw["banks"][code] is None:
+        config.raw["banks"][code] = {}
+    config.raw["banks"][code]["pages_dir"] = str(pages)
+
     result = collect_bank(config, code, save=False)
+    archive = _pack_pages(pages, code)
     if not result.ok:
         print(f"[НЕ ОК] {result.error}")
         print("\nЧто проверить:")
@@ -181,6 +206,8 @@ def cmd_check_bank(config: Config, code: str) -> int:
                 rate, note = "—", "  ← ставка на сайте не указана"
             print(f"     {product.title[:44]:<44} {rate:>12}{note}")
 
+    if archive:
+        print(f"\nТексты прочитанных страниц: {archive.relative_to(ROOT)}")
     print("\nПроверка в базу не пишет: отчёт и бот по-прежнему показывают "
           "последний полный сбор.\nПолный сбор по всем банкам: python run.py collect")
     if not cls.verified:
