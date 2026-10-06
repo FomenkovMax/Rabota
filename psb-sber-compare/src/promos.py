@@ -21,6 +21,8 @@ from dataclasses import dataclass, field
 from datetime import date, datetime
 from typing import Any, Iterable
 
+from .market import RATED
+
 log = logging.getLogger(__name__)
 
 ACTIVE, EXPIRED, UNDATED = "active", "expired", "undated"
@@ -652,7 +654,11 @@ def compare_segments(psb: list[PromoInsight], sber: list[PromoInsight],
             sber=[p for p in sber if p.segment == segment],
         )
         category = SEGMENT_TO_CATEGORY.get(segment)
-        if category:
+        # Витрину продуктов берём только там, где процент — ставка. У
+        # дебетовых карт процент на витрине — кешбэк или % на остаток
+        # вперемешку, и «ПСБ 1 % против 30 % у Сбера» сравнивало кешбэк
+        # одной карты с чем-то третьим у другой.
+        if category and category in RATED:
             higher = segment in SAVINGS_SEGMENTS
             item.psb_product = _showcase(psb_products, category, higher)
             item.sber_product = _showcase(sber_products, category, higher)

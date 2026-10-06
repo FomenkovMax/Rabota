@@ -47,6 +47,30 @@ _NOT_A_RATE = re.compile(
     r"[^%]{0,40}?\d{1,3}(?:[,.]\d{1,2})?\s?%",
     re.I,
 )
+# Процент, за которым сказано, от чего он: «до 80% от стоимости
+# недвижимости» — это доля, а не ставка.
+_SHARE_AFTER = re.compile(
+    r"\d{1,3}(?:[,.]\d{1,2})?\s?%\s*(?:от|из)\s+(?:стоимост|цен|суммы|рыночн|"
+    r"дохода|платеж|покупк|зарплат)\w*",
+    re.I,
+)
+
+# Подпись под цифрой. У Сбера число и его смысл стоят отдельными строками:
+# «от 20,1%», ниже — «первоначальный взнос». Сама строка с числом выглядит
+# как ставка, понять, что это не она, можно только по подписи.
+_NOT_RATE_CAPTION = re.compile(
+    r"^(?:первоначальн\w*\s+)?взнос|^к[еэ]шб[еэ]к|^от\s+(?:стоимост|цен|суммы)|"
+    r"^стоимост|^(?:скидк|комисси|дол[яи]|аванс|снижени|возврат|бонус)\w*|"
+    r"снизил|сократил|баллами|бонусами",
+    re.I,
+)
+
+
+def caption_rules_out(caption: str) -> bool:
+    """Подпись рядом с числом говорит, что это не ставка."""
+    return bool(_NOT_RATE_CAPTION.search((caption or "").strip()))
+
+
 _PURE_RATE = re.compile(r"^\s*(?:от|до)?\s*\d{1,2}(?:[,.]\d{1,2})?\s?%\s*$", re.I)
 
 # Строки, которые ставкой быть не могут, хотя процент в них есть.
@@ -127,7 +151,7 @@ def rates_of(line: str) -> list[float] | None:
         return None
     if _RELATIVE_RATE.search(line):
         return None
-    measured = _NOT_A_RATE.sub(" ", line)
+    measured = _SHARE_AFTER.sub(" ", _NOT_A_RATE.sub(" ", line))
     if not _RATE_LINE.search(measured):
         return None
     values = [r for r in parse_rates(measured) if 0.1 <= r <= 100]
@@ -201,6 +225,9 @@ def extract_products(text: str, *, window: int = 6) -> list[TextProduct]:
             values = rates_of(lines[above])
             if values is None or _NOISE.search(lines[above]):
                 continue
+            before = lines[above - 1] if above > 0 and above - 1 not in mark else ""
+            if caption_rules_out(before):
+                continue
             used_rate_lines.add(above)
             found.append(TextProduct(
                 title=lines[index],
@@ -223,6 +250,9 @@ def extract_products(text: str, *, window: int = 6) -> list[TextProduct]:
                 continue
             values = rates_of(candidate)
             if values is None:
+                continue
+            after = candidate_index + 1
+            if after < len(lines) and after not in mark and caption_rules_out(lines[after]):
                 continue
             used_rate_lines.add(candidate_index)
             found.append(TextProduct(

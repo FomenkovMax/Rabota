@@ -246,3 +246,50 @@ def test_federal_bank_is_compared_not_warned(monkeypatch):
     assert result.region_applied and result.region_method == "federal"
     assert all("единые условия по РФ" in p.region for p in result.products)
     assert "единые условия по РФ" in result.summary
+
+
+# --- ошибки, найденные в первом полном сборе (06.10.2026) -------------------
+
+def _page(h1, *lines):
+    return {"h1": h1, "title": h1, "text": "\n".join(("Меню", h1) + lines), "links": []}
+
+
+def test_down_payment_caption_is_not_a_rate():
+    """«от 20,1%» с подписью «первоначальный взнос» строкой ниже — не ставка."""
+    data = _page("Семейная ипотека", "от 20,1%", "Первоначальный взнос",
+                 "от 6%", "Ставка")
+    product = crawl.product_from_page(data, bank="Сбер", url="https://x/ru/home/family",
+                                      category="Ипотека", region="ЛНР", collected_at="")
+    assert (product.rate_min, product.rate_raw) == (6.0, "от 6%")
+
+
+def test_share_of_property_value_is_not_a_rate():
+    data = _page("Кредит под залог недвижимости",
+                 "Сумма до 80% от стоимости недвижимости", "от 19,9%")
+    product = crawl.product_from_page(data, bank="Сбер", url="https://x/ru/credits/pledge",
+                                      category="Кредиты", region="ЛНР", collected_at="")
+    assert product.rate_min == 19.9
+
+
+def test_service_pages_are_not_products():
+    for title in ("Ипотечные каникулы", "Программы поддержки заёмщиков",
+                  "Управляйте списаниями за подписки и покупки",
+                  "Открыть СберВклад в СберБанке онлайн", "sberbank.ru"):
+        assert crawl.product_from_page(_page(title, "30%"), bank="Сбер", url="https://x/a",
+                                       category="Кредиты", region="", collected_at="") is None
+    assert crawl.is_product_title("Платёжный стикер от Сбера")
+    assert crawl.is_product_title("Кредит наличными")
+
+
+def test_showcase_caption_above_rate_is_respected():
+    """Витрина Сбера: ставка над названием, но перед ней подпись «взнос»."""
+    from src.banks.generic_site import extract_products
+
+    text = "\n".join([
+        "до 14%", "Вклад «Сбер Рядом»", "Онлайн",
+        "до 13,5%", "Вклад «Лучший %»", "Онлайн",
+        "Первоначальный взнос", "от 20,1%", "Семейная ипотека", "Новостройки",
+    ])
+    found = {p.title: p.rate_min for p in extract_products(text)}
+    assert found.get("Вклад «Сбер Рядом»") == 14.0
+    assert "Семейная ипотека" not in found

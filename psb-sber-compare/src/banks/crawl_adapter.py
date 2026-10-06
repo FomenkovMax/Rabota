@@ -28,7 +28,7 @@ from ..psb.parser import Product, parse_money, parse_term_months
 from .base import BankAdapter, CollectResult, region_binding
 from .browser import (BrowserSettings, BrowserUnavailable, PageFailed,
                       PageReader, PageTooSlow)
-from .generic_site import category_for, extract_products, rates_of
+from .generic_site import caption_rules_out, category_for, extract_products, rates_of
 
 log = logging.getLogger(__name__)
 
@@ -43,6 +43,21 @@ _STOP_LINE = re.compile(
 )
 
 # Заголовок страницы-раздела, а не продукта.
+# Страницы, которые в каталоге рядом с продуктами, но продуктами не являются:
+# услуги и функции («Ипотечные каникулы», «Управляйте списаниями…»),
+# призывы («Открыть СберВклад онлайн») и заголовок-домен вместо названия.
+_NOT_A_PRODUCT = re.compile(
+    r"^(?:платите|управляйте|создайте|привез[её]м|покупайте|открыть|откройте|"
+    r"оформите|узнайте|получите|переведите|подключите)\b|каникул|"
+    r"программ\w*\s+поддержк|^[\w.-]+\.(?:ru|рф|com)$",
+    re.I,
+)
+
+
+def is_product_title(title: str) -> bool:
+    return bool(title) and not _GENERIC_TITLE.match(title) and not _NOT_A_PRODUCT.search(title)
+
+
 _GENERIC_TITLE = re.compile(
     r"^(все\s+)?(вклады( и сч[её]та)?|сч[её]та|кредиты|ипотек[аи]|карты|"
     r"кредитные карты|дебетовые карты|банковские карты|накопительные сч[её]та|"
@@ -138,7 +153,7 @@ def product_from_page(data: dict[str, Any], *, bank: str, url: str,
                       category: str, region: str, collected_at: str) -> Product | None:
     """Продукт со страницы продукта. None — если это не страница продукта."""
     title, body = describe_page(data)
-    if not title or _GENERIC_TITLE.match(title):
+    if not is_product_title(title):
         return None
 
     product = Product(
@@ -152,6 +167,9 @@ def product_from_page(data: dict[str, Any], *, bank: str, url: str,
         if values is None:
             continue
         following = body[index + 1] if index + 1 < len(body) else ""
+        # «от 20,1%» с подписью «первоначальный взнос» — не ставка.
+        if caption_rules_out(following):
+            continue
         # ПСК — полная стоимость кредита, а не ставка. Кладём её в своё
         # поле: в светофоре ставка сравнивается со ставкой, не с ПСК.
         if _PSK.search(line) or _PSK.search(following):
@@ -245,6 +263,8 @@ class CrawlAdapter(BankAdapter):
                         # С витрины берём пары «название — ставка»: пригодятся
                         # тем продуктам, у которых на своей странице цифры нет.
                         for item in extract_products(data.get("text") or ""):
+                            if not is_product_title(item.title):
+                                continue
                             showcase.setdefault(normalize_title(item.title),
                                                 (item, url, family))
                     else:

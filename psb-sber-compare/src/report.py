@@ -632,7 +632,7 @@ GAP_STYLE = {
     "лидер": ("--st-good", "▲"),
     "в рынке": ("--st-warning", "■"),
     "отстаёт": ("--st-critical", "▼"),
-    "нет у Сбера": ("--st-critical", "○"),
+    "не найдено у Сбера": ("--st-critical", "○"),
     "нет у конкурентов": ("--s1", "●"),
     "нет данных": ("--ink-muted", "—"),
 }
@@ -657,7 +657,7 @@ def _gap_tiles(gaps: list[Any]) -> str:
     for gap in gaps:
         counts[gap.status] = counts.get(gap.status, 0) + 1
     items = [(status, counts.get(status, 0)) for status in
-             ("лидер", "в рынке", "отстаёт", "нет у Сбера")]
+             ("лидер", "в рынке", "отстаёт", "не найдено у Сбера")]
     cells = "".join(
         f'<div class="tile"><div class="v" style="color:var({GAP_STYLE[s][0]})">{n}</div>'
         f'<div class="k">{e(s[:1].upper() + s[1:])}</div></div>'
