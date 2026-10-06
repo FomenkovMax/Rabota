@@ -307,3 +307,13 @@ def test_check_bank_saves_page_texts(monkeypatch, tmp_path):
     assert files[0] == "000-summary.txt" and len(files) > 2
     page = (tmp_path / "pages" / files[1]).read_text(encoding="utf-8")
     assert page.startswith("URL: https://") and "ТЕКСТ:" in page
+
+
+def test_local_bank_counts_as_lnr():
+    """ЦМР работает только в ЛНР: условия его сайта — луганские, не «по РФ»."""
+    from src.banks.base import region_binding
+    from src.pipeline import Config, bank_region_methods
+
+    method, label = region_binding(False, {"region_mode": "local"})
+    assert method == "local" and "только в ЛНР" in label
+    assert bank_region_methods(Config.load(), ["cmr"]) == {"ЦМР": "local"}

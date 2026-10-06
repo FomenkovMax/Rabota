@@ -257,3 +257,12 @@ def test_bi_tables_link_by_product_id(tmp_path):
         rows = list(csv.DictReader(handle))
     assert rows and rows[0]["snapshot_date"] == "2026-09-29"
     assert any(p.name == "data_dictionary.md" for p in paths)
+
+
+def test_new_local_setting_applies_to_old_unconfirmed_data():
+    old = P("ЦМР", "Вклад «ЦМР Старт»", "Вклады", 15.0)
+    old.region_method = "not_confirmed"
+    assert market.method_of(old, {"ЦМР": "local"}) == "local"
+    chosen = P("Сбер", "Вклад", "Вклады", 14.0)
+    chosen.region_method = "selector"
+    assert market.method_of(chosen, {"Сбер": "not_confirmed"}) == "selector"

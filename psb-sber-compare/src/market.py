@@ -114,9 +114,19 @@ NO_SBER, NO_RIVALS, NO_DATA = "не найдено у Сбера", "нет у к
 
 
 def method_of(product: Any, region_methods: dict[str, str]) -> str:
-    """Способ привязки к региону: записанный при сборе, иначе — по банку."""
-    return (getattr(product, "region_method", "") or
-            region_methods.get(product.bank, "selector"))
+    """Способ привязки к региону: записанный при сборе, иначе — по банку.
+
+    Исключение — «регион не выбран» при сборе, когда в настройках банку
+    с тех пор задан local или federal. Сайт отдал те же страницы, просто
+    теперь известно, как их понимать (ЦМР работает только в ЛНР), и
+    ждать ради этого нового сбора незачем. Обратное не действует: если
+    регион при сборе был выбран, это факт, и настройки его не отменяют.
+    """
+    stored = getattr(product, "region_method", "") or ""
+    configured = region_methods.get(product.bank, "")
+    if stored in ("", "not_confirmed") and configured in ("local", "federal"):
+        return configured
+    return stored or configured or "selector"
 
 
 def bank_code(bank: str) -> str:

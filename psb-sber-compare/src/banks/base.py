@@ -46,6 +46,7 @@ class CollectResult:
         if not self.ok:
             return f"{self.bank}: сбор не удался — {self.error}"
         note = {"federal": " (единые условия по РФ)",
+                "local": " (банк работает только в ЛНР)",
                 "not_confirmed": " (регион на сайте не выбран)"}.get(self.region_method, "")
         if not self.region_applied and not note:
             note = " (регион на сайте не выбран)"
@@ -56,12 +57,16 @@ class CollectResult:
 #: Подписи способов привязки к региону — для лога, отчёта и бота.
 FEDERAL_LABEL = "единые условия по РФ — отдельных для ЛНР на сайте нет"
 NOT_CONFIRMED_LABEL = "регион на сайте не выбран"
+LOCAL_LABEL = "банк работает только в ЛНР — условия на сайте луганские"
 
 
 def region_binding(sets_region: bool, settings: dict[str, Any]) -> tuple[str, str]:
     """Способ привязки условий к региону и подпись к продуктам.
 
     selector      — регион выбран на сайте (селектор или его куки);
+    local         — банк работает только в ЛНР, выбора региона у него нет:
+                    условия на сайте и есть луганские (ЦМР). Ставится
+                    в настройках банка: region_mode: local;
     federal       — на сайте про ЛНР и новые территории ничего нет, и по
                     правилу заказчика действуют единые условия по России.
                     Ставится в настройках банка только после того, как
@@ -73,7 +78,10 @@ def region_binding(sets_region: bool, settings: dict[str, Any]) -> tuple[str, st
     """
     if sets_region or settings.get("region_cookies"):
         return "selector", settings.get("region_label", "")
-    if str(settings.get("region_mode", "")).strip().lower() == "federal":
+    mode = str(settings.get("region_mode", "")).strip().lower()
+    if mode == "local":
+        return "local", LOCAL_LABEL
+    if mode == "federal":
         return "federal", FEDERAL_LABEL
     return "not_confirmed", NOT_CONFIRMED_LABEL
 
