@@ -266,3 +266,11 @@ def test_new_local_setting_applies_to_old_unconfirmed_data():
     chosen = P("Сбер", "Вклад", "Вклады", 14.0)
     chosen.region_method = "selector"
     assert market.method_of(chosen, {"Сбер": "not_confirmed"}) == "selector"
+
+
+def test_rural_mortgage_is_its_own_program():
+    """«Сельская ипотека» 2,7 % — госпрограмма, не рыночная ипотека."""
+    from types import SimpleNamespace
+
+    assert market.program_of(SimpleNamespace(category="Ипотека", title="Сельская ипотека")) \
+        == "Сельская ипотека"

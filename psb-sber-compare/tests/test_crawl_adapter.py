@@ -719,3 +719,15 @@ def test_vtb_seo_and_city_pages_are_skipped():
     for path in ("/personal/vklady-i-scheta/vtb-vklad-r", "/personal/ipoteka/new-regions",
                  "/personal/vklady-i-scheta/den-v-plyuse", "/personal/kredit/nalichnymi"):
         assert not VtbAdapter.skip.search(path), path
+
+
+def test_yield_is_not_a_deposit_rate():
+    """ВТБ: «ВТБ-Вклад «Ключевой» доходность до 15,21%» — доходность с
+    капитализацией, а не ставка. В название она тоже не попадает."""
+    assert crawl.product_name("ВТБ-Вклад «Ключевой» доходность до 15,21%") == "ВТБ-Вклад «Ключевой»"
+    page = _page("ВТБ-Вклад «Ключевой» доходность до 15,21%",
+                 "Ставка адаптируется под ключевую ставку ЦБ", "Доходность до 15,21%")
+    product = crawl.product_from_page(page, bank="ВТБ", url="https://x/vklad-klyuchevoj",
+                                      category="Вклады", region="", collected_at="")
+    assert product.title == "ВТБ-Вклад «Ключевой»"
+    assert product.rate_min is None

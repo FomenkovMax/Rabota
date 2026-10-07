@@ -130,7 +130,8 @@ _IMPERATIVE = re.compile(r"^(?:оформите|откройте)\s+(.+)$", re.I
 _TITLE_TAIL = re.compile(r"\s+(?:со\s+ставкой|с\s+кэшбэком|получайте|онлайн\b|до\s+\d).*$", re.I)
 
 
-_RATE_IN_TITLE = re.compile(r"\s+(?:до|от|со\s+ставкой)\s+\d[\d,.]*\s?%.*$", re.I)
+_RATE_IN_TITLE = re.compile(
+    r"\s+(?:(?:доходност\w*|ставк\w*)\s+)?(?:до|от|со\s+ставкой)\s+\d[\d,.]*\s?%.*$", re.I)
 
 
 def product_name(title: str) -> str:
