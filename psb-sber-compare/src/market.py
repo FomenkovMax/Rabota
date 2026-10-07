@@ -339,6 +339,7 @@ class Gap:
     status: str = NO_DATA
     comment: str = ""
     offers: list[Offer] = field(default_factory=list)
+    category: str = ""
 
     @property
     def place(self) -> str:
@@ -373,7 +374,7 @@ def build_gaps(products: Iterable[Any], *, home: str, key_rate: float | None,
         better = better_of(category)
         metric = "rate_max" if better == "higher" else "rate_min"
         gap = Gap(block=BLOCK_OF.get(category, "OTHER"), program=program,
-                  metric=metric, better=better)
+                  metric=metric, better=better, category=category)
 
         best_by_bank: dict[str, Offer] = {}
         sber_listed = False

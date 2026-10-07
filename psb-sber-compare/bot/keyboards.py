@@ -118,10 +118,49 @@ def main_menu() -> InlineKeyboardMarkup:
     rows = [[button("refresh_all", "🔄", "Обновить все банки", "collect:all", REFRESH)]]
     rows += [[button(f"compare_{code}", "🏦", title, f"cmp:{code}", COMPARE)]
              for code, title in compare_targets()]
+    rows.append([button("categories", "📂", "По категориям", "cat:menu")])
     rows.append([button("export", "📊", "Выгрузить общий свод", "export:menu", EXPORT)])
     rows.append([button("ai", "🤖", "AI-консультант", "ai:menu")])
     rows.append([button("refresh_one", "🔁", "Обновить один банк", "collect:menu")])
+    rows.append([button("audit", "🧪", "Аудит качества", "audit:menu")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+#: Категории для фильтра: код кнопки → подпись.
+CATEGORY_BUTTONS = [
+    ("dep", "Вклады"),
+    ("sav", "Накопительные счета"),
+    ("loan", "Кредиты"),
+    ("mtg", "Ипотека"),
+    ("cc", "Кредитные карты"),
+]
+
+
+def category_menu() -> InlineKeyboardMarkup:
+    """Фильтр по категории продукта."""
+    rows = [[InlineKeyboardButton(text=title, callback_data=f"cat:{code}")]
+            for code, title in CATEGORY_BUTTONS]
+    rows.append([InlineKeyboardButton(text="Назад", callback_data="menu")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def category_actions(code: str) -> InlineKeyboardMarkup:
+    """Под разбором категории: скрипт для клиента и навигация."""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🗣 Аргументы для клиента", callback_data=f"script:{code}")],
+        [InlineKeyboardButton(text="Другая категория", callback_data="cat:menu")],
+        [InlineKeyboardButton(text="В меню", callback_data="menu")],
+    ])
+
+
+def audit_menu() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="Запустить автоаудит", callback_data="audit:run")],
+        [InlineKeyboardButton(text="Автоаудит + независимый LLM-аудит",
+                              callback_data="audit:llm")],
+        [InlineKeyboardButton(text="Последний отчёт аудита", callback_data="audit:last")],
+        [InlineKeyboardButton(text="Назад", callback_data="menu")],
+    ])
 
 
 def export_menu() -> InlineKeyboardMarkup:

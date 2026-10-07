@@ -44,11 +44,13 @@ log = logging.getLogger("bot")
 WELCOME = (
     "<b>Сравнение розничных продуктов</b>\n"
     "Сбер против конкурентов в Луганской Народной Республике.\n\n"
-    "🔄 <b>Обновить все банки</b> — свежий сбор с сайтов, 25–35 мин\n"
+    "🔄 <b>Обновить все банки</b> — свежий сбор с сайтов, 50–60 мин\n"
     "🏦 <b>Сравнить</b> — светофор Сбера против одного банка\n"
-    "📊 <b>Выгрузить свод</b> — Excel, PDF или HTML по всем банкам\n"
+    "📂 <b>По категориям</b> — место Сбера и аргументы для клиента\n"
+    "📊 <b>Выгрузить свод</b> — Excel, PDF, HTML или данные для BI\n"
     "🤖 <b>AI-консультант</b> — совет по собранным цифрам\n"
-    "🔁 <b>Обновить один банк</b> — быстрее, остальные из прошлого сбора"
+    "🔁 <b>Обновить один банк</b> — быстрее, остальные из прошлого сбора\n"
+    "🧪 <b>Аудит качества</b> — сверка цифр с сайтами и баллы по критериям"
 )
 
 
@@ -286,6 +288,124 @@ def _split(text: str, limit: int = 3800) -> list[str]:
     if current:
         parts.append(current)
     return parts
+
+
+# --- по категориям -----------------------------------------------------------
+
+@dp.callback_query(F.data == "cat:menu")
+async def on_category_menu(call: CallbackQuery) -> None:
+    await call.message.edit_text(
+        "Какую категорию разобрать? Покажу место Сбера по программам, лучшие "
+        "базовые ставки банков и ставки на особых условиях.",
+        reply_markup=kb.category_menu())
+    await call.answer()
+
+
+@dp.callback_query(F.data.startswith("cat:"))
+async def on_category(call: CallbackQuery) -> None:
+    if not permitted(call.from_user.id):
+        await call.answer("Доступ закрыт", show_alert=True)
+        return
+    code = call.data.split(":", 1)[1]
+    await call.answer()
+    await call.message.edit_text("Считаю…")
+    try:
+        text = await asyncio.to_thread(service.category_text, code)
+    except Exception as exc:                      # noqa: BLE001
+        log.exception("Категория %s не посчиталась", code)
+        text = f"Не получилось посчитать: {html.escape(str(exc))[:400]}"
+    chunks = _split(text)
+    for chunk in chunks[:-1]:
+        await call.message.answer(chunk, disable_web_page_preview=True)
+    await call.message.edit_text(chunks[-1], reply_markup=kb.category_actions(code),
+                                 disable_web_page_preview=True)
+
+
+@dp.callback_query(F.data.startswith("script:"))
+async def on_client_script(call: CallbackQuery) -> None:
+    if not permitted(call.from_user.id):
+        await call.answer("Доступ закрыт", show_alert=True)
+        return
+    code = call.data.split(":", 1)[1]
+    await call.answer()
+    thinking = await call.message.answer("Готовлю аргументы…")
+    try:
+        text = await asyncio.to_thread(service.client_script, code)
+    except Exception as exc:                      # noqa: BLE001
+        log.exception("Скрипт %s не получился", code)
+        text = f"Не получилось: {html.escape(str(exc))[:400]}"
+    chunks = _split(text)
+    await thinking.edit_text(chunks[0], disable_web_page_preview=True)
+    for chunk in chunks[1:]:
+        await call.message.answer(chunk, disable_web_page_preview=True)
+    await call.message.answer("Что дальше?", reply_markup=kb.category_actions(code))
+
+
+# --- автоаудит ---------------------------------------------------------------
+
+@dp.callback_query(F.data == "audit:menu")
+async def on_audit_menu(call: CallbackQuery) -> None:
+    await call.message.edit_text(
+        "Автоаудит заново открывает страницы банков и сверяет с ними цифры отчёта, "
+        "проверяет охват и сопоставимость и ставит баллы по формулам. Занимает "
+        "10–20 минут. Независимый LLM-аудит — то же плюс оценка моделью по "
+        "собранному пакету.",
+        reply_markup=kb.audit_menu())
+    await call.answer()
+
+
+@dp.callback_query(F.data.startswith("audit:"))
+async def on_audit(call: CallbackQuery) -> None:
+    if not permitted(call.from_user.id):
+        await call.answer("Доступ закрыт", show_alert=True)
+        return
+    action = call.data.split(":", 1)[1]
+    if action == "menu":
+        return
+    if action == "last":
+        await call.answer()
+        files = await asyncio.to_thread(service.latest_audit_files)
+        if not files:
+            await call.message.edit_text("Аудит ещё не запускался.",
+                                         reply_markup=kb.audit_menu())
+            return
+        for path in files:
+            await call.message.answer_document(
+                BufferedInputFile(Path(path).read_bytes(), filename=Path(path).name))
+        await call.message.answer("Готово.", reply_markup=kb.main_menu())
+        return
+
+    # Аудит открывает страницы браузером — как сбор, поэтому не параллельно с ним.
+    if collecting.locked():
+        await call.answer("Идёт сбор или аудит — дождись сообщения о завершении",
+                          show_alert=True)
+        return
+    async with collecting:
+        await call.answer("Запустил аудит")
+        await call.message.edit_text("🧪 Аудит идёт, 10–20 минут — пришлю отчёт.")
+        try:
+            process = await asyncio.create_subprocess_exec(
+                *service.audit_command(llm=action == "llm"), cwd=str(service.ROOT),
+                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT)
+            tail: list[str] = []
+            assert process.stdout is not None
+            async for raw in process.stdout:
+                line = raw.decode("utf-8", "replace").rstrip()
+                if line:
+                    print(line, flush=True)
+                    tail = (tail + [line])[-30:]
+            returncode = await process.wait()
+            summary = service.audit_summary(returncode, tail)
+        except Exception as exc:                  # noqa: BLE001
+            log.exception("Аудит не удался")
+            summary, returncode = f"Аудит не удался: {html.escape(str(exc))[:400]}", 1
+
+    await call.message.answer(summary)
+    if returncode == 0:
+        for path in await asyncio.to_thread(service.latest_audit_files):
+            await call.message.answer_document(
+                BufferedInputFile(Path(path).read_bytes(), filename=Path(path).name))
+    await call.message.answer("Что дальше?", reply_markup=kb.main_menu())
 
 
 # --- обновление данных -----------------------------------------------------

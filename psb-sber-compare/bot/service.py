@@ -207,3 +207,192 @@ def collect_summary(bank_code: str, returncode: int, tail: list[str]) -> str:
     return (f"{head}\nПродуктов: {banks}.\n"
             f"Место Сбера по программам: {place}{tail}\n"
             "Подробно — в «📊 Выгрузить общий свод».")
+
+
+# --- по категориям -----------------------------------------------------------
+
+#: Код кнопки → категория продукта.
+CATEGORIES = {
+    "dep": "Вклады",
+    "sav": "Накопительные счета",
+    "loan": "Кредиты",
+    "mtg": "Ипотека",
+    "cc": "Кредитные карты",
+}
+GAP_ICON = {"лидер": "🟢", "в рынке": "🟡", "отстаёт": "🔴",
+            "не найдено у Сбера": "⚪", "нет у конкурентов": "🔵", "нет данных": "▫️"}
+
+
+def _rate(value: Any, better: str) -> str:
+    if value is None:
+        return "—"
+    prefix = "до" if better == "higher" else "от"
+    return f"{prefix} {value:g} %".replace(".", ",")
+
+
+def _category_data(key: str) -> tuple[str, dict[str, Any] | None, list[Any], list[Any]]:
+    category = CATEGORIES.get(key, "")
+    data = load_report_data(_config())
+    if data is None:
+        return category, None, [], []
+    gaps = [g for g in data.get("gaps") or [] if g.category == category]
+    specials = [r for r in data.get("specials") or [] if r.category == category]
+    return category, data, gaps, specials
+
+
+def category_text(key: str) -> str:
+    """Категория целиком: место Сбера по программам и особые условия."""
+    category, data, gaps, specials = _category_data(key)
+    if not category:
+        return "Неизвестная категория."
+    if data is None:
+        return "Данных пока нет — сначала обнови их в меню."
+
+    lines = [f"<b>{_esc(category)}</b>",
+             f"<i>Сбор {_esc(data['collected_at'])} · сравниваются только базовые ставки</i>", ""]
+    if not gaps:
+        lines.append("Программ со ставками в этой категории нет.")
+    for gap in gaps:
+        icon = GAP_ICON.get(gap.status, "▫️")
+        sber = _rate(gap.sber.value, gap.better) if gap.sber else "—"
+        lines.append(f"{icon} <b>{_esc(gap.program)}</b> — {_esc(gap.status)}")
+        lines.append(f"      Сбер {sber} · место {_esc(gap.place)}")
+        top = [o for o in gap.offers if o.bank != data["home_title"]][:3]
+        if top:
+            lines.append("      " + " · ".join(
+                f"{_esc(o.bank)} {_rate(o.value, gap.better)}" for o in top))
+        if gap.comment and gap.status != "отстаёт":
+            lines.append(f"      <i>{_esc(gap.comment[:140])}</i>")
+    if specials:
+        lines += ["", f"<b>Особые условия</b> ({len(specials)}) — в сравнение не идут:"]
+        for row in specials[:8]:
+            rate = "—" if row.rate is None else f"{row.rate:g} %".replace(".", ",")
+            lines.append(f"• {_esc(row.bank)} · {_esc(row.title[:50])} — {rate} "
+                         f"<i>({_esc(row.kind_label)})</i>")
+        if len(specials) > 8:
+            lines.append(f"<i>…и ещё {len(specials) - 8} — в своде, блок «Специальные условия»</i>")
+    return "\n".join(lines)
+
+
+def script_facts(key: str) -> tuple[str, str]:
+    """Факты категории для скрипта: (категория, текст фактов)."""
+    category, data, gaps, specials = _category_data(key)
+    if data is None:
+        return category, ""
+    lines = [f"Категория: {category}. Регион: {data['region']}. Сбор: {data['collected_at']}."]
+    for gap in gaps:
+        sber = _rate(gap.sber.value, gap.better) if gap.sber else "нет данных"
+        offers = "; ".join(f"{o.bank} — {o.title}: {_rate(o.value, gap.better)}"
+                           for o in gap.offers)
+        lines.append(f"Программа «{gap.program}»: статус {gap.status}, Сбер {sber}, "
+                     f"место {gap.place}. Базовые ставки банков: {offers or 'нет'}.")
+    for row in specials:
+        rate = "—" if row.rate is None else f"{row.rate:g} %"
+        lines.append(f"Особое условие: {row.bank} — {row.title}: {rate} "
+                     f"({row.kind_label}; {row.reason}).")
+    return category, "\n".join(lines)
+
+
+def template_script(key: str) -> str:
+    """Скрипт без модели: только утверждения, которые держатся на данных."""
+    category, data, gaps, specials = _category_data(key)
+    if data is None:
+        return "Данных пока нет — сначала обнови их в меню."
+    home = data["home_title"]
+    lines = [f"<b>Аргументы для клиента: {_esc(category)}</b>",
+             "<i>Собрано по данным сбора, без допущений. Перед разговором сверь условия "
+             "по ссылке в своде.</i>", ""]
+    welcome_by_bank: dict[str, list[Any]] = {}
+    for row in specials:
+        welcome_by_bank.setdefault(row.bank, []).append(row)
+    said = 0
+    for gap in gaps:
+        if gap.sber is None:
+            continue
+        sber = _rate(gap.sber.value, gap.better)
+        median = (_rate(gap.others_median, gap.better)
+                  if gap.others_median is not None else "")
+        if gap.status in ("лидер", "в рынке"):
+            lines.append(f"• «{_esc(gap.program)}: у Сбера {sber}"
+                         + (f", по рынку в среднем {median}" if median else "") + ".»")
+            lines.append(f"   <i>(место {gap.place} среди {gap.banks_compared} банков, "
+                         "базовые ставки)</i>")
+            said += 1
+        elif gap.status == "отстаёт" and gap.best is not None:
+            best = gap.best
+            lines.append(f"• «{_esc(gap.program)}: у {_esc(best.bank)} базовая ставка "
+                         f"{_rate(best.value, gap.better)}, у Сбера {sber}.»")
+            extra = welcome_by_bank.get(best.bank, [])
+            if extra:
+                kinds = ", ".join(sorted({r.kind_label for r in extra}))
+                lines.append(f"   <i>(у {_esc(best.bank)} в категории есть ставки на особых "
+                             f"условиях: {_esc(kinds)} — уточните, на какие условия смотрит "
+                             "клиент)</i>")
+            else:
+                lines.append("   <i>(аргумента по ставке в данных нет — уточните условия у "
+                             "продуктового блока)</i>")
+            said += 1
+        elif gap.status == "нет у конкурентов":
+            lines.append(f"• «{_esc(gap.program)} — такой программы с опубликованной ставкой "
+                         f"у других банков в регионе нет, у Сбера {sber}.»")
+            said += 1
+    rivals_special = [r for r in specials if r.bank != home]
+    if rivals_special:
+        lines.append("")
+        lines.append("• Если клиент называет ставку конкурента выше нашей — проверьте, "
+                     "не на особых ли она условиях:")
+        for row in rivals_special[:5]:
+            rate = "—" if row.rate is None else f"{row.rate:g} %".replace(".", ",")
+            lines.append(f"   {_esc(row.bank)} · {_esc(row.title[:45])} {rate} — "
+                         f"<i>{_esc(row.kind_label)}</i>")
+        said += 1
+    if not said:
+        lines.append("По собранным данным аргументов нет: ставок Сбера в этой категории "
+                     "на сайте не найдено. Уточните условия у продуктового блока.")
+    return "\n".join(lines)
+
+
+def client_script(key: str) -> str:
+    """Скрипт для клиента: моделью по фактам, а без неё — по шаблону."""
+    category, facts = script_facts(key)
+    if not facts:
+        return "Данных пока нет — сначала обнови их в меню."
+    if consultant.available():
+        try:
+            advice = consultant.ask_script(facts)
+            log.info("Скрипт получен: %s", advice.usage_note)
+            return (f"<b>Аргументы для клиента: {_esc(category)}</b>\n"
+                    "<i>Подготовлено AI только по собранным данным.</i>\n\n" + advice.text)
+        except Exception as exc:                    # noqa: BLE001
+            log.warning("Скрипт моделью не получился: %s — беру шаблон", exc)
+    return template_script(key)
+
+
+# --- автоаудит ---------------------------------------------------------------
+
+def audit_command(llm: bool = False) -> list[str]:
+    import sys
+
+    command = [sys.executable, str(ROOT / "run.py"), "audit"]
+    if llm:
+        command.append("--llm")
+    return command
+
+
+def latest_audit_files() -> list[Path]:
+    """Свежие отчёт и пакет автоаудита."""
+    folder = _config().path("export", "audit_dir", default="data/audit")
+    files = sorted(folder.glob("audit_*.html"))
+    if not files:
+        return []
+    html_path = files[-1]
+    zip_path = html_path.with_suffix(".zip")
+    return [html_path] + ([zip_path] if zip_path.exists() else [])
+
+
+def audit_summary(returncode: int, tail: list[str]) -> str:
+    if returncode != 0:
+        last = "\n".join(_esc(line) for line in tail[-5:])
+        return f"⚠️ Аудит завершился с ошибкой (код {returncode}).\n<pre>{last}</pre>"
+    keep = [line for line in tail if line.strip().startswith(("Автоаудит", "  "))]
+    return "🧪 <b>Аудит готов</b>\n<pre>" + _esc("\n".join(keep[-12:])) + "</pre>"
