@@ -86,13 +86,25 @@ def strip_icons(markup: InlineKeyboardMarkup) -> None:
             item.text = f"{emoji} {item.text}"
             item.style = style
 
-# Код банка → подпись на кнопке. Порядок кнопок = порядок в этом списке.
-COMPARE_TARGETS: list[tuple[str, str]] = [
-    ("psb", "Сравнить Сбер и ПСБ"),
-    ("vtb", "Сравнить Сбер и ВТБ"),
-    ("genbank", "Сравнить Сбер и ГенБанк"),
-    ("cmr", "Сравнить Сбер и ЦМР"),
-]
+# Порядок кнопок сравнения. В меню попадают только банки, которые включены
+# в config/settings.yaml: кнопка «Сравнить Сбер и ВТБ» при выключенном ВТБ
+# обещала сравнение, которого нет.
+COMPARE_ORDER = ("psb", "vtb", "tbank", "genbank", "rostfinance", "cmr")
+
+
+def compare_targets() -> list[tuple[str, str]]:
+    """Код банка → подпись на кнопке, по включённым банкам."""
+    try:
+        from src.banks import registry
+        from src.pipeline import Config
+
+        enabled = set(Config.load().enabled_banks())
+        titles = registry.titles()
+    except Exception:                               # noqa: BLE001
+        log.exception("Не удалось прочитать список банков — показываю ПСБ и ЦМР")
+        enabled, titles = {"psb", "cmr"}, {"psb": "ПСБ", "cmr": "ЦМР"}
+    return [(code, f"Сравнить Сбер и {titles.get(code, code)}")
+            for code in COMPARE_ORDER if code in enabled]
 
 EXPORT_FORMATS: list[tuple[str, str]] = [
     ("xlsx", "Excel"),
@@ -105,7 +117,7 @@ EXPORT_FORMATS: list[tuple[str, str]] = [
 def main_menu() -> InlineKeyboardMarkup:
     rows = [[button("refresh_all", "🔄", "Обновить все банки", "collect:all", REFRESH)]]
     rows += [[button(f"compare_{code}", "🏦", title, f"cmp:{code}", COMPARE)]
-             for code, title in COMPARE_TARGETS]
+             for code, title in compare_targets()]
     rows.append([button("export", "📊", "Выгрузить общий свод", "export:menu", EXPORT)])
     rows.append([button("ai", "🤖", "AI-консультант", "ai:menu")])
     rows.append([button("refresh_one", "🔁", "Обновить один банк", "collect:menu")])
@@ -142,7 +154,7 @@ def collect_menu() -> InlineKeyboardMarkup:
     rows = [[InlineKeyboardButton(text="Только Сбер", callback_data="collect:sber")]]
     rows += [[InlineKeyboardButton(text=f"Только {title.split(' и ')[-1]}",
                                    callback_data=f"collect:{code}")]
-             for code, title in COMPARE_TARGETS]
+             for code, title in compare_targets()]
     rows.append([InlineKeyboardButton(text="Назад", callback_data="menu")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 

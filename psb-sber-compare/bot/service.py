@@ -26,6 +26,8 @@ BANK_TITLES = {
     "genbank": "ГенБанк",
     "cmr": "ЦМР",
     "sber": "Сбер",
+    "tbank": "Т-Банк",
+    "rostfinance": "РостФинанс",
 }
 
 
@@ -190,8 +192,19 @@ def collect_summary(bank_code: str, returncode: int, tail: list[str]) -> str:
     data = load_report_data(_config())
     if data is None:
         return "Сбор завершён, но данных в базе нет — смотри лог сбора."
-    counts = data["counts"]
     banks = ", ".join(f"{bank} {n}" for bank, n in data["product_counts"].items())
     head = "Сбор завершён." if bank_code == "all" else "Банк обновлён."
+    # Светофор считает только ручные пары, а их может не быть вовсе —
+    # «🔴 0 🟡 0 🟢 0» читалось как «сравнивать нечего». Место Сбера на
+    # рынке считается по всем банкам сразу.
+    statuses: dict[str, int] = {}
+    for gap in data.get("gaps") or []:
+        statuses[gap.status] = statuses.get(gap.status, 0) + 1
+    place = (f"🟢 лидер {statuses.get('лидер', 0)} · 🟡 в рынке {statuses.get('в рынке', 0)} · "
+             f"🔴 отстаёт {statuses.get('отстаёт', 0)} · ⚪ не найдено у Сбера "
+             f"{statuses.get('не найдено у Сбера', 0)}")
+    manual = len(data.get("manual") or [])
+    tail = f"\nНужна ручная проверка: {manual} знач." if manual else ""
     return (f"{head}\nПродуктов: {banks}.\n"
-            f"🔴 {counts[RED]}  🟡 {counts[YELLOW]}  🟢 {counts[GREEN]}  ⚪ {counts[GREY]}")
+            f"Место Сбера по программам: {place}{tail}\n"
+            "Подробно — в «📊 Выгрузить общий свод».")
