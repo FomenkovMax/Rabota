@@ -51,7 +51,7 @@ _TAB = re.compile(
     r"^(открыть( вклад| сч[её]т)? онлайн|оформить( онлайн| карту)?|рассчитать|"
     r"подробные условия|где (открыть|оформить|получить)|как (оформить|вносить|"
     r"открыть|получить)|начисление процентов|проверить специальность|"
-    r"изменить условия|подать заявку|спросить гигачат)",
+    r"изменить условия|подать заявку|спросить гигачат|условия|требования)$",
     re.I,
 )
 
@@ -113,7 +113,9 @@ _TERM_PART = re.compile(
 # Подпись перед числом: «Сумма до 5 млн ₽», «Срок кредита: до 5 лет».
 _LABEL = re.compile(
     r"^(сумма|срок|лимит|размер)(\s+(кредита|вклада|займа|лимита))?\s*:?\s*", re.I)
-_PSK = re.compile(r"\bпск\b|полная стоимость", re.I)
+_PSK = re.compile(r"\bпск\b|полн\w*\s+стоимост", re.I)
+_OWN_RATE = re.compile(r"\bставк\w*\b[^%]*\d", re.I)
+_RANGE = re.compile(r"(\d{1,3}(?:[,.]\d{1,3})?)\s*[–—-]\s*(\d{1,3}(?:[,.]\d{1,3})?)\s*%")
 _FILE = re.compile(r"\.(pdf|docx?|xlsx?|zip|rar)$", re.I)
 _QUOTES = re.compile(r"[«»\"'„“”+]")
 
@@ -128,6 +130,9 @@ _IMPERATIVE = re.compile(r"^(?:оформите|откройте)\s+(.+)$", re.I
 _TITLE_TAIL = re.compile(r"\s+(?:со\s+ставкой|с\s+кэшбэком|получайте|онлайн\b|до\s+\d).*$", re.I)
 
 
+_RATE_IN_TITLE = re.compile(r"\s+(?:до|от|со\s+ставкой)\s+\d[\d,.]*\s?%.*$", re.I)
+
+
 def product_name(title: str) -> str:
     """Название продукта из рекламного заголовка.
 
@@ -137,7 +142,9 @@ def product_name(title: str) -> str:
     """
     match = _IMPERATIVE.match(title or "")
     if not match:
-        return title
+        # «ВТБ-Вклад в рублях до 13,7% годовых» → «ВТБ-Вклад в рублях»:
+        # ставка в названии меняется, а название продукта — нет.
+        return _RATE_IN_TITLE.sub("", title or "").strip() or title
     name = _TITLE_TAIL.sub("", match.group(1)).strip(" —-,")
     return name[:1].upper() + name[1:] if name else title
 
@@ -190,6 +197,10 @@ def _amount_and_term(lines: list[str]) -> dict[str, Any]:
     return found
 
 
+def _menu_item(line: str) -> bool:
+    return len(line) <= 32 and not re.search(r"\d", line)
+
+
 def describe_page(data: dict[str, Any]) -> tuple[str, list[str]]:
     """Название продукта и строки его описания — от заголовка до чужих карточек.
 
@@ -224,8 +235,18 @@ def describe_page(data: dict[str, Any]) -> tuple[str, list[str]]:
 
     body: list[str] = []
     previous = ""
-    for line in lines[start + len(head): start + len(head) + 150]:
-        if _STOP_LINE.match(line) and not _TAB.match(previous):
+    rest = lines[start + len(head): start + len(head) + 150]
+    for number, line in enumerate(rest):
+        # Стоп-слово внутри меню вкладок — не конец описания. Меню видно по
+        # виду: рядом две короткие строки без цифр — перед стоп-словом
+        # («Шаги открытия вклада / Документы» у ВТБ) или после него
+        # («Полезная информация / Условия / Ставки»). Если же рядом условия
+        # с цифрами, это правда конец описания.
+        in_menu = any(
+            len(near) == 2 and all(_menu_item(l) for l in near)
+            for near in (body[-2:], rest[number + 1: number + 3])
+        )
+        if _STOP_LINE.match(line) and not _TAB.match(previous) and not in_menu:
             break
         body.append(line)
         previous = line
@@ -236,6 +257,7 @@ def product_from_page(data: dict[str, Any], *, bank: str, url: str,
                       category: str, region: str, collected_at: str) -> Product | None:
     """Продукт со страницы продукта. None — если это не страница продукта."""
     title, body = describe_page(data)
+    headline = title
     title = product_name(title)
     if not is_product_title(title):
         return None
@@ -262,13 +284,50 @@ def product_from_page(data: dict[str, Any], *, bank: str, url: str,
             continue
         # ПСК — полная стоимость кредита, а не ставка. Кладём её в своё
         # поле: в светофоре ставка сравнивается со ставкой, не с ПСК.
-        if _PSK.search(line) or _PSK.search(following):
+        # Таблица «подписи сверху, значения снизу» (ВТБ): «Диапазон полной
+        # стоимости кредита / Ставка / На весь срок / 18,662 – 25,643% /
+        # от 2%». Первое число после подписи ПСК — это ПСК, не ставка.
+        # Подписи сверху ищем только до предыдущего числа: у «от 2%» под
+        # «18,662 – 25,643%» подпись ПСК относится к числу выше.
+        above = []
+        for near in reversed(body[max(0, index - 3):index]):
+            if rates_of(near) is not None:
+                break
+            above.append(near)
+        psk_above = bool(_PSK.search(" ".join(above)))
+        # Одна подпись между двумя числами без двоеточия — подпись снизу к
+        # числу выше: «19,900% – 55,400% / Полная стоимость кредита /
+        # От 9,6% / Ставка» (ВТБ). «…полной стоимости кредита: / 24,999%» —
+        # подпись сверху, к числу ниже.
+        if (len(above) == 1 and index > 1 and rates_of(body[index - 2]) is not None
+                and not above[0].rstrip().endswith(":")):
+            psk_above = False
+        # «СТАВКА ПО КРЕДИТУ: 22,5% ГОДОВЫХ» — подпись в самой строке, и
+        # подпись ПСК под ней («Минимальный размер полной стоимости
+        # кредита:») относится уже к следующему числу.
+        own_rate = bool(_OWN_RATE.search(line)) and not _PSK.search(line)
+        if not own_rate and (_PSK.search(line) or _PSK.search(following) or psk_above):
+            # «18,662 – 25,643%»: знак процента только у второго числа.
+            span = _RANGE.search(line)
+            if span:
+                values = [float(span.group(1).replace(",", ".")),
+                          float(span.group(2).replace(",", "."))]
+            if product.apr_min is not None:
+                values += [product.apr_min, product.apr_max]
             product.apr_min, product.apr_max = min(values), max(values)
             product.apr_raw = f"{line} {following}".strip()
             continue
         product.rate_min, product.rate_max = min(values), max(values)
         product.rate_raw = line
         break
+
+    # Ставки в описании нет, но она есть в самом заголовке страницы
+    # продукта: «ВТБ-Вклад в рублях до 13,7% годовых».
+    if product.rate_min is None and headline != title:
+        values = rates_of(headline)
+        if values:
+            product.rate_min, product.rate_max = min(values), max(values)
+            product.rate_raw = headline
 
     for key, value in _amount_and_term(body).items():
         setattr(product, key, value)

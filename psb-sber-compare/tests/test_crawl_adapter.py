@@ -671,3 +671,51 @@ def test_vtb_first_check_junk():
     assert rates_of("Ставка ниже до 5%") is None
     assert rates_of("Оплачивайте до 99% чека") is None
     assert rates_of("до 13,7% годовых") == [13.7]
+
+
+def test_vtb_new_regions_mortgage_rate_after_psk_and_tabs():
+    page = _page("Ипотека на новых территориях", "От 10,1%", "Первый взнос",
+                 "Скидка 0,4%", "первоначальный взнос от 20%", "Скидка 1%",
+                 "Подробнее об ипотеке на новых территориях", "Условия", "Требования",
+                 "Документы", "Страхование", "Частые вопросы",
+                 "Диапазон полной стоимости кредита", "Ставка", "На весь срок кредита",
+                 "18,662 – 25,643%", "от 2%", "Действует при условии:")
+    product = crawl.product_from_page(page, bank="ВТБ", url="https://x/ipoteka/new-regions",
+                                      category="Ипотека", region="", collected_at="")
+    assert (product.rate_min, product.apr_min, product.apr_max) == (2.0, 18.662, 25.643)
+
+
+
+def test_vtb_cash_loan_rate_below_useful_info_tabs():
+    """«Полезная информация / Условия / Ставки» — меню вкладок, не конец описания.
+    Подпись ПСК между двумя числами — подпись снизу к числу выше."""
+    page = _page("Кредит наличными", "От 30 тыс. ₽", "Минимальная сумма",
+                 "Как оформить кредит", "1. Подайте заявку", "Полезная информация",
+                 "Условия", "Ставки", "Документы", "Гражданство РФ",
+                 "19,900% – 55,400%", "Полная стоимость кредита", "От 9,6%", "Ставка")
+    product = crawl.product_from_page(page, bank="ВТБ", url="https://x/kredit/nalichnymi",
+                                      category="Кредиты", region="", collected_at="")
+    assert (product.rate_min, product.apr_min, product.apr_max) == (9.6, 19.9, 55.4)
+
+
+def test_rate_with_own_label_above_psk_caption():
+    """РостФинанс: «СТАВКА ПО КРЕДИТУ: 22,5%», ниже — подписи ПСК со своими числами."""
+    page = _page("Кредит под залог авто", "Оставить заявку",
+                 "СТАВКА ПО КРЕДИТУ: 22,5% ГОДОВЫХ",
+                 "Минимальный размер полной стоимости кредита:", "22,500%",
+                 "Максимальный размер полной стоимости кредита:", "24,999%")
+    product = crawl.product_from_page(page, bank="РостФинанс", url="https://x/credit/avto",
+                                      category="Кредиты", region="", collected_at="")
+    assert product.rate_min == 22.5
+
+
+def test_vtb_seo_and_city_pages_are_skipped():
+    from src.banks.others import VtbAdapter
+
+    for path in ("/personal/vklady-i-scheta/vklad-1-god", "/personal/vklady-i-scheta/samara",
+                 "/personal/vklady-i-scheta/vklady-onlayn", "/personal/vklady-i-scheta/kurs-zolota",
+                 "/personal/vklady-i-scheta/nakopitelnyy-chet-sankt-peterburg"):
+        assert VtbAdapter.skip.search(path), path
+    for path in ("/personal/vklady-i-scheta/vtb-vklad-r", "/personal/ipoteka/new-regions",
+                 "/personal/vklady-i-scheta/den-v-plyuse", "/personal/kredit/nalichnymi"):
+        assert not VtbAdapter.skip.search(path), path

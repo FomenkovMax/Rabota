@@ -123,9 +123,24 @@ class VtbAdapter(CrawlAdapter):
         "https://www.vtb.ru/personal/karty/kreditnye/",
         "https://www.vtb.ru/personal/karty/debetovye/",
     )
+    # Главные продукты — адреса из обхода 07.10.2026. Витрина вкладов ВТБ
+    # ссылается на десятки подборок и городов, и без этого списка лимит
+    # страниц уходил на них, а до ипотеки и карт обход не доходил.
     priority = (
         "https://www.vtb.ru/personal/ipoteka/new-regions/",
-        "https://www.vtb.ru/personal/vklady-i-scheta/nakopitelnyi-schet/",
+        "https://www.vtb.ru/personal/kredit/nalichnymi/",
+        "https://www.vtb.ru/personal/kredit/refinansirovanie/",
+        "https://www.vtb.ru/personal/kredit/pod-zalog-avto/",
+        "https://www.vtb.ru/personal/ipoteka/novostrojki/",
+        "https://www.vtb.ru/personal/ipoteka/vtorichnoe-zhile/",
+        "https://www.vtb.ru/personal/ipoteka/it/",
+        "https://www.vtb.ru/personal/ipoteka/refinansirovanie/",
+        "https://www.vtb.ru/personal/ipoteka/stroitelstvo-doma/",
+        "https://www.vtb.ru/personal/vklady-i-scheta/vtb-vklad-r/",
+        "https://www.vtb.ru/personal/vklady-i-scheta/vklad-klyuchevoj/",
+        "https://www.vtb.ru/personal/vklady-i-scheta/vtb-schet/",
+        "https://www.vtb.ru/personal/vklady-i-scheta/den-v-plyuse/",
+        "https://www.vtb.ru/personal/vklady-i-scheta/socvklad/",
     )
     families = (
         ("/personal/vklady-i-scheta/nakopitelnyi-schet", "Накопительные счета"),
@@ -141,7 +156,16 @@ class VtbAdapter(CrawlAdapter):
         r"(calc|kalkul|faq|question|vopros|help|pomosh|nalog|tax|document|dokument|"
         r"tarif|archive|arhiv|news|blog|promo|akci|action|business|biz|/legal|"
         r"[/_-]na[_-]\d|rublej|/(moskva|sankt-peterburg|novosibirsk|ekaterinburg|kazan)\b|"
-        r"/bez-|/dlya-|/onlajn-zayavka|/form\b|/anketa)", re.I)
+        r"/bez-|/dlya-|/onlajn-zayavka|/form\b|/anketa|"
+        # Подборки, города и служебное в разделе вкладов ВТБ (обход 07.10.2026).
+        r"/vklad-\d|/vklady-(?!i-scheta)|/so-snyatiem|/sberezhenija$|/nakopitelnyy-chet-|"
+        r"/kurs-|/monety|metallicheskij|/seyfovye|/strahovanie|asv|/informacija|"
+        r"/(nizhniy-novgorod|chelyabinsk|yekaterinburg|krasnodar|rostov-na-donu|ufa|"
+        r"samara|voronezh|krasnoyarsk|tyumen|perm|volgograd|omsk|saratov|irkutsk|"
+        r"izhevsk|ryazan|barnaul|tolyatti|ulyanovsk|yaroslavl|khabarovsk|vladivostok|"
+        r"tomsk|kemerovo|novokuznetsk|orenburg|astrakhan|penza|lipetsk|kirov|tula|"
+        r"cheboksary|kaliningrad|kursk|stavropol|sochi|tver|belgorod|bryansk|ivanovo|"
+        r"vladimir|smolensk|kaluga|orel|tambov|kostroma|murmansk|arkhangelsk)$)", re.I)
 
 
 @registry.register
