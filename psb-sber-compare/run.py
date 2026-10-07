@@ -220,6 +220,45 @@ def cmd_check_bank(config: Config, code: str) -> int:
     return 0
 
 
+def cmd_page(config: Config, code: str, url: str) -> int:
+    """Одна страница глазами сборщика: текст после раскрытия вкладок и разбор.
+
+    python run.py page sber https://www.sberbank.ru/ru/person/credits/money/consumer_unsecured
+    """
+    from src.banks.browser import BrowserSettings, PageReader
+    from src.banks.crawl_adapter import product_from_page
+
+    if not code or not url.startswith("http"):
+        print("Пример: python run.py page sber https://www.sberbank.ru/ru/person/credits/money/consumer_unsecured")
+        return 1
+    settings = config.bank_settings(code)
+    browser = BrowserSettings.from_config(settings.get("browser"))
+    cls = registry.get(code)
+    with PageReader(browser, cookies=settings.get("region_cookies") or None,
+                    wait_for=getattr(cls, "wait_for", "")) as reader:
+        data = reader.read(url)
+    text = data.get("text") or ""
+    out = ROOT / "data" / "page.txt"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(f"URL: {data.get('url')}\nH1: {data.get('h1')}\n\n{text}", encoding="utf-8")
+    lines = [l.strip() for l in text.split("\n") if l.strip()]
+    print(f"Открыто: {data.get('url')} (HTTP {data.get('status')})")
+    print(f"Нажато вкладок: {data.get('expanded', 0)}, строк текста: {len(lines)}")
+    print("Строки с процентами:")
+    for number, line in enumerate(lines):
+        if "%" in line:
+            print(f"  {number:>4}: {line[:110]}")
+    product = product_from_page(data, bank=getattr(cls, "title", code), url=url,
+                                category="", region="", collected_at="")
+    if product is None:
+        print("Разбор: страница не распознана как продукт")
+    else:
+        print(f"Разбор: {product.title} · ставка {product.rate_min}–{product.rate_max} · "
+              f"ПСК {product.apr_min}–{product.apr_max}")
+    print(f"Полный текст: {out}")
+    return 0
+
+
 def cmd_export(config: Config, fmt: str, open_after: bool) -> int:
     from src.export import build_exports
 
@@ -271,7 +310,7 @@ def main() -> int:
     )
     parser.add_argument("command", choices=[
         "collect", "check-bank", "banks", "report", "export",
-        "suggest", "history", "bot", "dump", "audit",
+        "suggest", "history", "bot", "dump", "audit", "page",
     ])
     parser.add_argument("target", nargs="?", default="",
                         help="код банка для check-bank и dump")
@@ -322,6 +361,8 @@ def main() -> int:
         return 0
     if args.command == "report":
         return cmd_export(config, args.fmt, args.open)
+    if args.command == "page":
+        return cmd_page(config, args.target.strip().lower(), args.section)
     if args.command == "audit":
         from src import audit
         result, html_path, zip_path = audit.run(config, sample=args.sample, llm=args.llm)

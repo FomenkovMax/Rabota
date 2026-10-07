@@ -19,6 +19,11 @@ from src.banks.seo import is_seo_page
     "https://www.tbank.ru/loans/cash-loan/pensioneram",
     "https://www.vtb.ru/personal/ipoteka/dlja-pensionerov",
     "https://www.vtb.ru/personal/ipoteka/mashinomesta-i-kladovki",
+    "https://www.vtb.ru/personal/ipoteka/anapa",
+    "https://www.vtb.ru/personal/ipoteka/medikam",
+    "https://www.sberbank.ru/ru/person/contributions/deposits/schet-v-moskve",
+    "https://www.sberbank.ru/ru/person/contributions/deposits/vklad-ot-100000-rubley",
+    "https://www.sberbank.ru/ru/person/contributions/accounts/candidate",
 ])
 def test_seo_pages(url):
     assert is_seo_page(url)
@@ -36,6 +41,9 @@ def test_seo_pages(url):
     "https://www.vtb.ru/personal/ipoteka/selskaya",
     "https://www.vtb.ru/personal/kredit/nalichnymi",
     "https://www.sberbank.ru/ru/person/credits/money",
+    "https://www.sberbank.ru/ru/person/contributions/deposits/nakopi",
+    "https://www.sberbank.ru/ru/person/contributions/deposits/vklad/vklad_luchshiy_procent",
+    "https://www.vtb.ru/personal/ipoteka/combo",
 ])
 def test_real_products_stay(url):
     assert not is_seo_page(url)

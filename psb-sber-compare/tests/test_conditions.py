@@ -100,3 +100,16 @@ def test_sber_details_tab_base_rate_is_not_salary():
         category="Кредиты", region="", collected_at="")
     assert (product.rate_min, product.apr_min, product.apr_max) == (20.4, 20.4, 50.2)
     assert conditions.kind_of(product)[0] == conditions.BASE
+
+
+def test_rates_block_far_below_title_is_found():
+    """Сбер: вкладка «Ставки по кредиту» внизу длинной страницы, дальше 150 строк."""
+    filler = [f"Пункт описания {i}" for i in range(200)]
+    page = _page("Рефинансирование", "Подробные условия", *filler, "Ставки по кредиту",
+                 "Общие условия", "Полная стоимость кредита1", "17,400% – 45,200%",
+                 "Ставка", "От 17,4%", "Получаю зарплату или пенсию в Сбере", "Ставка",
+                 "От 15,4%", "Требования к заёмщику")
+    product = crawl.product_from_page(page, bank="Сбер", url="https://x/consumer_refinance",
+                                      category="Кредиты", region="", collected_at="")
+    assert (product.rate_min, product.apr_min, product.apr_max) == (17.4, 17.4, 45.2)
+    assert conditions.kind_of(product)[0] == conditions.BASE

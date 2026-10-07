@@ -298,21 +298,8 @@ def _rate_conditions(body: list[str], index: int, best: float) -> list[str]:
     return found
 
 
-def product_from_page(data: dict[str, Any], *, bank: str, url: str,
-                      category: str, region: str, collected_at: str) -> Product | None:
-    """Продукт со страницы продукта. None — если это не страница продукта."""
-    title, body = describe_page(data)
-    headline = title
-    title = product_name(title)
-    if not is_product_title(title):
-        return None
-
-    product = Product(
-        bank=bank, url_path=urlsplit(url).path, title=title,
-        category=category_for(title, category), region=region,
-        source_url=url, collected_at=collected_at,
-    )
-
+def _read_rates(product: Product, body: list[str]) -> None:
+    """Ставка и ПСК из строк описания — первая настоящая ставка."""
     for index, line in enumerate(body):
         values = rates_of(line)
         if values is None:
@@ -367,6 +354,55 @@ def product_from_page(data: dict[str, Any], *, bank: str, url: str,
         conditions.remember(product, _rate_conditions(body, index, max(values)))
         break
 
+
+_RATES_HEADING = re.compile(
+    r"^(?:ставки по (?:кредиту|ипотеке|вкладу)|ставки и условия|условия и ставки|"
+    r"процентные ставки|подробные условия|условия кредит\w*)$", re.I)
+_SECTION_END = re.compile(
+    r"^(?:требования к заёмщику|требования к заемщику|документы|документы и ссылки|"
+    r"вопросы и ответы|юридическая информация|оцените)", re.I)
+
+
+def rates_section(data: dict[str, Any]) -> list[str]:
+    """Блок «Ставки по кредиту» в любом месте страницы.
+
+    У Сбера ставки — во вкладке «Подробные условия» внизу длинной страницы
+    (ручная проверка 07.10.2026): от заголовка продукта до неё больше
+    150 строк. Берём блок под заголовком, за которым в ближайших строках
+    есть ставка; подпись вкладки в меню («Подробные условия» без цифр
+    рядом) пропускается.
+    """
+    lines = [l.strip() for l in (data.get("text") or "").split("\n") if l.strip()]
+    for index, line in enumerate(lines):
+        if not _RATES_HEADING.match(line):
+            continue
+        block = []
+        for item in lines[index + 1:index + 80]:
+            if _SECTION_END.match(item):
+                break
+            block.append(item)
+        if any(rates_of(item) is not None for item in block[:25]):
+            return block
+    return []
+
+
+def product_from_page(data: dict[str, Any], *, bank: str, url: str,
+                      category: str, region: str, collected_at: str) -> Product | None:
+    """Продукт со страницы продукта. None — если это не страница продукта."""
+    title, body = describe_page(data)
+    headline = title
+    title = product_name(title)
+    if not is_product_title(title):
+        return None
+
+    product = Product(
+        bank=bank, url_path=urlsplit(url).path, title=title,
+        category=category_for(title, category), region=region,
+        source_url=url, collected_at=collected_at,
+    )
+
+    _read_rates(product, body)
+
     # Ставки в описании нет, но она есть в самом заголовке страницы
     # продукта: «ВТБ-Вклад в рублях до 13,7% годовых».
     if product.rate_min is None and headline != title:
@@ -376,6 +412,14 @@ def product_from_page(data: dict[str, Any], *, bank: str, url: str,
                                 + _rate_conditions(body, 0, max(values)))
             product.rate_min, product.rate_max = min(values), max(values)
             product.rate_raw = headline
+
+    # Ставка ниже по странице — во вкладке «Ставки по кредиту» (Сбер).
+    if product.rate_min is None:
+        block = rates_section(data)
+        if block:
+            _read_rates(product, block)
+            if product.rate_min is not None:
+                product.terms["Источник ставки на странице"] = "блок «Ставки по кредиту»"
 
     for key, value in _amount_and_term(body).items():
         setattr(product, key, value)

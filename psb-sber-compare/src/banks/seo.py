@@ -23,6 +23,17 @@ _SEO_PAGES = {
         r"|^/personal/creditcards/limit-\d+-rub/?$"
         r"|^/personal/saving/vklady-s-vysokimi-procentami/?$"
     ),
+    # Сбор 07.10.2026: «Накопительный счёт в Москве/Казани/…», «Вклад от
+    # 100 000 рублей», «Срочные вклады» — подборки и города; спецсчета
+    # (избирательный, участника закупок, «С», «Амана», текущий) — не
+    # сберегательные продукты для сравнения.
+    "sberbank.ru": re.compile(
+        r"^/ru/person/contributions/deposits/(?:schet-v-[\w-]+|vklad-na-mesyac|"
+        r"vklad-ot-\d+-rubley|vklad-s-ezhemesyachnoy-kapitalizaciey|"
+        r"vklady-(?:dolgosrochnye|kratkosrochnye|s-ezhemesyachnymi-vyplatami)|"
+        r"srochnyy-vklad|schet-tipa-c|schyot_amana|tec)/?$"
+        r"|^/ru/person/contributions/accounts/(?:candidate|special)/?$"
+    ),
     "tbank.ru": re.compile(
         r"^/loans/cash-loan/(?:na-[\w-]+|pensioneram|studentam|selfemployed|"
         r"nizkij-proczent|srochnyj-kredit-nalichnymi|nopledge)/?$"
@@ -30,7 +41,12 @@ _SEO_PAGES = {
     "vtb.ru": re.compile(
         r"^/personal/ipoteka/(?:dlja-[\w-]+|mnogodetnym|ipoteka-s-pervym-vznosom|"
         r"s-annuitetnymi-platezhami|online|mashinomesta-i-kladovki|"
-        r"kreditovanie-inostrannyh-grazhdan)/?$"
+        r"kreditovanie-inostrannyh-grazhdan|materi-odinochke|medikam|na-dvoih|"
+        r"studentam|ocenka-zhilya|stavki-po-ipoteke|"
+        # Города (сбор 07.10.2026): условия общие, страница — посадочная.
+        r"anapa|balashiha|domodedovo|elektrostal|habarovsk|kolomna|korolyov|krym|"
+        r"lipeck|maykop|nizhnij-novgorod|orehovo-zuevo|prokopevsk|sergiev-posad|"
+        r"tyva)/?$"
         r"|^/personal/karty/kreditnye/(?:s-[\w-]+|v-den-[\w-]+)/?$"
     ),
 }

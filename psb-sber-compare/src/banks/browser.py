@@ -290,19 +290,19 @@ class BrowserSession:
             # Время на JS-проверку и на дозагрузку условий отдельными запросами.
             page.wait_for_timeout(self.settings.settle_ms)
 
-            if self.settings.expand:
-                self._expand(page)
+            clicked = self._expand(page) if self.settings.expand else 0
 
             with hard_limit(self._overall(), f"чтение страницы {url}"):
                 data = page.evaluate(script)
             data["status"] = status
             data["url"] = page.url
+            data["expanded"] = clicked
             return data
         finally:
             page.close()
             time.sleep(self.settings.pause_s)
 
-    def _expand(self, page: Any) -> None:
+    def _expand(self, page: Any) -> int:
         """Прокрутка и клики по вкладкам с условиями — как у посетителя.
 
         Нажимаются только элементы внутри страницы (кнопки, вкладки, якоря
@@ -316,8 +316,10 @@ class BrowserSession:
                 clicked = page.evaluate(_EXPAND_JS, _EXPAND_LABELS)
                 if clicked:
                     page.wait_for_timeout(1500)
+                return int(clicked or 0)
         except Exception as exc:                    # noqa: BLE001
             log.debug("Вкладки на %s не раскрылись: %s", page.url, exc)
+        return 0
 
     def close(self) -> None:
         for item in (self._context, self._browser, self._playwright):
