@@ -78,7 +78,12 @@ _NOT_A_PRODUCT = re.compile(
     r"^вклады\s+и\s+[сc]ч[её]та|^кредиты\s+наличными$|^кредитный\s+лимит|^вкладывайте|"
     # Заголовки витрин во множественном числе: «Дебетовые карты для
     # путешествий», «Банковские карты с кешбэком» — подборки, не продукты.
-    r"^(?:банковские|дебетовые|кредитные)\s+карты\b",
+    r"^(?:банковские|дебетовые|кредитные)\s+карты\b|"
+    # Подборки ВТБ во множественном числе: «Вклады в Самаре», «Вклады на
+    # 1 год», «Накопительные счета до востребования», «Сберегательные вклады».
+    r"^(?:вклады|накопительные\s+сч[её]та|сберегательные\s+вклады)\b|"
+    # Драгметаллы и курсы — не розничные вклады и кредиты для сравнения.
+    r"^курс\s|монет\w*\s+из\s+драгоцен|металлическ\w*\s+сч[её]т|^услуги\s+по\s+размещению",
     re.I,
 )
 
@@ -137,7 +142,8 @@ def product_name(title: str) -> str:
     return name[:1].upper() + name[1:] if name else title
 
 
-_NOT_FOUND = re.compile(r"такой страницы нет|страница не найдена|page not found", re.I)
+_NOT_FOUND = re.compile(r"такой страницы нет|такой страницы не существует|"
+                        r"страница не найдена|page not found", re.I)
 _SERVER_ERROR = re.compile(r"^\s*(?:404|50[0-4])\b|bad gateway|service unavailable", re.I)
 
 
@@ -145,8 +151,8 @@ def is_not_found(data: dict[str, Any]) -> bool:
     """Страница ошибки вместо продукта: 404 в оформлении сайта или 502 прокси."""
     head = (data.get("text") or "")[:3000]
     h1, title = (data.get("h1") or "").strip(), (data.get("title") or "").strip()
-    return (bool(_SERVER_ERROR.search(h1) or _SERVER_ERROR.search(title))
-            or bool(_NOT_FOUND.search(head)))
+    return any(_SERVER_ERROR.search(t) or _NOT_FOUND.search(t) for t in (h1, title)) \
+        or bool(_NOT_FOUND.search(head))
 
 
 def clean_title(raw: str) -> str:

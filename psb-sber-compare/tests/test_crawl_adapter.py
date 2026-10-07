@@ -655,3 +655,19 @@ def test_plural_card_headings_are_not_products():
     assert not crawl.is_product_title("Банковские карты с кешбэком и бонусами")
     assert not crawl.is_product_title("Дебетовые карты для путешествий")
     assert crawl.is_product_title("Дебетовая карта Black")
+
+
+def test_vtb_first_check_junk():
+    from src.banks.generic_site import rates_of
+
+    for title in ("Вклады в Самаре", "Вклады на 1 год", "Вклады с капитализацией",
+                  "Накопительные счета в Санкт-Петербурге", "Сберегательные вклады",
+                  "Курс покупки и продажи золота", "Монеты из драгоценных металлов",
+                  "Обезличенный металлический счет", "Услуги по размещению сбережений"):
+        assert not crawl.is_product_title(title), title
+    for title in ("Накопительный ВТБ-Счет в рублях", "ВТБ-Вклад", "Ипотека на новых территориях"):
+        assert crawl.is_product_title(title), title
+    assert crawl.is_not_found({"h1": "Такой страницы не существует. Вероятно, она", "text": ""})
+    assert rates_of("Ставка ниже до 5%") is None
+    assert rates_of("Оплачивайте до 99% чека") is None
+    assert rates_of("до 13,7% годовых") == [13.7]
