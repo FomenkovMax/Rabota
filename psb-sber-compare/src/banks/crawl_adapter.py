@@ -259,7 +259,7 @@ def describe_page(data: dict[str, Any]) -> tuple[str, list[str]]:
 _BONUS = re.compile(r"^\s*(?:до\s*)?\+\s?\d", re.I)
 
 
-def _own_window(body: list[str], index: int, *, before: int = 4, after: int = 8) -> list[str]:
+def _own_window(body: list[str], index: int, *, before: int = 7, after: int = 8) -> list[str]:
     """Строки вокруг ставки, которые относятся к ней, а не к соседней ставке.
 
     Таблица Сбера: «Ставка / От 20,4% / Получаю зарплату или пенсию в Сбере /
@@ -268,7 +268,13 @@ def _own_window(body: list[str], index: int, *, before: int = 4, after: int = 8)
     предыдущей ставке, а снизу — за несколько строк до следующей.
     """
     start = index
-    while start > max(0, index - before) and rates_of(body[start - 1]) is None:
+    while start > max(0, index - before):
+        prev = body[start - 1]
+        # ПСК над ставкой — часть того же блока таблицы: «Получаю зарплату /
+        # Полная стоимость кредита / 18,400% – 48,200% / Ставка / От 18,4%».
+        is_psk = bool(_PSK.search(prev)) or (start > 1 and bool(_PSK.search(body[start - 2])))
+        if rates_of(prev) is not None and not is_psk:
+            break
         start -= 1
     end = min(len(body), index + after + 1)
     following = next((i for i in range(index + 1, end) if rates_of(body[i]) is not None), None)
@@ -299,7 +305,16 @@ def _rate_conditions(body: list[str], index: int, best: float) -> list[str]:
 
 
 def _read_rates(product: Product, body: list[str]) -> None:
-    """Ставка и ПСК из строк описания — первая настоящая ставка."""
+    """Ставка и ПСК из строк описания — первая базовая ставка.
+
+    Таблица условий бывает из нескольких блоков: у Сбера на живой странице
+    (07.10.2026) «Получаю зарплату или пенсию — от 18,4 %» стоит ВЫШЕ
+    «Общих условий — от 20,4 %». Если у первой ставки в её собственном
+    окне сказано про особые условия, ищем дальше такую же строку таблицы
+    (с той же подписью «Ставка») без особых условий. Не нашли — берём первую.
+    """
+    fallback: tuple[list[float], str, int, tuple] | None = None
+    block_apr: list[float] = []          # ПСК текущего блока таблицы
     for index, line in enumerate(body):
         values = rates_of(line)
         if values is None:
@@ -344,15 +359,36 @@ def _read_rates(product: Product, body: list[str]) -> None:
             if span:
                 values = [float(span.group(1).replace(",", ".")),
                           float(span.group(2).replace(",", "."))]
-            if product.apr_min is not None:
+            block_apr = list(values)
+            if product.apr_min is not None and fallback is None:
                 values += [product.apr_min, product.apr_max]
-            product.apr_min, product.apr_max = min(values), max(values)
-            product.apr_raw = f"{line} {following}".strip()
+            if fallback is None:
+                product.apr_min, product.apr_max = min(values), max(values)
+                product.apr_raw = f"{line} {following}".strip()
             continue
+        caption = body[index - 1] if index > 0 else ""
+        own = conditions.scan(" ".join(_own_window(body, index)))
+        if fallback is None and own:
+            # Особые условия у первой ставки — посмотрим, есть ли общая.
+            fallback = (values, line, index, tuple(block_apr))
+            block_apr = []
+            continue
+        if fallback is not None:
+            if own or caption != (body[fallback[2] - 1] if fallback[2] > 0 else ""):
+                block_apr = []
+                continue
+            if block_apr:
+                product.apr_min, product.apr_max = min(block_apr), max(block_apr)
         product.rate_min, product.rate_max = min(values), max(values)
         product.rate_raw = line
         conditions.remember(product, _rate_conditions(body, index, max(values)))
-        break
+        return
+
+    if fallback is not None:
+        values, line, index, apr = fallback
+        product.rate_min, product.rate_max = min(values), max(values)
+        product.rate_raw = line
+        conditions.remember(product, _rate_conditions(body, index, max(values)))
 
 
 _RATES_HEADING = re.compile(

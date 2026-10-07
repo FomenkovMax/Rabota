@@ -113,3 +113,18 @@ def test_rates_block_far_below_title_is_found():
                                       category="Кредиты", region="", collected_at="")
     assert (product.rate_min, product.apr_min, product.apr_max) == (17.4, 17.4, 45.2)
     assert conditions.kind_of(product)[0] == conditions.BASE
+
+
+def test_salary_block_above_general_takes_general_rate():
+    """Живая страница Сбера 07.10.2026: блок «Получаю зарплату» выше «Общих условий»."""
+    page = _page("Кредит наличными", "Скидка 2% от ставки", "Ставки по кредиту",
+                 "Получаю зарплату или пенсию в Сбере", "Сумма кредита", "От 10 000 ₽",
+                 "Полная стоимость кредита1", "18,400% – 48,200%", "Ставка", "От 18,4%",
+                 "Общие условия", "Сумма кредита", "От 10 000 ₽",
+                 "Полная стоимость кредита1", "20,400% – 50,200%", "Ставка", "От 20,4%",
+                 "Требования к заёмщику")
+    product = crawl.product_from_page(
+        page, bank="Сбер", url="https://www.sberbank.ru/ru/person/credits/money/consumer_unsecured",
+        category="Кредиты", region="", collected_at="")
+    assert (product.rate_min, product.apr_min, product.apr_max) == (20.4, 20.4, 50.2)
+    assert conditions.kind_of(product)[0] == conditions.BASE
