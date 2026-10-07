@@ -21,7 +21,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime
 from typing import Any, Iterable
 
-from .market import RATED
+from .market import RATED, program_of
 
 log = logging.getLogger(__name__)
 
@@ -629,6 +629,23 @@ def _showcase(products, category: str, higher_is_better: bool):
                            bank=getattr(best, "bank", ""))
 
 
+def _same_programs(rival: list[Any], home: list[Any],
+                   category: str) -> tuple[list[Any], list[Any]]:
+    """Продукты категории из программ, где ставка есть у обеих сторон.
+
+    Иначе «Сбер 3 % против 15 % у Т-Банка» сравнивал бы образовательный
+    кредит с господдержкой с кредитом под залог — и Сбер «выигрывал».
+    """
+    def rated(items: list[Any]) -> list[Any]:
+        return [p for p in items if (getattr(p, "category", "") or "") == category
+                and (p.rate_min is not None or p.rate_max is not None)]
+
+    common = ({program_of(p) for p in rated(rival)}
+              & {program_of(p) for p in rated(home)})
+    return ([p for p in rated(rival) if program_of(p) in common],
+            [p for p in rated(home) if program_of(p) in common])
+
+
 def compare_segments(psb: list[PromoInsight], sber: list[PromoInsight],
                      psb_products: list[Any] | None = None,
                      sber_products: list[Any] | None = None) -> list[SegmentComparison]:
@@ -667,8 +684,9 @@ def compare_segments(psb: list[PromoInsight], sber: list[PromoInsight],
         # одной карты с чем-то третьим у другой.
         if category and category in RATED:
             higher = segment in SAVINGS_SEGMENTS
-            item.psb_product = _showcase(psb_products, category, higher)
-            item.sber_product = _showcase(sber_products, category, higher)
+            rival, home = _same_programs(psb_products, sber_products, category)
+            item.psb_product = _showcase(rival, category, higher)
+            item.sber_product = _showcase(home, category, higher)
 
         _judge(item)
         results.append(item)

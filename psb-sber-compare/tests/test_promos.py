@@ -388,3 +388,20 @@ def test_showcase_names_the_real_rival_bank():
     assert segment.psb_product.bank == "Т-Банк"
     assert "Т-Банк 29,9 %" in segment.headline
     assert "ПСБ" not in segment.headline
+
+
+def test_showcase_compares_only_the_same_program():
+    """Образовательный кредит Сбера 3 % не «выигрывает» у залогового 15 %."""
+    from types import SimpleNamespace as P
+
+    def loan(bank, title, rate):
+        return P(bank=bank, title=title, category="Кредиты", rate_min=rate,
+                 rate_max=rate, rate_conditions="", source_url="")
+
+    result = compare_segments(
+        [], [],
+        psb_products=[loan("Т-Банк", "Кредит под залог недвижимости", 15.0)],
+        sber_products=[loan("Сбер", "Кредит на образование с господдержкой", 3.0)],
+    )
+    segment = next(s for s in result if s.segment == "Кредиты")
+    assert segment.verdict == "grey"
