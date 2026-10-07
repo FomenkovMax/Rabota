@@ -372,3 +372,22 @@ def test_protection_stub_is_not_a_product_and_stops_politely(monkeypatch, tmp_pa
     assert all(p.title != "sberbank.ru" for p in result.products)
     summary = (tmp_path / "pages" / "000-summary.txt").read_text(encoding="utf-8")
     assert "закрыл доступ" in summary
+
+
+def test_slow_seed_is_retried_at_the_end(monkeypatch):
+    """Витрина не отдалась с первого раза — вторая попытка позже, не подряд."""
+    calls: list[str] = []
+
+    class SlowFirst(FakeReader):
+        def read(self, url):
+            calls.append(url)
+            if len(calls) == 1:
+                raise PageTooSlow("страница не отдалась за 90 с")
+            return super().read(url)
+
+    monkeypatch.setattr(crawl, "PageReader", SlowFirst)
+    adapter = OnlyCredits(region=None, settings={
+        "region_cookies": [{"name": "r", "value": "94"}], "max_pages": 50})
+    assert adapter.collect().ok
+    # Вторая попытка — не сразу, а когда браузер уже прогрет другими страницами.
+    assert calls.count(calls[0]) == 2 and calls[1] != calls[0]

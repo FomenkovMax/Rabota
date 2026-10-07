@@ -273,6 +273,7 @@ class CrawlAdapter(BankAdapter):
         showcase: dict[str, tuple[Any, str, str]] = {}
         failures: list[str] = []
         visited = 0
+        retried: set[str] = set()
         blocked = False
         # Сколько прочитанных страниц ссылается на адрес. Основные продукты
         # стоят в меню каждой страницы, рекламные дубли («кредит на 50 000
@@ -294,9 +295,18 @@ class CrawlAdapter(BankAdapter):
                         if is_blocked(data):
                             data = self._after_block(reader, url)
                     except (PageTooSlow, PageFailed) as exc:
-                        failures.append(f"{url}: {str(exc)[:80]}")
                         log.warning("%s: страница не прочиталась — %s",
                                     self.title, str(exc)[:160])
+                        # Первая страница у Сбера долгая: защита проверяет
+                        # свежий браузер. Витрину не теряем — ещё одна
+                        # попытка позже, когда браузер уже прогрет.
+                        if url in seed_set and url not in retried:
+                            retried.add(url)
+                            popularity[url] = -1
+                            queue.append(url)
+                            visited -= 1
+                            continue
+                        failures.append(f"{url}: {str(exc)[:80]}")
                         continue
                     if data is None:
                         blocked = True
