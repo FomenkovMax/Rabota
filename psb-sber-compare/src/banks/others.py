@@ -101,21 +101,48 @@ class SberAdapter(CrawlAdapter):
 
 
 @registry.register
-class VtbAdapter(SiteAdapter):
+class VtbAdapter(CrawlAdapter):
+    """ВТБ: обход розницы по ссылкам, как у Сбера.
+
+    По спецификации у ВТБ есть отдельная ипотека для новых регионов —
+    её страница в главных продуктах. Регион на сайте выбирается, поэтому
+    без куки региона (banks.vtb.region_cookies) условия будут не ЛНР и в
+    сравнение не пойдут.
+    """
+
     code = "vtb"
     title = "ВТБ"
-    strategy = "браузер: условия подгружаются скриптами после загрузки"
-    protection = "одностраничное приложение, контент приходит отдельными запросами"
+    strategy = "браузер: обход витрин и страниц продуктов"
+    protection = "не проверено"
     verified = False
 
-    sections = (
-        ("https://www.vtb.ru/personal/vklady-i-scheta/", "Вклады"),
-        ("https://www.vtb.ru/personal/vklady-i-scheta/nakopitelnyi-schet/", "Накопительные счета"),
-        ("https://www.vtb.ru/personal/kredit/", "Кредиты"),
-        ("https://www.vtb.ru/personal/ipoteka/", "Ипотека"),
-        ("https://www.vtb.ru/personal/karty/kreditnye/", "Кредитные карты"),
-        ("https://www.vtb.ru/personal/karty/debetovye/", "Дебетовые карты"),
+    base_url = "https://www.vtb.ru"
+    seeds = (
+        "https://www.vtb.ru/personal/vklady-i-scheta/",
+        "https://www.vtb.ru/personal/kredit/",
+        "https://www.vtb.ru/personal/ipoteka/",
+        "https://www.vtb.ru/personal/karty/kreditnye/",
+        "https://www.vtb.ru/personal/karty/debetovye/",
     )
+    priority = (
+        "https://www.vtb.ru/personal/ipoteka/new-regions/",
+        "https://www.vtb.ru/personal/vklady-i-scheta/nakopitelnyi-schet/",
+    )
+    families = (
+        ("/personal/vklady-i-scheta/nakopitelnyi-schet", "Накопительные счета"),
+        ("/personal/vklady-i-scheta", "Вклады"),
+        ("/personal/ipoteka", "Ипотека"),
+        ("/personal/kredit", "Кредиты"),
+        ("/personal/karty/kreditnye", "Кредитные карты"),
+        ("/personal/karty/debetovye", "Дебетовые карты"),
+        ("/personal/karty", "Банковские карты"),
+    )
+    family_words = ()
+    skip = re.compile(
+        r"(calc|kalkul|faq|question|vopros|help|pomosh|nalog|tax|document|dokument|"
+        r"tarif|archive|arhiv|news|blog|promo|akci|action|business|biz|/legal|"
+        r"[/_-]na[_-]\d|rublej|/(moskva|sankt-peterburg|novosibirsk|ekaterinburg|kazan)\b|"
+        r"/bez-|/dlya-|/onlajn-zayavka|/form\b|/anketa)", re.I)
 
 
 @registry.register

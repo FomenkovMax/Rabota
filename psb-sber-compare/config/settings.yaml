@@ -69,7 +69,12 @@ banks:
     max_pages: 0          # 0 = без ограничения; поставь 30 для быстрой пробы
   vtb:
     enabled: false        # включи после проверки: python run.py check-bank vtb
-    # region_cookies: [{name: "user_region", value: "LNR", domain: ".vtb.ru"}]
+    max_pages: 40
+    pause_s: 6
+    # Регион на сайте ВТБ выбирается. Кука выбранного города пока не
+    # известна: после выбора «Луганск» на vtb.ru посмотреть её в F12 →
+    # Хранилище → Куки и вписать сюда, как у РостФинанса:
+    # region_cookies: [{name: "...", value: "...", domain: "www.vtb.ru"}]
   genbank:
     enabled: false        # включи после проверки: python run.py check-bank genbank
   tbank:
