@@ -259,6 +259,25 @@ def describe_page(data: dict[str, Any]) -> tuple[str, list[str]]:
 _BONUS = re.compile(r"^\s*(?:до\s*)?\+\s?\d", re.I)
 
 
+def _own_window(body: list[str], index: int, *, before: int = 4, after: int = 8) -> list[str]:
+    """Строки вокруг ставки, которые относятся к ней, а не к соседней ставке.
+
+    Таблица Сбера: «Ставка / От 20,4% / Получаю зарплату или пенсию в Сбере /
+    … / Ставка / От 18,4%». Заголовок «Получаю зарплату» стоит под первой
+    ставкой, но относится ко второй. Поэтому окно сверху обрывается на
+    предыдущей ставке, а снизу — за несколько строк до следующей.
+    """
+    start = index
+    while start > max(0, index - before) and rates_of(body[start - 1]) is None:
+        start -= 1
+    end = min(len(body), index + after + 1)
+    following = next((i for i in range(index + 1, end) if rates_of(body[i]) is not None), None)
+    if following is not None:
+        # Подписи над следующей ставкой — её, а не наши.
+        end = max(index + 1, following - 6)
+    return body[start:end]
+
+
 def _rate_conditions(body: list[str], index: int, best: float) -> list[str]:
     """Условия ставки: рядом со строкой ставки и там, где та же цифра повторена.
 
@@ -266,7 +285,7 @@ def _rate_conditions(body: list[str], index: int, best: float) -> list[str]:
     в описании (ВТБ-Счёт). Строка с той же цифрой и её соседи и есть
     расшифровка условий.
     """
-    found = conditions.near_rate(body, index)
+    found = conditions.scan(" ".join(_own_window(body, index)))
     # Надбавки «До +3,3% годовых для новых вкладчиков» входят в «до 13,7%»:
     # максимальная ставка — это база плюс все надбавки.
     for position, line in enumerate(body):

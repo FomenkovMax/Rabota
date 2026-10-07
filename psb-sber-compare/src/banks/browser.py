@@ -153,6 +153,10 @@ class BrowserSettings:
     #: Включать только если российский корень не установлен в систему —
     #: и понимать, что это ослабляет проверку подлинности сайта.
     ignore_https_errors: bool = False
+    #: Раскрывать вкладки с условиями («Подробные условия», «Ставки по
+    #: кредиту») и прокручивать страницу перед чтением. У Сбера ставки по
+    #: кредитам и ипотеке видны только во вкладке (проверено 07.10.2026).
+    expand: bool = True
 
     @classmethod
     def from_config(cls, data: dict[str, Any] | None) -> "BrowserSettings":
@@ -164,6 +168,7 @@ class BrowserSettings:
             pause_s=float(data.get("pause_s", 2.0)),
             proxy=str(data.get("proxy", "") or ""),
             ignore_https_errors=bool(data.get("ignore_https_errors", False)),
+            expand=bool(data.get("expand", True)),
         )
 
 
@@ -285,6 +290,9 @@ class BrowserSession:
             # Время на JS-проверку и на дозагрузку условий отдельными запросами.
             page.wait_for_timeout(self.settings.settle_ms)
 
+            if self.settings.expand:
+                self._expand(page)
+
             with hard_limit(self._overall(), f"чтение страницы {url}"):
                 data = page.evaluate(script)
             data["status"] = status
@@ -293,6 +301,23 @@ class BrowserSession:
         finally:
             page.close()
             time.sleep(self.settings.pause_s)
+
+    def _expand(self, page: Any) -> None:
+        """Прокрутка и клики по вкладкам с условиями — как у посетителя.
+
+        Нажимаются только элементы внутри страницы (кнопки, вкладки, якоря
+        «#…»); ссылки на другие адреса не трогаются. Ошибка здесь не мешает
+        чтению: страница читается такой, какой открылась.
+        """
+        try:
+            with hard_limit(15, f"раскрытие вкладок {page.url}"):
+                page.evaluate(_SCROLL_JS)
+                page.wait_for_timeout(800)
+                clicked = page.evaluate(_EXPAND_JS, _EXPAND_LABELS)
+                if clicked:
+                    page.wait_for_timeout(1500)
+        except Exception as exc:                    # noqa: BLE001
+            log.debug("Вкладки на %s не раскрылись: %s", page.url, exc)
 
     def close(self) -> None:
         for item in (self._context, self._browser, self._playwright):
@@ -303,6 +328,41 @@ class BrowserSession:
             except Exception:
                 pass
         self._context = self._browser = self._playwright = None
+
+
+# Подписи вкладок и кнопок, за которыми прячутся ставки и условия.
+_EXPAND_LABELS = (r"Подробные условия|Ставки по кредиту|Ставки и условия|Условия и ставки|"
+                  r"Условия кредитования|Процентные ставки|Ставки|Условия|Тарифы и условия")
+
+_SCROLL_JS = """
+async () => {
+  const step = 900, pause = ms => new Promise(r => setTimeout(r, ms));
+  for (let y = 0; y < Math.min(document.body.scrollHeight, 20000); y += step) {
+    window.scrollTo(0, y); await pause(120);
+  }
+  window.scrollTo(0, 0);
+}
+"""
+
+_EXPAND_JS = """
+(labels) => {
+  const re = new RegExp('^\\\\s*(' + labels + ')\\\\s*$', 'i');
+  const nodes = document.querySelectorAll(
+    'button, [role="tab"], [role="button"], a[href^="#"], summary, li, span, div');
+  let clicked = 0;
+  for (const el of nodes) {
+    if (clicked >= 6) break;
+    const text = (el.innerText || '').trim();
+    if (!text || text.length > 40 || !re.test(text)) continue;
+    const link = el.closest('a[href]');
+    if (link && !link.getAttribute('href').startsWith('#')) continue;
+    // Жмём самый глубокий элемент с этой подписью, а не его обёртки.
+    if (Array.from(el.children).some(c => re.test((c.innerText || '').trim()))) continue;
+    try { el.click(); clicked++; } catch (e) {}
+  }
+  return clicked;
+}
+"""
 
 
 @contextmanager

@@ -593,7 +593,7 @@ def _catalog_rate(product: Any) -> tuple[str, bool]:
         return f"{fmt_rate(low)[:-1]}–{fmt_rate(high)}", True
     if product.apr_min is not None:
         return f"ПСК {fmt_rate(product.apr_min)}", False
-    return "не указана", False
+    return "не найдена", False
 
 
 def _catalog(catalog: dict[str, list[Any]], banks: list[str]) -> str:
@@ -951,7 +951,8 @@ def render_report(
   <h2>Каталог продуктов</h2>
   <p class="hint">Все розничные продукты, найденные на сайтах банков, — в том числе те,
   для которых пара в светофоре не настроена. Нажмите на категорию, чтобы раскрыть.
-  «Не указана» — на странице продукта ставки нет, цифру мы не додумываем.
+  «Не найдена» — сборщик не нашёл ставку на странице продукта (бывает, что она
+  только в калькуляторе или документе); цифру мы не додумываем.
   «ПСК» — указана только полная стоимость кредита, она не равна ставке.
   Название ведёт на страницу-источник.</p>
   {_catalog(catalog or {}, catalog_banks or list((catalog or {}).keys()))}

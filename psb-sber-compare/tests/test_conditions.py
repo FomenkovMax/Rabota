@@ -84,3 +84,19 @@ def test_special_rates_stay_out_of_sber_place():
     assert gap.banks_compared == 2 and gap.rank == 1
     rows = market.specials(products, key_rate=14.0, region_methods={})
     assert {r.bank for r in rows} == {"ВТБ", "РостФинанс"}
+
+
+def test_sber_details_tab_base_rate_is_not_salary():
+    """Вкладка «Подробные условия» Сбера (скриншот 07.10.2026): общая ставка
+    от 20,4 %, ниже — блок «Получаю зарплату или пенсию» со своими 18,4 %."""
+    page = _page("Кредит наличными", "Ставки по кредиту", "Общие условия",
+                 "Сумма кредита", "От 10 000 ₽", "Полная стоимость кредита1",
+                 "20,400% – 50,200%", "Ставка", "От 20,4%",
+                 "Получаю зарплату или пенсию в Сбере", "Сумма кредита", "От 10 000 ₽",
+                 "Полная стоимость кредита1", "18,400% – 48,200%", "Ставка", "От 18,4%",
+                 "Требования к заёмщику", "Гражданин РФ")
+    product = crawl.product_from_page(
+        page, bank="Сбер", url="https://www.sberbank.ru/ru/person/credits/money/consumer_unsecured",
+        category="Кредиты", region="", collected_at="")
+    assert (product.rate_min, product.apr_min, product.apr_max) == (20.4, 20.4, 50.2)
+    assert conditions.kind_of(product)[0] == conditions.BASE
