@@ -528,6 +528,8 @@ def test_new_bank_without_known_sections_is_crawled_by_url_words(monkeypatch):
             pass
 
         def read(self, url):
+            if url not in pages:
+                raise PageFailed(f"{url} → HTTP 404")
             return pages[url]
 
     monkeypatch.setattr(crawl, "PageReader", Reader)
@@ -535,3 +537,49 @@ def test_new_bank_without_known_sections_is_crawled_by_url_words(monkeypatch):
     assert result.ok, result.error
     assert [(p.title, p.category, p.rate_max) for p in result.products] == [
         ("Вклад «Доходный»", "Вклады", 15.5)]
+
+
+def test_not_found_page_is_not_a_product():
+    page = {"h1": "Классический Рост", "text": "404\nТАКОЙ СТРАНИЦЫ НЕТ :(\nЛУЧШИЕ ПРЕДЛОЖЕНИЯ"}
+    assert crawl.is_not_found(page)
+    assert not crawl.is_not_found({"h1": "Вклад", "text": "Ставка до 14%"})
+
+
+def test_tbank_advertising_headline_becomes_product_name():
+    assert crawl.product_name("Оформите кредит наличными онлайн") == "Кредит наличными"
+    assert crawl.product_name("Откройте вклад со ставкой до 12,3% годовых") == "Вклад"
+    assert crawl.product_name("Откройте накопительный счет") == "Накопительный счет"
+    assert crawl.product_name("Кредит на авто") == "Кредит на авто"
+
+
+def test_showcase_psk_and_down_payment_captions():
+    from src.banks.generic_site import extract_products
+
+    tbank = "\n".join(["Ипотека на вторичное жилье", "Максимальная сумма 50 млн рублей",
+                       "Полная стоимость кредита 17,016 – 24,135%", "Ставка от 16,9%",
+                       "Срок кредитования до 30 лет"])
+    assert [(p.title, p.rate_min) for p in extract_products(tbank)] == [
+        ("Ипотека на вторичное жилье", 16.9)]
+    rostfin = "\n".join(["Ипотека для новых регионов", "ОТ 10,1%", "первый взнос",
+                         "Кредит под залог авто", "ДО 70%", "от рыночной стоимости авто"])
+    assert extract_products(rostfin) == []
+
+
+def test_keep_trailing_slash_for_rostfinance():
+    from src.banks.others import RostfinanceAdapter, TbankAdapter
+
+    url = "https://www.rostfinance.ru/deposits/gorizonty-rosta/"
+    assert RostfinanceAdapter(region=None, settings={})._normalize(url) == url
+    assert TbankAdapter(region=None, settings={})._normalize(
+        "https://www.tbank.ru/loans/cash-loan/") == "https://www.tbank.ru/loans/cash-loan"
+    assert TbankAdapter.skip.search("/cards/debit-cards/dlya-studentov")
+    assert not TbankAdapter.skip.search("/cards/debit-cards/tinkoff-black")
+
+
+def test_error_pages_and_tbank_deposit_family():
+    from src.banks.others import TbankAdapter
+
+    assert crawl.is_not_found({"h1": "502 Bad Gateway", "text": "502 Bad Gateway"})
+    adapter = TbankAdapter(region=None, settings={})
+    assert adapter._family("https://www.tbank.ru/savings/deposit") == "Вклады"
+    assert adapter._family("https://www.tbank.ru/savings/saving-account") == "Накопительные счета"

@@ -136,8 +136,9 @@ class GenbankAdapter(SiteAdapter):
 #: Разделы розницы по словам в адресе — для сайтов, структуру которых мы ещё
 #: не разбирали. Порядок важен: «кредитная карта» раньше «кредита» и «карты».
 RETAIL_WORDS: tuple[tuple[str, str], ...] = (
-    (r"nakopit|savings|saving-account|/savings", "Накопительные счета"),
+    # Вклад раньше «savings»: у Т-Банка вклад живёт по адресу /savings/deposit.
     (r"vklad|deposit", "Вклады"),
+    (r"nakopit|savings|saving-account", "Накопительные счета"),
     (r"ipotek|mortgage", "Ипотека"),
     (r"credit[-_]?card|kreditn\w*[-_]kart", "Кредитные карты"),
     (r"debit|debet", "Дебетовые карты"),
@@ -170,6 +171,18 @@ class TbankAdapter(CrawlAdapter):
     verified = False
 
     base_url = "https://www.tbank.ru"
+    # Главные продукты — по обходу 07.10.2026; иначе лимит уходит на
+    # рекламные копии карты Black («для студентов», «именная»…).
+    priority = (
+        "https://www.tbank.ru/cards/debit-cards/tinkoff-black/",
+        "https://www.tbank.ru/cards/credit-cards/tinkoff-platinum/",
+        "https://www.tbank.ru/loans/cash-loan/",
+        "https://www.tbank.ru/loans/refinance/",
+        "https://www.tbank.ru/loans/auto-loan/",
+        "https://www.tbank.ru/savings/deposit/",
+        "https://www.tbank.ru/savings/saving-account/",
+        "https://www.tbank.ru/cards/debit-cards/tinkoff-black/pension/",
+    )
     seeds = (
         "https://www.tbank.ru/",
         "https://www.tbank.ru/cards/debit-cards/",
@@ -179,7 +192,10 @@ class TbankAdapter(CrawlAdapter):
         "https://www.tbank.ru/savings/",
     )
     family_words = RETAIL_WORDS
-    skip = NOT_RETAIL
+    skip = re.compile(NOT_RETAIL.pattern + "|" + (
+        r"/city/|/foreign|/form$|/(dlya|bez|s)-|virtualnaya|beskontaktnaya|"
+        r"nakopitelnaya-karta|mezhdunarodnaya|imennaya|besplatnaya|momentalnaya|"
+        r"/debit-cards/(premium|travel|driver|games|shopping)$|insurance"), re.I)
 
 
 @registry.register
@@ -198,6 +214,14 @@ class RostfinanceAdapter(CrawlAdapter):
     verified = False
 
     base_url = "https://www.rostfinance.ru"
-    seeds = ("https://www.rostfinance.ru/",)
+    # Без «/» в конце адреса сайт отдаёт 404 (обход 07.10.2026).
+    keep_slash = True
+    seeds = (
+        "https://www.rostfinance.ru/",
+        "https://www.rostfinance.ru/deposits/",
+        "https://www.rostfinance.ru/credit/",
+        "https://www.rostfinance.ru/mortgage/",
+        "https://www.rostfinance.ru/cards/",
+    )
     family_words = RETAIL_WORDS
     skip = NOT_RETAIL

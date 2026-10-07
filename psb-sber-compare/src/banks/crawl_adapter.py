@@ -106,6 +106,36 @@ def normalize_title(title: str) -> str:
     return " ".join(text.lower().split())
 
 
+_IMPERATIVE = re.compile(r"^(?:оформите|откройте)\s+(.+)$", re.I)
+_TITLE_TAIL = re.compile(r"\s+(?:со\s+ставкой|с\s+кэшбэком|получайте|онлайн\b|до\s+\d).*$", re.I)
+
+
+def product_name(title: str) -> str:
+    """Название продукта из рекламного заголовка.
+
+    У Т-Банка заголовок страницы — призыв: «Оформите кредит наличными
+    онлайн», «Откройте вклад со ставкой до 12,3% годовых». Продукт в нём
+    есть, его и берём: «Кредит наличными», «Вклад».
+    """
+    match = _IMPERATIVE.match(title or "")
+    if not match:
+        return title
+    name = _TITLE_TAIL.sub("", match.group(1)).strip(" —-,")
+    return name[:1].upper() + name[1:] if name else title
+
+
+_NOT_FOUND = re.compile(r"такой страницы нет|страница не найдена|page not found", re.I)
+_SERVER_ERROR = re.compile(r"^\s*(?:404|50[0-4])\b|bad gateway|service unavailable", re.I)
+
+
+def is_not_found(data: dict[str, Any]) -> bool:
+    """Страница ошибки вместо продукта: 404 в оформлении сайта или 502 прокси."""
+    head = (data.get("text") or "")[:3000]
+    h1, title = (data.get("h1") or "").strip(), (data.get("title") or "").strip()
+    return (bool(_SERVER_ERROR.search(h1) or _SERVER_ERROR.search(title))
+            or bool(_NOT_FOUND.search(head)))
+
+
 def clean_title(raw: str) -> str:
     """Заголовок страницы в одну строку, без хвостов вроде «— оформить онлайн»."""
     text = " ".join((raw or "").split())
@@ -187,6 +217,7 @@ def product_from_page(data: dict[str, Any], *, bank: str, url: str,
                       category: str, region: str, collected_at: str) -> Product | None:
     """Продукт со страницы продукта. None — если это не страница продукта."""
     title, body = describe_page(data)
+    title = product_name(title)
     if not is_product_title(title):
         return None
 
@@ -243,6 +274,9 @@ class CrawlAdapter(BankAdapter):
     #: Раздел по словам в адресе — для сайтов, чью структуру мы ещё не
     #: видели: (регулярка по пути, категория). Проверяются после families.
     family_words: tuple[tuple[str, str], ...] = ()
+    #: Не отрезать «/» в конце адреса: у части сайтов (РостФинанс) адрес без
+    #: неё — это страница 404.
+    keep_slash: bool = False
     #: Служебные страницы внутри разделов: справка, калькуляторы, архивы.
     skip: re.Pattern[str] = re.compile(r"$^")
     protection: str = ""
@@ -316,6 +350,14 @@ class CrawlAdapter(BankAdapter):
                             visited -= 1
                             continue
                         failures.append(f"{url}: {str(exc)[:80]}")
+                        continue
+                    if data is not None and is_not_found(data):
+                        # РостФинанс на неверный адрес отдаёт «Такой страницы нет» с
+                        # блоком «Лучшие предложения» — из него получался
+                        # продукт «Классический Рост» на каждой странице.
+                        failures.append(f"{url}: страница 404")
+                        log.warning("%s: страницы нет (404) — %s", self.title,
+                                    urlsplit(url).path)
                         continue
                     if data is None:
                         blocked = True
@@ -486,7 +528,8 @@ class CrawlAdapter(BankAdapter):
         host = parts.netloc.lower()
         if host in (base.netloc, base.netloc.removeprefix("www.")):
             host = base.netloc
-        return urlunsplit((base.scheme, host, parts.path.rstrip("/") or "/", "", ""))
+        path = parts.path if self.keep_slash else parts.path.rstrip("/")
+        return urlunsplit((base.scheme, host, path or "/", "", ""))
 
     def _family(self, url: str) -> str:
         path = urlsplit(url).path
