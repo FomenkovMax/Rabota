@@ -291,6 +291,24 @@ def _sheet_specials(book: Workbook, data: dict[str, Any]) -> None:
     _finish(sheet, 8)
 
 
+def _sheet_coverage(book: Workbook, data: dict[str, Any]) -> None:
+    matrix = data.get("coverage") or {}
+    banks = data.get("banks") or []
+    sheet = book.create_sheet("Охват")
+    _write_header(sheet, ["Категория", *banks], [26, *([30] * len(banks))])
+    for category, cells in matrix.items():
+        row = [category]
+        for bank in banks:
+            cell = cells.get(bank)
+            if cell is None:
+                row.append("")
+                continue
+            count = f" ({cell.products})" if cell.products else ""
+            row.append(f"{cell.label}{count}")
+        sheet.append(row)
+    _finish(sheet, 1 + len(banks))
+
+
 def build(path: str | Path, data: dict[str, Any]) -> Path:
     """Собирает книгу Excel со сводом."""
     path = Path(path)
@@ -301,6 +319,7 @@ def build(path: str | Path, data: dict[str, Any]) -> Path:
     _sheet_gaps(book, data)
     _sheet_quality(book, data)
     _sheet_specials(book, data)
+    _sheet_coverage(book, data)
     _sheet_promos(book, data)
     _sheet_changes(book, data)
     _sheet_products(book, data)

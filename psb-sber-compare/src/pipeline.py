@@ -14,7 +14,7 @@ import yaml
 from .banks import registry
 from .banks.base import region_binding
 from .banks.from_file import FileAdapter
-from . import keyrate, market
+from . import coverage, keyrate, market
 from .changes import detect_changes, format_digest
 from .compare import Thresholds, build_comparisons, suggest_pairs, summarize
 from .promos import EXPIRED, classify_all, compare_segments
@@ -115,6 +115,7 @@ def collect_bank(config: Config, code: str, *, save: bool = True) -> Any:
         _drop_seo(result)
         _mark_region(result)
         storage.save_products(run_id, result.products)
+        storage.save_coverage(run_id, adapter.title, getattr(result, "coverage", {}))
         _keep_unread(storage, result, previous, run_id)
         # Остальные банки берём из прошлого сбора, иначе свод после
         # обновления одного банка показал бы только его.
@@ -369,6 +370,8 @@ def load_report_data(config: Config, *, competitor: str = "") -> dict[str, Any] 
                                               region_methods=region_methods)
         special_rows = market.specials(scope, key_rate=key_rate,
                                        region_methods=region_methods)
+        coverage_matrix = coverage.matrix([home_title] + competitor_titles, scope,
+                                          storage.coverage_of_run(run_id))
 
         html = render_report(
             comparisons=comparisons, counts=counts, changes=changes,
@@ -384,7 +387,7 @@ def load_report_data(config: Config, *, competitor: str = "") -> dict[str, Any] 
             catalog_banks=[home_title] + competitor_titles,
             key_rate=key.label if key else "",
             gaps=gaps, quality_rows=quality_rows, manual=manual, home=home_title,
-            specials=special_rows,
+            specials=special_rows, coverage_matrix=coverage_matrix,
         )
 
         return {
@@ -400,6 +403,7 @@ def load_report_data(config: Config, *, competitor: str = "") -> dict[str, Any] 
             "history": history,
             "html": html,
             "specials": special_rows,
+            "coverage": coverage_matrix,
             "unverified": unverified,
             "no_region": no_region,
             "federal": federal,
@@ -441,6 +445,7 @@ def run(config: Config) -> dict[str, Any]:
             _drop_seo(result)
             _mark_region(result)
             storage.save_products(run_id, result.products)
+            storage.save_coverage(run_id, result.bank, getattr(result, "coverage", {}))
             _keep_unread(storage, result, previous_ok, run_id)
 
             insights = classify_all(result.promos, result.bank)

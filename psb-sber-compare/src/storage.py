@@ -93,6 +93,16 @@ CREATE TABLE IF NOT EXISTS changes (
     severity    TEXT DEFAULT 'info'
 );
 CREATE INDEX IF NOT EXISTS ix_changes_run ON changes(run_id);
+
+-- Разделы розницы на сайте банка: категория ТЗ → ссылка (src/coverage.py).
+CREATE TABLE IF NOT EXISTS coverage (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id     INTEGER NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
+    bank       TEXT NOT NULL,
+    category   TEXT NOT NULL,
+    url        TEXT
+);
+CREATE INDEX IF NOT EXISTS ix_coverage_run ON coverage(run_id);
 """
 
 
@@ -149,7 +159,7 @@ class Storage:
         Возвращает число перенесённых продуктов.
         """
         moved = 0
-        for table in ("products", "promos"):
+        for table in ("products", "promos", "coverage"):
             columns = [row["name"] for row in
                        self.conn.execute(f"PRAGMA table_info({table})")
                        if row["name"] not in ("id", "run_id")]
@@ -163,6 +173,21 @@ class Storage:
                 moved = cur.rowcount
         self.conn.commit()
         return moved
+
+    def save_coverage(self, run_id: int, bank: str, found: dict[str, str]) -> None:
+        """Ссылки на разделы розницы банка за этот сбор."""
+        self.conn.executemany(
+            "INSERT INTO coverage (run_id, bank, category, url) VALUES (?, ?, ?, ?)",
+            [(run_id, bank, category, url) for category, url in (found or {}).items()])
+        self.conn.commit()
+
+    def coverage_of_run(self, run_id: int) -> dict[str, dict[str, str]]:
+        """bank → категория → ссылка."""
+        out: dict[str, dict[str, str]] = {}
+        for row in self.conn.execute(
+                "SELECT bank, category, url FROM coverage WHERE run_id=?", (run_id,)):
+            out.setdefault(row["bank"], {})[row["category"]] = row["url"] or ""
+        return out
 
     def set_key_rate(self, run_id: int, rate: Any) -> None:
         """Ключевая ставка ЦБ на дату сбора — ориентир для проверок."""

@@ -43,6 +43,8 @@ class CollectResult:
     #: Обход оборвался раньше времени (сайт закрыл доступ или кончился
     #: лимит страниц): не все продукты банка прочитаны в этот раз.
     partial: bool = False
+    #: Разделы розницы на сайте банка: категория ТЗ → ссылка (src/coverage.py).
+    coverage: dict[str, str] = field(default_factory=dict)
 
     @property
     def summary(self) -> str:

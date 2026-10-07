@@ -73,6 +73,19 @@ def _walk(node: dict[str, Any], trail: list[str], titles: list[str]) -> Iterator
         yield from _walk(child, path, names)
 
 
+def site_paths(page_html: str) -> list[str]:
+    """Все адреса раздела /personal в карте сайта — для матрицы охвата."""
+    state = extract_state(page_html)
+    structures = find_entries(state, "/Site/structure")
+    if not structures:
+        return []
+    out = []
+    for path, _names, _node in _walk(structures[0], [], []):
+        if len(path) >= 3 and path[0] == "main" and path[1] == "personal":
+            out.append("/" + "/".join(path[1:]))
+    return out
+
+
 def build_catalog(page_html: str, *, include_promos: bool = True) -> list[CatalogPage]:
     """Строит список страниц для обхода из любой страницы сайта."""
     state = extract_state(page_html)

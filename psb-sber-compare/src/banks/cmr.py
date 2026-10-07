@@ -24,7 +24,7 @@ from urllib.parse import urljoin, urlsplit
 
 import requests
 
-from .. import conditions
+from .. import conditions, coverage
 from ..psb.parser import Product
 from .base import BankAdapter, CollectResult, region_binding, registry
 
@@ -44,6 +44,9 @@ _SALARY = {"salary_card_disable": "", "salary_card_on": "с зарплатной
 
 
 # --- разбор ---------------------------------------------------------------
+
+_HREF = re.compile(r'href="([^"#]+)"')
+
 
 def embedded_json(page: str, name: str) -> Any:
     """Блок данных `name: {...}` из скрипта страницы. None — если его нет."""
@@ -318,10 +321,14 @@ class CmrAdapter(BankAdapter):
         products: list[Product] = []
         failures: list[str] = []
         visited = 0
+        site_sections: dict[str, str] = {}
 
         try:
             page = self._get(session, DEPOSITS)
             visited += 1
+            # Меню сайта — для матрицы охвата: какие разделы розницы есть.
+            coverage.collect([urljoin(BASE, href) for href in _HREF.findall(page)],
+                             site_sections, base_url=BASE)
             deposits = embedded_json(page, "deposites") or {}
             for item in (deposits.values() if isinstance(deposits, dict) else deposits):
                 product = deposit_product(item, region=region, now=now)
@@ -360,4 +367,4 @@ class CmrAdapter(BankAdapter):
             return self._failed("ни одного продукта: " + "; ".join(failures[:3]))
         return self._result(products=products, pages_visited=visited,
                             region_applied=method != "not_confirmed", region_method=method,
-                            partial=bool(failures))
+                            partial=bool(failures), coverage=site_sections)

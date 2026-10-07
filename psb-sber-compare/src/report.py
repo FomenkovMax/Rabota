@@ -774,6 +774,42 @@ def _quality_block(rows: list[Any], manual: list[Any]) -> str:
             "не идут, пока их не сверят с сайтом.</p>" + checks)
 
 
+COVERAGE_ICON = {"compared": ("--st-good", "●"), "collected": ("--s1", "◐"),
+                 "link": ("--st-warning", "○"), "none": ("--ink-muted", "—")}
+
+
+def _coverage_block(matrix: dict[str, dict[str, Any]], banks: list[str]) -> str:
+    """Матрица «категория × банк»: что сравнивается, что собрано, что только есть."""
+    if not matrix:
+        return '<p class="empty">Данных об охвате пока нет: нужен свежий сбор.</p>'
+    head = "".join(f"<th>{e(bank)}</th>" for bank in banks)
+    rows = []
+    for category, cells in matrix.items():
+        tds = []
+        for bank in banks:
+            cell = cells.get(bank)
+            if cell is None:
+                tds.append("<td>—</td>")
+                continue
+            var, icon = COVERAGE_ICON.get(cell.status, ("--ink-muted", "—"))
+            count = f" {cell.products}" if cell.products else ""
+            inner = f'<span style="color:var({var})">{icon}</span>{count}'
+            if cell.url:
+                inner = (f'<a href="{e(cell.url)}" target="_blank" rel="noopener" '
+                         f'title="{e(cell.label)}">{inner}</a>')
+            tds.append(f'<td class="num" title="{e(cell.label)}">{inner}</td>')
+        rows.append(f"<tr><td>{e(category)}</td>{''.join(tds)}</tr>")
+    legend = " · ".join(
+        f'<span style="color:var({COVERAGE_ICON[k][0]})">{COVERAGE_ICON[k][1]}</span> {e(v)}'
+        for k, v in (("compared", "ставки сравниваются"),
+                     ("collected", "продукты собраны, ставки не сравниваются"),
+                     ("link", "раздел есть у банка (ссылка), агент его не собирает"),
+                     ("none", "раздел на сайте не найден")))
+    return (f'<p class="pmeta" style="margin-bottom:10px">{legend}</p>'
+            '<div class="scroll"><table><thead><tr><th>Категория</th>'
+            + head + "</tr></thead><tbody>" + "".join(rows) + "</tbody></table></div>")
+
+
 def _specials_block(rows: list[Any]) -> str:
     """Ставки на особых условиях: в «Место Сбера» не идут, но и не теряются."""
     if not rows:
@@ -823,6 +859,7 @@ def render_report(
     manual: list[Any] | None = None,
     home: str = "Сбер",
     specials: list[Any] | None = None,
+    coverage_matrix: dict[str, dict[str, Any]] | None = None,
 ) -> str:
     total_promos = promo_active_total
     delta_chart = _delta_chart(comparisons)
@@ -898,6 +935,16 @@ def render_report(
   проигрыш от {str(thresholds.loss).replace(".", ",")} п.п.
   Для вкладов и накопительных счетов выгодой клиента считается ставка выше, для кредитов — ниже.</p>
   {_traffic_table(comparisons)}
+</section>
+
+<section class="card">
+  <h2>Охват розницы: банк × категория</h2>
+  <p class="hint">Все категории Розничного блока. Ставки сравниваются по вкладам,
+  счетам, кредитам, ипотеке и кредитным картам. По инвестициям, страхованию, НПФ,
+  переводам, лояльности, ячейкам и валюте — факт наличия раздела у банка со
+  ссылкой на него. Ссылки взяты из меню сайта банка при сборе; число — сколько
+  продуктов агент собрал в категории.</p>
+  {_coverage_block(coverage_matrix or {}, catalog_banks or list((catalog or {}).keys()))}
 </section>
 
 <section class="card">

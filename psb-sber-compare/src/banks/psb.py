@@ -9,7 +9,8 @@ from __future__ import annotations
 import logging
 from datetime import datetime
 
-from ..psb.catalog import RETAIL_SECTIONS, build_catalog
+from .. import coverage
+from ..psb.catalog import RETAIL_SECTIONS, build_catalog, site_paths
 from ..psb.client import PageNotFound, PsbClient, REGIONS
 from ..psb.parser import parse_product
 from .base import BankAdapter, CollectResult, registry
@@ -49,12 +50,15 @@ class PsbAdapter(BankAdapter):
         )
 
         products, promos = [], []
+        site_sections: dict[str, str] = {}
         missing = failed = visited = 0
 
         try:
             with client:
-                pages = build_catalog(client.get("/personal/loans"),
-                                      include_promos=include_promos)
+                first = client.get("/personal/loans")
+                pages = build_catalog(first, include_promos=include_promos)
+                coverage.collect([f"https://www.psbank.ru{path}" for path in site_paths(first)],
+                                 site_sections)
                 if sections:
                     unknown = [s for s in sections if s not in RETAIL_SECTIONS]
                     if unknown:
@@ -98,4 +102,5 @@ class PsbAdapter(BankAdapter):
             unique.setdefault(promo.key(), promo)
 
         return self._result(products=products, promos=list(unique.values()),
-                            pages_visited=visited, collected_at=now)
+                            pages_visited=visited, collected_at=now,
+                            coverage=site_sections)

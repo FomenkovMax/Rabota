@@ -23,7 +23,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from .. import conditions, market
+from .. import conditions, coverage, market
 
 log = logging.getLogger(__name__)
 
@@ -45,6 +45,8 @@ TABLES: dict[str, list[str]] = {
              "sber_product", "rank", "banks_compared", "best_bank", "best_value",
              "best_product", "others_median", "delta_vs_best", "delta_vs_median",
              "status", "comment"],
+    "coverage": ["snapshot_date", "bank", "bank_code", "category", "status",
+                 "products", "rated", "url"],
     "data_quality": ["snapshot_date", "bank", "block", "products", "params_planned",
                      "params_collected", "params_usable", "not_confirmed",
                      "low_confidence", "coverage_pct", "issues"],
@@ -198,6 +200,17 @@ def collect_tables(storage: Any, *, home: str, region_methods: dict[str, str],
                 "issues": "; ".join(f"{k}: {v}" for k, v in row.issues.items()),
             })
 
+        banks = sorted({p.bank for p in products})
+        matrix = coverage.matrix(banks, products, storage.coverage_of_run(run_id))
+        for category, cells in matrix.items():
+            for bank, cell in cells.items():
+                tables["coverage"].append({
+                    "snapshot_date": snapshot, "bank": bank,
+                    "bank_code": market.bank_code(bank), "category": category,
+                    "status": cell.status, "products": cell.products,
+                    "rated": cell.rated, "url": cell.url,
+                })
+
         previous_date = snapshot
     return tables
 
@@ -321,6 +334,16 @@ SEG — сегментные предложения и акции, OTHER — п�
 | notes | text | замечания проверок |
 | rate_kind | text | тип ставки: base (базовая), welcome (приветственная / для новых), new_money, premium, salary, subscription, short_term, niche. В «Место Сбера» идут только base |
 | rate_kind_reason | text | где на странице сказано об условии |
+
+## coverage — охват: банк × категория Розничного блока
+
+| Поле | Тип | Описание |
+|---|---|---|
+| category | text | категория ТЗ: вклады, карты, кредиты, ипотека, инвестиции, страхование, НПФ и ПДС, переводы, лояльность, ячейки, валюта |
+| status | text | compared — ставки сравниваются; collected — продукты собраны без сравнения ставок; link — раздел есть у банка, агент его не собирает; none — не найдено |
+| products | int | продуктов агента в категории |
+| rated | int | из них со ставкой |
+| url | text | ссылка на продукт или раздел сайта банка |
 
 ## conditions — условия, одна строка — один параметр
 

@@ -31,7 +31,7 @@ from .browser import (BrowserSettings, BrowserUnavailable, PageFailed,
                       PageReader, PageTooSlow)
 from .generic_site import caption_rules_out, category_for, extract_products, rates_of
 from .seo import is_seo_page
-from .. import conditions
+from .. import conditions, coverage
 
 log = logging.getLogger(__name__)
 
@@ -429,6 +429,7 @@ class CrawlAdapter(BankAdapter):
         showcase: dict[str, tuple[Any, str, str]] = {}
         failures: list[str] = []
         visited = 0
+        site_sections: dict[str, str] = {}
         retried: set[str] = set()
         blocked = False
         # Сколько прочитанных страниц ссылается на адрес. Основные продукты
@@ -481,6 +482,12 @@ class CrawlAdapter(BankAdapter):
 
                     family = self._family(url)
                     links = self._links(data.get("links") or [])
+                    # Меню и подвал ведут во все разделы — по ним видно,
+                    # какие категории розницы у банка есть вообще.
+                    coverage.collect(
+                        [item[0] if isinstance(item, (list, tuple)) else str(item)
+                         for item in data.get("links") or []],
+                        site_sections, base_url=self.base_url)
                     self._save_page(visited, url, data, links)
                     path = urlsplit(url).path
                     deeper = {l for l in links if urlsplit(l).path.startswith(path + "/")}
@@ -540,7 +547,7 @@ class CrawlAdapter(BankAdapter):
         if not merged:
             return self._failed("ни одного продукта не найдено: "
                                 + ("; ".join(failures[:3]) or "проверьте витрины"))
-        return self._result(products=merged, pages_visited=visited,
+        return self._result(products=merged, pages_visited=visited, coverage=site_sections,
                             region_applied=applied, region_method=method,
                             partial=blocked or bool(queue))
 
