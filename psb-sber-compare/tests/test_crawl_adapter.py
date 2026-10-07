@@ -484,3 +484,17 @@ def test_education_loan_and_sber_credit_card_categories():
     assert market.program_of(loan) == "Образовательный кредит"
     assert market.assess(loan, key_rate=14.0, region_method="selector").usable
     assert category_for("Кредитная СберКарта", "Банковские карты") == "Кредитные карты"
+
+
+def test_showcase_short_title_merges_into_product_page():
+    from src.psb.parser import Product
+
+    adapter = OnlyCredits(region=None, settings={})
+    page = Product(bank="Сбер", url_path="/credits/obrazovanie",
+                   title="Кредит на образование с господдержкой", rate_min=3.0, rate_max=3.0)
+    item = type("Item", (), {"title": "Кредит на образование", "rate_min": 3.0,
+                             "rate_max": 3.0, "rate_raw": "3%"})()
+    merged = adapter._merge({crawl.normalize_title(page.title): page},
+                            {crawl.normalize_title(item.title): (item, f"{BASE}/x", "Кредиты")},
+                            "ЛНР", "")
+    assert [p.title for p in merged] == ["Кредит на образование с господдержкой"]

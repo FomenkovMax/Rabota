@@ -454,6 +454,14 @@ class CrawlAdapter(BankAdapter):
         for key, (item, url, family) in showcase.items():
             product = products.get(key)
             if product is None:
+                # На витрине название короче, чем на странице продукта:
+                # «Кредит на образование» и «Кредит на образование с
+                # господдержкой» — один продукт, а не два.
+                product = next((p for k, p in products.items()
+                                if k.startswith(key + " ") and "#" not in p.url_path), None)
+                if product is not None and product.rate_min is not None:
+                    continue
+            if product is None:
                 # Своей страницы у продукта нет, витрина общая на несколько
                 # продуктов — к адресу добавляем название, иначе у них
                 # совпадёт ключ и история изменений склеит их в один.
