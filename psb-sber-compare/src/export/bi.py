@@ -23,7 +23,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from .. import market
+from .. import conditions, market
 
 log = logging.getLogger(__name__)
 
@@ -34,7 +34,8 @@ TABLES: dict[str, list[str]] = {
               "scope", "region_method", "products"],
     "products": ["snapshot_date", "bank", "bank_code", "product_id", "block",
                  "product_type", "program", "product_name", "available_in_lnr",
-                 "region_method", "confidence", "source_url", "notes"],
+                 "region_method", "confidence", "source_url", "notes",
+                 "rate_kind", "rate_kind_reason"],
     "conditions": ["snapshot_date", "bank", "product_id", "parameter", "value", "unit",
                    "condition", "better", "region_method", "source_type", "source_url",
                    "evidence", "confidence", "collected_at"],
@@ -128,6 +129,7 @@ def collect_tables(storage: Any, *, home: str, region_methods: dict[str, str],
             pid = ids[id(product)]
             category = product.category or ""
             showcase = bool((product.terms or {}).get("Источник ставки"))
+            kind, reason = conditions.kind_of(product)
             tables["products"].append({
                 "snapshot_date": snapshot, "bank": product.bank,
                 "bank_code": market.bank_code(product.bank), "product_id": pid,
@@ -136,6 +138,7 @@ def collect_tables(storage: Any, *, home: str, region_methods: dict[str, str],
                 "available_in_lnr": "unknown", "region_method": method,
                 "confidence": check.confidence, "source_url": product.source_url,
                 "notes": "; ".join(check.issues),
+                "rate_kind": kind, "rate_kind_reason": reason,
             })
             for column, parameter, unit, raw in PARAMETERS:
                 value = getattr(product, column, None)
@@ -316,6 +319,8 @@ SEG — сегментные предложения и акции, OTHER — п�
 | confidence | text | high / medium / low |
 | source_url | text | страница-источник |
 | notes | text | замечания проверок |
+| rate_kind | text | тип ставки: base (базовая), welcome (приветственная / для новых), new_money, premium, salary, subscription, short_term, niche. В «Место Сбера» идут только base |
+| rate_kind_reason | text | где на странице сказано об условии |
 
 ## conditions — условия, одна строка — один параметр
 

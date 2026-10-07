@@ -19,6 +19,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from . import conditions
 from .compare import GREEN, GREY, LIGHT_LABEL, RED, YELLOW, Comparison
 
 LIGHT_ICON = {GREEN: "▲", YELLOW: "■", RED: "▼", GREY: "—"}
@@ -619,8 +620,14 @@ def _catalog(catalog: dict[str, list[Any]], banks: list[str]) -> str:
             for product in items:
                 rate, is_rate = _catalog_rate(product)
                 terms = product.terms or {}
-                source = ("ставка с карточки на витрине раздела"
-                          if terms.get("Источник ставки") else "")
+                notes = []
+                if terms.get("Источник ставки"):
+                    notes.append("ставка с карточки на витрине раздела")
+                if is_rate:
+                    kind, _ = conditions.kind_of(product)
+                    if kind != conditions.BASE:
+                        notes.append(conditions.LABELS[kind])
+                source = " · ".join(notes)
                 name = (f'<a href="{e(product.source_url)}" target="_blank" rel="noopener">'
                         f'{e(product.title)}</a>' if product.source_url else e(product.title))
                 rows.append(
@@ -767,6 +774,32 @@ def _quality_block(rows: list[Any], manual: list[Any]) -> str:
             "не идут, пока их не сверят с сайтом.</p>" + checks)
 
 
+def _specials_block(rows: list[Any]) -> str:
+    """Ставки на особых условиях: в «Место Сбера» не идут, но и не теряются."""
+    if not rows:
+        return '<p class="empty">Ставок на особых условиях не найдено.</p>'
+    body = []
+    for row in rows:
+        name = (f'<a href="{e(row.url)}" target="_blank" rel="noopener">{e(row.title)}</a>'
+                if row.url else e(row.title))
+        rate = "—" if row.rate is None else fmt_rate(row.rate)
+        body.append(
+            "<tr>"
+            f'<td><div class="pname">{e(row.program)}</div>'
+            f'<div class="pmeta">{e(row.category)}</div></td>'
+            f"<td>{e(row.bank)}</td>"
+            f"<td>{name}</td>"
+            f'<td class="num">{e(rate)}</td>'
+            f"<td>{e(row.kind_label)}</td>"
+            f'<td class="pmeta">{e(row.reason)}</td>'
+            "</tr>")
+    return (
+        '<div class="scroll"><table><thead><tr>'
+        "<th>Программа</th><th>Банк</th><th>Продукт</th><th>Ставка</th>"
+        "<th>Условие</th><th>Где сказано</th>"
+        "</tr></thead><tbody>" + "".join(body) + "</tbody></table></div>")
+
+
 def render_report(
     *,
     comparisons: list[Comparison],
@@ -789,6 +822,7 @@ def render_report(
     quality_rows: list[Any] | None = None,
     manual: list[Any] | None = None,
     home: str = "Сбер",
+    specials: list[Any] | None = None,
 ) -> str:
     total_promos = promo_active_total
     delta_chart = _delta_chart(comparisons)
@@ -837,10 +871,22 @@ def render_report(
   «В рынке» — отклонение от медианы остальных банков не больше
   {str(thresholds.parity).replace(".", ",")} п.п. В расчёт не идут ставки, которые
   не прошли проверку (раздел «Качество данных»), и условия не ЛНР.
-  Витринная ставка — это лучший случай: условия её получения у банков разные,
-  поэтому перед выводом смотрите продукт по ссылке.</p>
+  Сравниваются только базовые ставки: приветственные, на «новые деньги»,
+  премиальные, зарплатные, с подпиской, короткие и нишевые продукты вынесены
+  в блок «Специальные условия» ниже — сравнивать их с обычными нельзя.
+  Витринная ставка — это лучший случай: перед выводом смотрите продукт по ссылке.</p>
   {_gap_tiles(gaps or [])}
   {_gaps_table(gaps or [], home)}
+</section>
+
+<section class="card">
+  <h2>Специальные условия и нишевые предложения</h2>
+  <p class="hint">Ставки, которые доступны не всем или не на весь срок: приветственные
+  и для новых клиентов, на «новые деньги», для премиальных и зарплатных клиентов,
+  с подпиской или платной услугой, вклады до месяца, нишевые продукты (ПДС,
+  драгметаллы, пенсионные, детские, валютные). Условие найдено в тексте рядом со
+  ставкой на странице банка — колонка «Где сказано».</p>
+  {_specials_block(specials or [])}
 </section>
 
 {_tiles(counts, changes, total_promos)}

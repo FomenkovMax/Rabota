@@ -23,6 +23,8 @@ from dataclasses import dataclass, field
 from typing import Any, Iterable
 from urllib.parse import urlparse
 
+from . import conditions
+
 # --- справочники ----------------------------------------------------------
 
 #: Код банка для product_id и BI. Новый банк — новая строка.
@@ -376,9 +378,16 @@ def build_gaps(products: Iterable[Any], *, home: str, key_rate: float | None,
         best_by_bank: dict[str, Offer] = {}
         sber_listed = False
         skipped_home = 0
+        special_home = 0
         for product in items:
             if product.bank == home:
                 sber_listed = True
+            # Только базовые ставки: приветственные, премиальные, зарплатные
+            # и нишевые — в блоке «Специальные условия» (аудит 07.10.2026).
+            if not conditions.is_comparable(product):
+                if product.bank == home:
+                    special_home += 1
+                continue
             method = method_of(product, region_methods)
             check = assess(product, key_rate=key_rate, region_method=method)
             value = _value(product, metric)
@@ -407,6 +416,11 @@ def build_gaps(products: Iterable[Any], *, home: str, key_rate: float | None,
                 gap.status = NO_SBER if others else NO_DATA
                 gap.comment = ("сбор не нашёл программу на сайте Сбера — "
                                "проверить вручную, есть ли она" if others else "")
+            elif special_home and not skipped_home:
+                gap.status = NO_DATA
+                gap.comment = ("у Сбера здесь только ставки на особых условиях "
+                               "(приветственные, премиальные, нишевые) — "
+                               "см. «Специальные условия»")
             else:
                 gap.status = NO_DATA
                 gap.comment = ("у Сбера продукт есть, но ставка не прошла проверку "
@@ -519,3 +533,40 @@ def quality(products: Iterable[Any], *, key_rate: float | None,
     ordered = sorted(rows.values(), key=lambda r: (r.bank, r.block))
     manual.sort(key=lambda item: (item[0].bank, item[0].category or "", item[0].title))
     return ordered, manual
+
+
+@dataclass
+class SpecialRow:
+    """Ставка на особых условиях — показывается отдельно от рейтинга."""
+
+    bank: str
+    category: str
+    program: str
+    title: str
+    rate: float | None
+    kind: str
+    kind_label: str
+    reason: str
+    url: str
+
+
+def specials(products: Iterable[Any], *, key_rate: float | None,
+             region_methods: dict[str, str]) -> list[SpecialRow]:
+    """Продукты со ставкой на особых условиях: в «Место Сбера» они не идут."""
+    rows = []
+    for product in products:
+        category = product.category or ""
+        if category not in RATED:
+            continue
+        kind, reason = conditions.kind_of(product)
+        if kind == conditions.BASE:
+            continue
+        metric = "rate_max" if better_of(category) == "higher" else "rate_min"
+        rows.append(SpecialRow(
+            bank=product.bank, category=category, program=program_of(product),
+            title=product.title, rate=_value(product, metric), kind=kind,
+            kind_label=conditions.LABELS[kind], reason=reason,
+            url=product.source_url or ""))
+    order = {kind: i for i, kind in enumerate(conditions.LABELS)}
+    rows.sort(key=lambda r: (r.category, order.get(r.kind, 99), r.bank, r.title))
+    return rows

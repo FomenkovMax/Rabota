@@ -471,4 +471,10 @@ def parse_product(page_html: str, page: Any, region_name: str, collected_at: str
     _extract_banner(state, product)
     _extract_promos(state, product)
 
+    # Условия ставки — из подписей тарифных строк и условий максимума.
+    from .. import conditions
+    noted = " ".join([product.rate_raw, product.rate_conditions,
+                      *(str(v) for k, v in product.terms.items() if k != conditions.TERMS_KEY)])
+    conditions.remember(product, conditions.scan(noted))
+
     return product

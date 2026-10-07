@@ -367,6 +367,8 @@ def load_report_data(config: Config, *, competitor: str = "") -> dict[str, Any] 
                                  parity_pp=thresholds.parity)
         quality_rows, manual = market.quality(scope, key_rate=key_rate,
                                               region_methods=region_methods)
+        special_rows = market.specials(scope, key_rate=key_rate,
+                                       region_methods=region_methods)
 
         html = render_report(
             comparisons=comparisons, counts=counts, changes=changes,
@@ -382,6 +384,7 @@ def load_report_data(config: Config, *, competitor: str = "") -> dict[str, Any] 
             catalog_banks=[home_title] + competitor_titles,
             key_rate=key.label if key else "",
             gaps=gaps, quality_rows=quality_rows, manual=manual, home=home_title,
+            specials=special_rows,
         )
 
         return {
@@ -396,6 +399,7 @@ def load_report_data(config: Config, *, competitor: str = "") -> dict[str, Any] 
             "products": all_products,
             "history": history,
             "html": html,
+            "specials": special_rows,
             "unverified": unverified,
             "no_region": no_region,
             "federal": federal,

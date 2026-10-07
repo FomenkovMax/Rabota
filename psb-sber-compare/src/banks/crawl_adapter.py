@@ -31,6 +31,7 @@ from .browser import (BrowserSettings, BrowserUnavailable, PageFailed,
                       PageReader, PageTooSlow)
 from .generic_site import caption_rules_out, category_for, extract_products, rates_of
 from .seo import is_seo_page
+from .. import conditions
 
 log = logging.getLogger(__name__)
 
@@ -255,6 +256,29 @@ def describe_page(data: dict[str, Any]) -> tuple[str, list[str]]:
     return title, body
 
 
+_BONUS = re.compile(r"^\s*(?:до\s*)?\+\s?\d", re.I)
+
+
+def _rate_conditions(body: list[str], index: int, best: float) -> list[str]:
+    """Условия ставки: рядом со строкой ставки и там, где та же цифра повторена.
+
+    «До 14,2%» стоит в шапке, а «14,2% годовых — первые 2 месяца» — ниже,
+    в описании (ВТБ-Счёт). Строка с той же цифрой и её соседи и есть
+    расшифровка условий.
+    """
+    found = conditions.near_rate(body, index)
+    # Надбавки «До +3,3% годовых для новых вкладчиков» входят в «до 13,7%»:
+    # максимальная ставка — это база плюс все надбавки.
+    for position, line in enumerate(body):
+        if _BONUS.match(line):
+            found += conditions.near_rate(body, position, before=0, after=2)
+    number = f"{best:g}".replace(".", ",")
+    for position, line in enumerate(body):
+        if position != index and re.search(rf"(?<![\d,]){re.escape(number)}(?:0*)\s?%", line):
+            found += conditions.near_rate(body, position, before=1, after=1)
+    return found
+
+
 def product_from_page(data: dict[str, Any], *, bank: str, url: str,
                       category: str, region: str, collected_at: str) -> Product | None:
     """Продукт со страницы продукта. None — если это не страница продукта."""
@@ -321,6 +345,7 @@ def product_from_page(data: dict[str, Any], *, bank: str, url: str,
             continue
         product.rate_min, product.rate_max = min(values), max(values)
         product.rate_raw = line
+        conditions.remember(product, _rate_conditions(body, index, max(values)))
         break
 
     # Ставки в описании нет, но она есть в самом заголовке страницы
@@ -328,6 +353,8 @@ def product_from_page(data: dict[str, Any], *, bank: str, url: str,
     if product.rate_min is None and headline != title:
         values = rates_of(headline)
         if values:
+            conditions.remember(product, conditions.scan(headline)
+                                + _rate_conditions(body, 0, max(values)))
             product.rate_min, product.rate_max = min(values), max(values)
             product.rate_raw = headline
 
@@ -616,6 +643,7 @@ class CrawlAdapter(BankAdapter):
             product.rate_raw = item.rate_raw
             product.terms.pop("Ставка", None)
             product.terms["Источник ставки"] = f"карточка на витрине {url}"
+            conditions.remember(product, conditions.scan(getattr(item, "context", "")))
         return list(products.values())
 
     def _normalize(self, url: str) -> str:

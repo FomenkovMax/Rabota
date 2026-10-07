@@ -23,7 +23,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
-from .. import market
+from .. import conditions, market
 from ..compare import GREEN, GREY, LIGHT_LABEL, RED, YELLOW
 
 log = logging.getLogger(__name__)
@@ -164,8 +164,8 @@ def _sheet_products(book: Workbook, data: dict[str, Any]) -> None:
         ["Банк", "Категория", "Продукт", "Ставка от", "Ставка до",
          "Условия лучшей ставки", "ПСК от", "Сумма до", "Срок до, мес",
          "Источник", "product_id", "Привязка к региону", "Достоверность",
-         "Замечания"],
-        [10, 22, 40, 12, 12, 40, 11, 14, 14, 44, 30, 14, 13, 50],
+         "Замечания", "Тип ставки", "Условие ставки"],
+        [10, 22, 40, 12, 12, 40, 11, 14, 14, 44, 30, 14, 13, 50, 22, 50],
     )
 
     ids = data.get("product_ids") or {}
@@ -174,6 +174,7 @@ def _sheet_products(book: Workbook, data: dict[str, Any]) -> None:
         method = market.method_of(product, methods)
         check = market.assess(product, key_rate=data.get("key_rate"),
                               region_method=method)
+        kind, reason = conditions.kind_of(product)
         sheet.append([
             product.bank,
             product.category,
@@ -189,6 +190,8 @@ def _sheet_products(book: Workbook, data: dict[str, Any]) -> None:
             method,
             market.CONFIDENCE_LABEL[check.confidence],
             "; ".join(check.issues),
+            conditions.LABELS[kind],
+            reason,
         ])
         for column in (4, 5, 7):
             cell = sheet.cell(row=sheet.max_row, column=column)
@@ -198,7 +201,7 @@ def _sheet_products(book: Workbook, data: dict[str, Any]) -> None:
         if isinstance(cell.value, (int, float)):
             cell.number_format = "# ##0"
 
-    _finish(sheet, 14)
+    _finish(sheet, 16)
 
 
 GAP_FILL = {
@@ -271,6 +274,23 @@ def _sheet_quality(book: Workbook, data: dict[str, Any]) -> None:
     _finish(manual, 8)
 
 
+def _sheet_specials(book: Workbook, data: dict[str, Any]) -> None:
+    sheet = book.create_sheet("Специальные условия")
+    _write_header(
+        sheet,
+        ["Категория", "Программа", "Банк", "Продукт", "Ставка", "Условие",
+         "Где сказано", "Источник"],
+        [20, 26, 12, 40, 10, 30, 60, 44],
+    )
+    for row in data.get("specials") or []:
+        sheet.append([row.category, row.program, row.bank, row.title, row.rate,
+                      row.kind_label, row.reason, row.url])
+        cell = sheet.cell(row=sheet.max_row, column=5)
+        if isinstance(cell.value, (int, float)):
+            cell.number_format = "0.00"
+    _finish(sheet, 8)
+
+
 def build(path: str | Path, data: dict[str, Any]) -> Path:
     """Собирает книгу Excel со сводом."""
     path = Path(path)
@@ -280,6 +300,7 @@ def build(path: str | Path, data: dict[str, Any]) -> Path:
     _sheet_traffic(book, data)
     _sheet_gaps(book, data)
     _sheet_quality(book, data)
+    _sheet_specials(book, data)
     _sheet_promos(book, data)
     _sheet_changes(book, data)
     _sheet_products(book, data)

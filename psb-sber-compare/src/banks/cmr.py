@@ -24,6 +24,7 @@ from urllib.parse import urljoin, urlsplit
 
 import requests
 
+from .. import conditions
 from ..psb.parser import Product
 from .base import BankAdapter, CollectResult, region_binding, registry
 
@@ -121,6 +122,18 @@ def deposit_product(item: dict[str, Any], *, region: str, now: str) -> Product |
         title=name, category=category, region=region, source_url=DEPOSITS,
         collected_at=now,
     )
+    # Ставка с зарплатной картой ЦМР — для узкого круга клиентов: в общий
+    # ряд идёт лучшая ставка без неё, а она сама — отдельной строкой.
+    with_salary = [r for r in rates if r["salary"] == _SALARY["salary_card_on"]]
+    general = [r for r in rates if r["salary"] != _SALARY["salary_card_on"]] or rates
+    if with_salary and max(r["rate"] for r in with_salary) > max(r["rate"] for r in general):
+        top = max(with_salary, key=lambda r: r["rate"])
+        product.terms["Ставка с зарплатной картой"] = (
+            f"до {_fmt(top['rate'])} % ({conditions.LABELS[conditions.SALARY]})")
+    rates = general
+    if rates and max(r["days"] for r in rates) <= 31:
+        conditions.remember(product, [f"{conditions.LABELS[conditions.SHORT_TERM]}: "
+                                      f"«до {max(r['days'] for r in rates)} дн.»"])
     if rates:
         best = max(rates, key=lambda r: r["rate"])
         product.rate_min = min(r["rate"] for r in rates)

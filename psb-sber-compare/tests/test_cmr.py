@@ -39,8 +39,11 @@ def test_deposits_come_from_embedded_data():
     products = [cmr.deposit_product(item, region="ЛНР", now="") for item in data.values()]
     deposit, account = products
     assert deposit.title == "Вклад «Доход на максимум»" and deposit.category == "Вклады"
-    assert (deposit.rate_min, deposit.rate_max) == (12.7, 14.95)
-    assert "с зарплатной картой ЦМР" in deposit.rate_conditions
+    # 14,95 % — только с зарплатной картой ЦМР: в общий ряд идёт лучшая
+    # ставка без неё, а эта — отдельной строкой (аудит 07.10.2026).
+    assert (deposit.rate_min, deposit.rate_max) == (12.7, 14.75)
+    assert deposit.terms["Ставка с зарплатной картой"].startswith("до 14,95 %")
+    assert "с зарплатной картой ЦМР" not in deposit.rate_conditions
     # Ставки по срокам — без зарплатной карты: 91 дн. 14,75 %, 181 дн. 13,2 %.
     assert deposit.terms["Ставки по срокам"] == "91 дн. — 14,75 %; 181 дн. — 13,2 %"
     assert (deposit.amount_min, deposit.amount_max) == (10000, 500000)
