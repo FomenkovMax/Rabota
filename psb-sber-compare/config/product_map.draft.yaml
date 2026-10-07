@@ -1,0 +1,85 @@
+# ЧЕРНОВИК пар для светофора — подготовлен по сбору 07.10.2026 (аудит).
+# В отчёт НЕ попадает: светофор читает только config/product_map.yaml.
+#
+# Как подтвердить: просмотреть пары, удалить сомнительные и перенести
+# оставшиеся в product_map.yaml (раздел pairs). Решение за человеком:
+# пара — это утверждение «продукты сопоставимы», и ошибка в ней — неверная
+# цифра у руководителя.
+#
+# competitor — путь страницы продукта конкурента (как в ссылке отчёта),
+# sber — путь страницы продукта Сбера.
+
+pairs:
+  # --- Кредит наличными -----------------------------------------------------
+  - {bank: psb, competitor: /personal/loans/kredit-nalichnymi,
+     sber: /ru/person/credits/money/consumer_unsecured, label: Кредит наличными, category: Кредиты}
+  - {bank: vtb, competitor: /personal/kredit/nalichnymi,
+     sber: /ru/person/credits/money/consumer_unsecured, label: Кредит наличными, category: Кредиты}
+  - {bank: tbank, competitor: /loans/cash-loan,
+     sber: /ru/person/credits/money/consumer_unsecured, label: Кредит наличными, category: Кредиты}
+  - {bank: cmr, competitor: /person/person-loans/credit-for-everything/,
+     sber: /ru/person/credits/money/consumer_unsecured, label: Кредит наличными («Кредит на всё»), category: Кредиты}
+
+  # --- Рефинансирование -----------------------------------------------------
+  - {bank: psb, competitor: /personal/loans/refinancing,
+     sber: /ru/person/credits/money/consumer_refinance, label: Рефинансирование, category: Кредиты}
+  - {bank: vtb, competitor: /personal/kredit/refinansirovanie,
+     sber: /ru/person/credits/money/consumer_refinance, label: Рефинансирование, category: Кредиты}
+  - {bank: tbank, competitor: /loans/refinance,
+     sber: /ru/person/credits/money/consumer_refinance, label: Рефинансирование, category: Кредиты}
+  - {bank: cmr, competitor: /person/person-loans/refinancing/,
+     sber: /ru/person/credits/money/consumer_refinance, label: Рефинансирование, category: Кредиты}
+
+  # --- Кредит под залог недвижимости ----------------------------------------
+  - {bank: tbank, competitor: /loans/cash-loan/realty,
+     sber: /ru/person/credits/money/credit_zalog, label: Кредит под залог недвижимости, category: Кредиты}
+  - {bank: rostfinance, competitor: /credit/kredit-pod-zalog-nedvizhimosti/,
+     sber: /ru/person/credits/money/credit_zalog, label: Кредит под залог недвижимости, category: Кредиты}
+  - {bank: psb, competitor: /personal/mortgage/alternative,
+     sber: /ru/person/credits/money/credit_zalog, label: Кредит под залог недвижимости, category: Кредиты}
+
+  # --- Автокредит -----------------------------------------------------------
+  - {bank: psb, competitor: /personal/loans/auto,
+     sber: /ru/person/credits/money/avtokredit, label: Автокредит, category: Кредиты}
+  - {bank: tbank, competitor: /loans/auto-loan,
+     sber: /ru/person/credits/money/avtokredit, label: Автокредит, category: Кредиты}
+
+  # --- Ипотека --------------------------------------------------------------
+  - {bank: psb, competitor: /personal/mortgage/familymortgage,
+     sber: /ru/person/credits/home/family, label: Семейная ипотека, category: Ипотека}
+  - {bank: rostfinance, competitor: /mortgage/semeynaya-ipoteka/,
+     sber: /ru/person/credits/home/family, label: Семейная ипотека, category: Ипотека}
+  - {bank: psb, competitor: /personal/mortgage/newbuilding,
+     sber: /ru/person/credits/home/buying_project, label: Ипотека на новостройку, category: Ипотека}
+  - {bank: vtb, competitor: /personal/ipoteka/novostrojki,
+     sber: /ru/person/credits/home/buying_project, label: Ипотека на новостройку, category: Ипотека}
+  - {bank: rostfinance, competitor: /mortgage/stroyashcheesya-zhile/,
+     sber: /ru/person/credits/home/buying_project, label: Ипотека на новостройку, category: Ипотека}
+  - {bank: psb, competitor: /personal/mortgage/secondary,
+     sber: /ru/person/credits/home/buying_complete_house, label: Ипотека на вторичное жильё, category: Ипотека}
+  - {bank: vtb, competitor: /personal/ipoteka/vtorichnoe-zhile,
+     sber: /ru/person/credits/home/buying_complete_house, label: Ипотека на вторичное жильё, category: Ипотека}
+  - {bank: rostfinance, competitor: /mortgage/gotovoe-zhile/,
+     sber: /ru/person/credits/home/buying_complete_house, label: Ипотека на вторичное жильё, category: Ипотека}
+
+  # --- Кредитные карты ------------------------------------------------------
+  - {bank: psb, competitor: /personal/creditcards/100_plus,
+     sber: /ru/person/bank_cards/credit_cards/credit_sberkarta, label: Кредитная карта, category: Кредитные карты}
+  - {bank: tbank, competitor: /cards/credit-cards/tinkoff-platinum,
+     sber: /ru/person/bank_cards/credit_cards/credit_sberkarta, label: Кредитная карта, category: Кредитные карты}
+
+  # --- Накопительный счёт (массовый) ----------------------------------------
+  - {bank: vtb, competitor: /personal/vklady-i-scheta/vtb-schet,
+     sber: /ru/person/contributions/deposits/nakopi, label: Накопительный счёт, category: Накопительные счета}
+  - {bank: tbank, competitor: /savings/saving-account,
+     sber: /ru/person/contributions/deposits/nakopi, label: Накопительный счёт, category: Накопительные счета}
+  - {bank: rostfinance, competitor: /deposits/nakopitelnyy-schyet-maksimum/,
+     sber: /ru/person/contributions/deposits/nakopi, label: Накопительный счёт, category: Накопительные счета}
+
+  # --- Вклад (массовый, флагманский) ----------------------------------------
+  - {bank: vtb, competitor: /personal/vklady-i-scheta/vtb-vklad-r,
+     sber: /ru/person/contributions/deposits/vklad/vklad_luchshiy_procent, label: Вклад (флагманский), category: Вклады}
+  - {bank: tbank, competitor: /savings/deposit,
+     sber: /ru/person/contributions/deposits/vklad/vklad_luchshiy_procent, label: Вклад (флагманский), category: Вклады}
+  - {bank: rostfinance, competitor: /deposits/klassicheskiy-rost/,
+     sber: /ru/person/contributions/deposits/vklad/vklad_luchshiy_procent, label: Вклад (флагманский), category: Вклады}

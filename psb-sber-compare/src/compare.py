@@ -155,6 +155,11 @@ def _index(products: Iterable[Any], key_attr: str) -> dict[str, Any]:
     for p in products:
         key = getattr(p, key_attr, "") or p.title
         out[str(key)] = p
+        # Адрес страницы — тоже ключ: у продуктов из базы он лежит в
+        # url_path, и пара «путь Сбера → путь конкурента» находит обоих.
+        path = getattr(p, "url_path", "") or ""
+        if path:
+            out.setdefault(path, p)
         # Второй ключ — по названию: в мэппинге удобнее писать человеческое имя.
         out.setdefault(normalize_title(p.title), p)
     return out
