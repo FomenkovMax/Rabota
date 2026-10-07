@@ -1,4 +1,6 @@
-"""Адаптеры Сбера, ВТБ, ГенБанка и ЦМР.
+"""Адаптеры Сбера, ВТБ, Т-Банка и РостФинанса.
+
+ГенБанк удалён 07.10.2026: присутствие в ЛНР по аудиту не подтвердилось.
 
 Все четверо читаются браузером. Разница между ними — адреса разделов и
 то, какую проверку сайт показывает до содержимого.
@@ -18,7 +20,6 @@ import re
 
 from .base import registry
 from .crawl_adapter import CrawlAdapter
-from .site_adapter import SiteAdapter
 
 
 @registry.register
@@ -53,6 +54,9 @@ class SberAdapter(CrawlAdapter):
         "https://www.sberbank.ru/ru/person/bank_cards/debit/sberkarta",
         "https://www.sberbank.ru/ru/person/bank_cards/credit_cards/credit_sberkarta",
         "https://www.sberbank.ru/ru/person/credits/home/family",
+        # Госпрограммы ипотеки — в обходе 07.10.2026 страница осталась в
+        # очереди, и 9 программ вышли «не найдено у Сбера» (аудит).
+        "https://www.sberbank.ru/ru/person/credits/home/gos_2020",
         "https://www.sberbank.ru/ru/person/credits/money/consumer_unsecured",
         "https://www.sberbank.ru/ru/person/credits/money/consumer_refinance",
         "https://www.sberbank.ru/ru/person/credits/money/avtokredit",
@@ -141,6 +145,10 @@ class VtbAdapter(CrawlAdapter):
         "https://www.vtb.ru/personal/vklady-i-scheta/vtb-schet/",
         "https://www.vtb.ru/personal/vklady-i-scheta/den-v-plyuse/",
         "https://www.vtb.ru/personal/vklady-i-scheta/socvklad/",
+        # Карты: в сборе 07.10.2026 до них не доходил лимит страниц (аудит).
+        "https://www.vtb.ru/personal/karty/debetovye/multikarta/",
+        "https://www.vtb.ru/personal/karty/kreditnye/vozmozhnosti/",
+        "https://www.vtb.ru/personal/karty/debetovye/detskaya/",
     )
     families = (
         ("/personal/vklady-i-scheta/nakopitelnyi-schet", "Накопительные счета"),
@@ -166,21 +174,6 @@ class VtbAdapter(CrawlAdapter):
         r"tomsk|kemerovo|novokuznetsk|orenburg|astrakhan|penza|lipetsk|kirov|tula|"
         r"cheboksary|kaliningrad|kursk|stavropol|sochi|tver|belgorod|bryansk|ivanovo|"
         r"vladimir|smolensk|kaluga|orel|tambov|kostroma|murmansk|arkhangelsk)$)", re.I)
-
-
-@registry.register
-class GenbankAdapter(SiteAdapter):
-    code = "genbank"
-    title = "ГенБанк"
-    strategy = "браузер: сайт закрыт JS-проверкой"
-    protection = "Qrator: ответ 401 и скрипт qauth.js до выдачи содержимого"
-    verified = False
-
-    sections = (
-        ("https://genbank.ru/personal/deposits/", "Вклады"),
-        ("https://genbank.ru/personal/credits/", "Кредиты"),
-        ("https://genbank.ru/personal/cards/", "Банковские карты"),
-    )
 
 
 #: Разделы розницы по словам в адресе — для сайтов, структуру которых мы ещё

@@ -4,6 +4,10 @@ services:
     container_name: bank-compare-bot
     restart: unless-stopped
     env_file: .env
+    # Московское время для всего процесса: отчёт, база и расписание. Строка
+    # POSIX-формата, база часовых поясов в образе для неё не нужна.
+    environment:
+      TZ: "MSK-3"
     volumes:
       - ./data:/app/data
       - ./config:/app/config
@@ -18,6 +22,8 @@ services:
     container_name: bank-compare-collector
     restart: unless-stopped
     env_file: .env
+    environment:
+      TZ: "MSK-3"   # иначе «07:00» ниже — это 07:00 UTC, то есть 10:00 МСК
     volumes:
       - ./data:/app/data
       - ./config:/app/config

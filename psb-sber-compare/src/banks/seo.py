@@ -31,6 +31,7 @@ _SEO_PAGES = {
         r"^/personal/ipoteka/(?:dlja-[\w-]+|mnogodetnym|ipoteka-s-pervym-vznosom|"
         r"s-annuitetnymi-platezhami|online|mashinomesta-i-kladovki|"
         r"kreditovanie-inostrannyh-grazhdan)/?$"
+        r"|^/personal/karty/kreditnye/(?:s-[\w-]+|v-den-[\w-]+)/?$"
     ),
 }
 

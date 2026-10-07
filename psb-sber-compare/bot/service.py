@@ -23,7 +23,6 @@ LIGHT_ICON = {RED: "🔴", YELLOW: "🟡", GREEN: "🟢", GREY: "⚪"}
 BANK_TITLES = {
     "psb": "ПСБ",
     "vtb": "ВТБ",
-    "genbank": "ГенБанк",
     "cmr": "ЦМР",
     "sber": "Сбер",
     "tbank": "Т-Банк",

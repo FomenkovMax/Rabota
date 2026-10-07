@@ -373,7 +373,7 @@ def load_report_data(config: Config, *, competitor: str = "") -> dict[str, Any] 
             promo_segments=segments, expired_promos=[],
             promo_active_total=len(active_rival) + len(active_home),
             history=history, region=region,
-            generated_at=datetime.now().strftime("%d.%m.%Y %H:%M"),
+            generated_at=datetime.now().strftime("%d.%m.%Y %H:%M") + " МСК",
             run_count=len(storage.run_summary(limit=400)),
             psb_total=len(rival_products), sber_total=len(sber_products),
             thresholds=thresholds,

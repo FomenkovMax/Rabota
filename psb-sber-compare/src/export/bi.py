@@ -261,7 +261,7 @@ DICTIONARY = """# Справочник полей BI-выгрузки
 ## Связи
 
 - `snapshot_date` — общая ось времени всех таблиц.
-- `bank` — название банка; `bank_code` — код (SBER, PSB, VTB, TBANK, GENBANK, CMR).
+- `bank` — название банка; `bank_code` — код (SBER, PSB, VTB, TBANK, ROSTFIN, CMR).
 - `product_id` — `{BANK}-{блок}-{короткое имя}`, связывает products, conditions и changes.
   Имя берётся из адреса страницы продукта, поэтому переименование продукта
   историю не рвёт. Если продукт переехал на другой адрес, id изменится.

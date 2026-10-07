@@ -89,7 +89,7 @@ def strip_icons(markup: InlineKeyboardMarkup) -> None:
 # Порядок кнопок сравнения. В меню попадают только банки, которые включены
 # в config/settings.yaml: кнопка «Сравнить Сбер и ВТБ» при выключенном ВТБ
 # обещала сравнение, которого нет.
-COMPARE_ORDER = ("psb", "vtb", "tbank", "genbank", "rostfinance", "cmr")
+COMPARE_ORDER = ("psb", "vtb", "tbank", "rostfinance", "cmr")
 
 
 def compare_targets() -> list[tuple[str, str]]:
