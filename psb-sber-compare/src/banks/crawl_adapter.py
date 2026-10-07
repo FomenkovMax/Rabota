@@ -250,7 +250,7 @@ class CrawlAdapter(BankAdapter):
     sets_region: bool = False
 
     def collect(self) -> CollectResult:
-        if not self.seeds or not self.families:
+        if not self.seeds or not (self.families or self.family_words):
             return self._failed("не заданы витрины и разделы для обхода")
 
         settings = BrowserSettings.from_config(self.settings.get("browser"))

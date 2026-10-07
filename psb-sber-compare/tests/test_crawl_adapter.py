@@ -498,3 +498,40 @@ def test_showcase_short_title_merges_into_product_page():
                             {crawl.normalize_title(item.title): (item, f"{BASE}/x", "Кредиты")},
                             "ЛНР", "")
     assert [p.title for p in merged] == ["Кредит на образование с господдержкой"]
+
+
+def test_new_bank_without_known_sections_is_crawled_by_url_words(monkeypatch):
+    """Т-Банк и РостФинанс: разделы по словам в адресе, без списка families."""
+    from src.banks.others import RostfinanceAdapter
+
+    pages = {
+        "https://www.rostfinance.ru/": {
+            "h1": "", "title": "РостФинанс", "text": "Частным лицам",
+            "links": [["https://www.rostfinance.ru/vklady/dohodny", "Вклад"],
+                      ["https://www.rostfinance.ru/business/rko", "РКО"]]},
+        "https://www.rostfinance.ru/vklady/dohodny": {
+            "h1": "Вклад «Доходный»", "title": "", "links": [],
+            "text": "Меню\nВклад «Доходный»\nСтавка до 15,5% годовых\nСрок 6 месяцев"},
+    }
+
+    class Reader:
+        def __init__(self, *a, **k):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            pass
+
+        def close(self):
+            pass
+
+        def read(self, url):
+            return pages[url]
+
+    monkeypatch.setattr(crawl, "PageReader", Reader)
+    result = RostfinanceAdapter(region=None, settings={"region_mode": "federal"}).collect()
+    assert result.ok, result.error
+    assert [(p.title, p.category, p.rate_max) for p in result.products] == [
+        ("Вклад «Доходный»", "Вклады", 15.5)]
