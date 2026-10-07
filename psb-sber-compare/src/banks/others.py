@@ -65,6 +65,7 @@ class SberAdapter(CrawlAdapter):
     # Порядок важен: точный префикс раньше общего.
     families = (
         ("/ru/person/contributions/deposits/nakopi", "Накопительные счета"),
+        ("/ru/person/credits/homenew", "Ипотека"),
         ("/ru/person/contributions", "Вклады"),
         ("/ru/person/credits/home", "Ипотека"),
         ("/ru/person/credits", "Кредиты"),
@@ -130,3 +131,73 @@ class GenbankAdapter(SiteAdapter):
         ("https://genbank.ru/personal/credits/", "Кредиты"),
         ("https://genbank.ru/personal/cards/", "Банковские карты"),
     )
+
+
+#: Разделы розницы по словам в адресе — для сайтов, структуру которых мы ещё
+#: не разбирали. Порядок важен: «кредитная карта» раньше «кредита» и «карты».
+RETAIL_WORDS: tuple[tuple[str, str], ...] = (
+    (r"nakopit|savings|saving-account|/savings", "Накопительные счета"),
+    (r"vklad|deposit", "Вклады"),
+    (r"ipotek|mortgage", "Ипотека"),
+    (r"credit[-_]?card|kreditn\w*[-_]kart", "Кредитные карты"),
+    (r"debit|debet", "Дебетовые карты"),
+    (r"kredit|credit|loan|zaim|zaym", "Кредиты"),
+    (r"/cards?\b|/kart", "Банковские карты"),
+)
+
+#: Не розница для физлиц и не продукты: бизнес, документы, новости, помощь.
+NOT_RETAIL = re.compile(
+    r"(business|biz|/corp|corporate|/legal|/yur|/msb|/sme|/ip/|partner|investor|"
+    r"about|news|press|career|vacanc|help|faq|support|document|tarif|"
+    r"calc|kalkul|promo|akci|blog|journal|/media|login|auth)",
+    re.I,
+)
+
+
+@registry.register
+class TbankAdapter(CrawlAdapter):
+    """Т-Банк: условия едины по РФ (подтвердил заказчик 07.10.2026).
+
+    Офисов в ЛНР у банка нет, обслуживание онлайн. Структуру сайта мы ещё
+    не разбирали, поэтому раздел определяется по словам в адресе; после
+    первой проверки (check-bank tbank) сюда лягут точные витрины.
+    """
+
+    code = "tbank"
+    title = "Т-Банк"
+    strategy = "браузер: обход витрин и страниц продуктов"
+    protection = "не проверено"
+    verified = False
+
+    base_url = "https://www.tbank.ru"
+    seeds = (
+        "https://www.tbank.ru/",
+        "https://www.tbank.ru/cards/debit-cards/",
+        "https://www.tbank.ru/cards/credit-cards/",
+        "https://www.tbank.ru/loans/",
+        "https://www.tbank.ru/mortgage/",
+        "https://www.tbank.ru/savings/",
+    )
+    family_words = RETAIL_WORDS
+    skip = NOT_RETAIL
+
+
+@registry.register
+class RostfinanceAdapter(CrawlAdapter):
+    """РостФинанс — сайт https://www.rostfinance.ru/ (дал заказчик 07.10.2026).
+
+    Структуру сайта мы ещё не видели: обход начинается с главной, раздел
+    определяется по словам в адресе. После первой проверки
+    (check-bank rostfinance) сюда лягут точные витрины.
+    """
+
+    code = "rostfinance"
+    title = "РостФинанс"
+    strategy = "браузер: обход витрин и страниц продуктов"
+    protection = "не проверено"
+    verified = False
+
+    base_url = "https://www.rostfinance.ru"
+    seeds = ("https://www.rostfinance.ru/",)
+    family_words = RETAIL_WORDS
+    skip = NOT_RETAIL

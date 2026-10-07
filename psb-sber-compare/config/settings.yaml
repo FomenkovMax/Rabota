@@ -72,6 +72,16 @@ banks:
     # region_cookies: [{name: "user_region", value: "LNR", domain: ".vtb.ru"}]
   genbank:
     enabled: false        # включи после проверки: python run.py check-bank genbank
+  tbank:
+    enabled: false        # включи после проверки: python run.py check-bank tbank
+    # Условия Т-Банка едины по РФ (подтвердил заказчик 07.10.2026).
+    region_mode: federal
+    max_pages: 40
+    pause_s: 6
+  rostfinance:
+    enabled: false        # включи после проверки: python run.py check-bank rostfinance
+    max_pages: 40
+    pause_s: 4
   cmr:
     enabled: true
     # ЦМР работает только в ЛНР, выбора региона на сайте нет: условия

@@ -240,6 +240,9 @@ class CrawlAdapter(BankAdapter):
     #: Разделы розницы: (префикс пути, категория по умолчанию). Порядок
     #: важен — более точный префикс идёт раньше общего.
     families: tuple[tuple[str, str], ...] = ()
+    #: Раздел по словам в адресе — для сайтов, чью структуру мы ещё не
+    #: видели: (регулярка по пути, категория). Проверяются после families.
+    family_words: tuple[tuple[str, str], ...] = ()
     #: Служебные страницы внутри разделов: справка, калькуляторы, архивы.
     skip: re.Pattern[str] = re.compile(r"$^")
     protection: str = ""
@@ -481,6 +484,9 @@ class CrawlAdapter(BankAdapter):
         path = urlsplit(url).path
         for prefix, category in self.families:
             if path == prefix or path.startswith(prefix + "/"):
+                return category
+        for pattern, category in self.family_words:
+            if re.search(pattern, path, re.I):
                 return category
         return ""
 
