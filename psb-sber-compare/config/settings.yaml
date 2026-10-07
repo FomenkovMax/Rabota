@@ -82,6 +82,13 @@ banks:
     enabled: false        # включи после проверки: python run.py check-bank rostfinance
     max_pages: 40
     pause_s: 4
+    # Город на сайте РостФинанса — кука current_region_normal. 1877 —
+    # значение после выбора «Луганск» (браузер заказчика, 07.10.2026).
+    # Без неё сайт определяет город по адресу сервера (Санкт-Петербург).
+    # Как обновить: rostfinance.ru → город в шапке → Луганск, F12 →
+    # Хранилище → Куки → current_region_normal.
+    region_cookies:
+      - {name: "current_region_normal", value: "1877", domain: "www.rostfinance.ru"}
   cmr:
     enabled: true
     # ЦМР работает только в ЛНР, выбора региона на сайте нет: условия
