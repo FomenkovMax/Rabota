@@ -22,22 +22,6 @@ from .site_adapter import SiteAdapter
 
 
 @registry.register
-class CmrAdapter(SiteAdapter):
-    code = "cmr"
-    title = "ЦМР"
-    strategy = "обычный сайт, чтение отрисованной страницы"
-    protection = ""
-    verified = True
-
-    sections = (
-        ("https://cmrbank.ru/person/person-deposit/", "Вклады"),
-        ("https://cmrbank.ru/person/person-deposit/deposit-calc/", "Вклады"),
-        ("https://cmrbank.ru/person/person-loans/", "Кредиты"),
-        ("https://cmrbank.ru/person/card/", "Банковские карты"),
-    )
-
-
-@registry.register
 class SberAdapter(CrawlAdapter):
     """Сбер: обход розницы по ссылкам, условия — со страницы каждого продукта.
 
