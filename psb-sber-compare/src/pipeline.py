@@ -291,11 +291,6 @@ def load_report_data(config: Config, *, competitor: str = "") -> dict[str, Any] 
 
         active_rival = [p for p in promos_rival if p.status != EXPIRED]
         active_home = [p for p in promos_home if p.status != EXPIRED]
-        rival_products = [p for t in competitor_titles for p in by_bank.get(t, [])]
-
-        segments = compare_segments(active_rival, active_home,
-                                    psb_products=rival_products,
-                                    sber_products=sber_products)
 
         changes = [dict(row) for row in storage.changes_of_run(run_id)]
         counts = summarize(comparisons)
@@ -338,6 +333,18 @@ def load_report_data(config: Config, *, competitor: str = "") -> dict[str, Any] 
         key_rate = key.value if key else None
 
         scope = [p for t in [home_title] + competitor_titles for p in by_bank.get(t, [])]
+
+        # Витрина в блоке акций — только ставки, прошедшие проверки: иначе
+        # «Платинум 5 %» (ставка льготного периода) выигрывал бы сегмент.
+        def checked(products: list[Any]) -> list[Any]:
+            return [p for p in products if market.assess(
+                p, key_rate=key_rate, region_method=region_methods.get(p.bank, ""),
+            ).confidence != market.LOW]
+
+        rival_products = [p for t in competitor_titles for p in by_bank.get(t, [])]
+        segments = compare_segments(active_rival, active_home,
+                                    psb_products=checked(rival_products),
+                                    sber_products=checked(sber_products))
         gaps = market.build_gaps(scope, home=home_title, key_rate=key_rate,
                                  region_methods=region_methods,
                                  parity_pp=thresholds.parity)

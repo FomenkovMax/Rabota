@@ -368,3 +368,23 @@ def test_deposit_rate_headline_says_maximal():
 def test_points_with_adjective(title, expected):
     benefit_type, value, unit = parse_benefit(title)
     assert (benefit_type, value, unit) == (POINTS, expected, "баллов")
+
+
+def test_showcase_names_the_real_rival_bank():
+    """В блоке акций конкуренты все вместе: карта Т-Банка не подписывается «ПСБ»."""
+    from types import SimpleNamespace as P
+
+    def card(bank, title, rate):
+        return P(bank=bank, title=title, category="Кредитные карты", rate_min=rate,
+                 rate_max=rate, rate_conditions="", source_url="")
+
+    result = compare_segments(
+        [], [],
+        psb_products=[card("ПСБ", "Кредитная карта «100+»", 59.99),
+                      card("Т-Банк", "Кредитная карта", 29.9)],
+        sber_products=[card("Сбер", "Кредитная СберКарта", 35.0)],
+    )
+    segment = next(s for s in result if s.segment == "Кредитные карты")
+    assert segment.psb_product.bank == "Т-Банк"
+    assert "Т-Банк 29,9 %" in segment.headline
+    assert "ПСБ" not in segment.headline

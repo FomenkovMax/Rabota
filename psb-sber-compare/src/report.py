@@ -458,7 +458,7 @@ def _promo_rows(promos: list[Any], bank: str) -> str:
         link = (f' <a href="{e(promo.url)}" target="_blank" rel="noopener">источник</a>'
                 if promo.url else "")
         rows.append(
-            f'<tr><td class="bank">{e(bank)}</td>'
+            f'<tr><td class="bank">{e(getattr(promo, "bank", "") or bank)}</td>'
             f'<td><div class="pname">{e(promo.title[:130])}</div>'
             f'<div class="pmeta">{e(promo.text[:150])}{link}</div></td>'
             f'<td class="num"><b>{e(promo.benefit_display)}</b>'
@@ -476,8 +476,17 @@ def _best_offer(promos: list[Any], item: Any) -> Any | None:
                       getattr(item, "best_unit", ""))
 
 
+def _rival_name(item: Any, promo: Any) -> str:
+    """Имя банка-конкурента в шапке сегмента — а не «ПСБ» для всех."""
+    if getattr(item, "basis", "") == "витрина продуктов" or promo is None:
+        product = getattr(item, "psb_product", None)
+        if product is not None and getattr(product, "bank", ""):
+            return product.bank
+    return getattr(promo, "bank", "") or "Конкуренты"
+
+
 def _versus(item: Any) -> str:
-    """Шапка сегмента: лучшее у ПСБ против лучшего у Сбера, крупно.
+    """Шапка сегмента: лучшее у конкурентов против лучшего у Сбера, крупно.
 
     Руководителю нужен ответ за секунду, а не чтение таблицы на двадцать
     строк. Подробности — ниже, в таблице.
@@ -515,11 +524,11 @@ def _versus(item: Any) -> str:
                 f'<div class="vs-val" style="color:{color}">{e(promo.benefit_display)}</div>'
                 f'<div class="vs-name">{e(promo.title[:70])}</div></div>')
 
-    # Подсвечиваем того, кто сильнее: при «выигрываем» — Сбера, иначе ПСБ.
+    # Подсвечиваем того, кто сильнее: при «выигрываем» — Сбера, иначе конкурента.
     psb_strong = item.verdict == "red"
     sber_strong = item.verdict == "green"
     return (f'<div class="vs">'
-            f'{side(psb, "ПСБ", psb_strong, item.psb_product)}'
+            f'{side(psb, _rival_name(item, psb), psb_strong, item.psb_product)}'
             f'<div class="vs-mid">против</div>'
             f'{side(sber, "Сбер", sber_strong, item.sber_product)}</div>')
 
@@ -532,7 +541,8 @@ def _showcase_line(item: Any) -> str:
     if psb is None or sber is None:
         return ""
     return ('<p class="segsrc">Вывод построен по условиям продуктов: '
-            f'ПСБ — {e(psb.title[:60])}, Сбер — {e(sber.title[:60])}</p>')
+            f'{e(psb.bank or "Конкурент")} — {e(psb.title[:60])}, '
+            f'Сбер — {e(sber.title[:60])}</p>')
 
 
 def _promo_analysis(segments: list[Any], expired: list[Any]) -> str:
@@ -549,7 +559,7 @@ def _promo_analysis(segments: list[Any], expired: list[Any]) -> str:
         blocks.append(
             f'<div class="seg">'
             f'<div class="seghead"><h3>{e(item.segment)}</h3>{chip}'
-            f'<span class="segcount">ПСБ {len(item.psb)} · Сбер {len(item.sber)}</span></div>'
+            f'<span class="segcount">Конкуренты {len(item.psb)} · Сбер {len(item.sber)}</span></div>'
             f'<p class="seghint">{e(item.headline)}</p>'
             + _showcase_line(item)
             + _versus(item) +
@@ -557,7 +567,7 @@ def _promo_analysis(segments: list[Any], expired: list[Any]) -> str:
             '<div class="scroll"><table><thead><tr>'
             "<th>Банк</th><th>Предложение</th><th>Выгода</th><th>Действует до</th>"
             "</tr></thead><tbody>"
-            + _promo_rows(item.psb, "ПСБ")
+            + _promo_rows(item.psb, "Конкуренты")
             + _promo_rows(item.sber, "Сбер")
             + "</tbody></table></div></details></div>"
         )

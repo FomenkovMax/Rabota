@@ -511,6 +511,7 @@ class ProductShowcase:
     rate: float | None = None
     conditions: str = ""
     url: str = ""
+    bank: str = ""
 
     @property
     def display(self) -> str:
@@ -539,6 +540,10 @@ class SegmentComparison:
     # как отсутствие продукта.
     psb_product: ProductShowcase | None = None
     sber_product: ProductShowcase | None = None
+
+    #: Чьё предложение стоит против Сбера. Поле psb исторически названо по
+    #: ПСБ, но в нём акции всех конкурентов — подписываем реальным банком.
+    rival: str = "конкуренты"
 
     @property
     def total(self) -> int:
@@ -613,13 +618,15 @@ def _showcase(products, category: str, higher_is_better: bool):
         best = pool[0]
         return ProductShowcase(title=best.title, rate=None,
                                conditions=getattr(best, "rate_conditions", ""),
-                               url=getattr(best, "source_url", ""))
+                               url=getattr(best, "source_url", ""),
+                               bank=getattr(best, "bank", ""))
 
     rate, best = (max(scored, key=lambda x: x[0]) if higher_is_better
                   else min(scored, key=lambda x: x[0]))
     return ProductShowcase(title=best.title, rate=rate,
                            conditions=getattr(best, "rate_conditions", ""),
-                           url=getattr(best, "source_url", ""))
+                           url=getattr(best, "source_url", ""),
+                           bank=getattr(best, "bank", ""))
 
 
 def compare_segments(psb: list[PromoInsight], sber: list[PromoInsight],
@@ -681,7 +688,7 @@ def _judge(item: SegmentComparison) -> None:
     if _judge_products(item):
         missing = []
         if not has_psb:
-            missing.append("по ПСБ акций в сегменте не найдено")
+            missing.append("у конкурентов акций в сегменте не найдено")
         if not has_sber:
             missing.append("по Сберу акций в сегменте не найдено")
         if missing:
@@ -715,6 +722,9 @@ def _judge_promos(item: SegmentComparison) -> bool:
     sber_wins = (sber_best < psb_best) if lower_is_better else (sber_best > psb_best)
 
     phrase = benefit_phrase(benefit_type, lower_is_better)
+    leader = best_offer(item.psb, benefit_type, unit)
+    item.rival = (leader.bank if leader is not None else "") or item.rival
+    rival = item.rival
     psb_text = format_benefit(psb_best, unit)
     sber_text = format_benefit(sber_best, unit)
 
@@ -723,10 +733,10 @@ def _judge_promos(item: SegmentComparison) -> bool:
         item.headline = f"{phrase.capitalize()} одинаковая у обоих — {psb_text}"
     elif sber_wins:
         item.verdict = "green"
-        item.headline = f"{phrase.capitalize()}: Сбер {sber_text} против {psb_text} у ПСБ"
+        item.headline = f"{phrase.capitalize()}: Сбер {sber_text} против {psb_text} у {rival}"
     else:
         item.verdict = "red"
-        item.headline = f"{phrase.capitalize()}: ПСБ {psb_text} против {sber_text} у Сбера"
+        item.headline = f"{phrase.capitalize()}: {rival} {psb_text} против {sber_text} у Сбера"
     return True
 
 
@@ -740,6 +750,8 @@ def _judge_products(item: SegmentComparison) -> bool:
     sber_wins = (sber.rate > psb.rate) if higher_is_better else (sber.rate < psb.rate)
     phrase = "максимальная ставка" if higher_is_better else "минимальная ставка"
 
+    item.rival = psb.bank or item.rival
+    rival = item.rival
     psb_text = f"{psb.rate:g}".replace(".", ",") + " %"
     sber_text = f"{sber.rate:g}".replace(".", ",") + " %"
 
@@ -750,11 +762,11 @@ def _judge_products(item: SegmentComparison) -> bool:
     elif sber_wins:
         item.verdict = "green"
         item.headline = (f"По витрине продуктов {phrase}: "
-                         f"Сбер {sber_text} против {psb_text} у ПСБ")
+                         f"Сбер {sber_text} против {psb_text} у {rival}")
     else:
         item.verdict = "red"
         item.headline = (f"По витрине продуктов {phrase}: "
-                         f"ПСБ {psb_text} против {sber_text} у Сбера")
+                         f"{rival} {psb_text} против {sber_text} у Сбера")
     return True
 
 
@@ -764,14 +776,14 @@ def _judge_nothing(item: SegmentComparison, has_psb: bool, has_sber: bool) -> No
     item.verdict = "grey"
 
     if has_psb and has_sber:
-        item.headline = (f"ПСБ — {offers_count(len(item.psb))}, "
+        item.headline = (f"Конкуренты — {offers_count(len(item.psb))}, "
                          f"Сбер — {offers_count(len(item.sber))}: "
                          "выгода несопоставима по типу или единице измерения")
     elif has_psb:
-        item.headline = (f"У ПСБ {offers_count(len(item.psb))}; по Сберу акций "
+        item.headline = (f"У конкурентов {offers_count(len(item.psb))}; по Сберу акций "
                          "в сегменте не найдено, витрины для сравнения тоже нет")
     elif has_sber:
-        item.headline = (f"У Сбера {offers_count(len(item.sber))}; по ПСБ акций "
+        item.headline = (f"У Сбера {offers_count(len(item.sber))}; у конкурентов акций "
                          "в сегменте не найдено, витрины для сравнения тоже нет")
     else:
         item.headline = "Данных для сравнения в сегменте нет"
