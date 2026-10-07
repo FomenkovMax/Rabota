@@ -25,7 +25,12 @@ SIGNIFICANT_RATE_PP = 0.25
 
 
 def _rows_by_key(rows: list[Any]) -> dict[str, Any]:
-    return {row["product_key"]: row for row in rows}
+    # SEO-копии продуктов из старых сборов не сравниваем: иначе их отсев
+    # выглядел бы как «продукт исчез».
+    from .banks.seo import is_seo_page
+
+    return {row["product_key"]: row for row in rows
+            if "source_url" not in row.keys() or not is_seo_page(row["source_url"] or "")}
 
 
 def _promo_by_key(rows: list[Any]) -> dict[str, Any]:

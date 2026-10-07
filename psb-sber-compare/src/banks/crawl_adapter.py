@@ -30,6 +30,7 @@ from .base import BankAdapter, CollectResult, region_binding
 from .browser import (BrowserSettings, BrowserUnavailable, PageFailed,
                       PageReader, PageTooSlow)
 from .generic_site import caption_rules_out, category_for, extract_products, rates_of
+from .seo import is_seo_page
 
 log = logging.getLogger(__name__)
 
@@ -648,7 +649,7 @@ class CrawlAdapter(BankAdapter):
             parts = urlsplit(url)
             if parts.netloc != base_host or _FILE.search(parts.path):
                 continue
-            if not self._family(url) or self.skip.search(parts.path):
+            if not self._family(url) or self.skip.search(parts.path) or is_seo_page(url):
                 continue
             if url not in out:
                 out.append(url)

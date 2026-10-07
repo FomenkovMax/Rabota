@@ -112,6 +112,7 @@ def collect_bank(config: Config, code: str, *, save: bool = True) -> Any:
         previous = storage.last_successful_run_id()
         run_id = storage.start_run(config.get("region_label", default=""))
         storage.set_key_rate(run_id, keyrate.fetch(config.get("key_rate")))
+        _drop_seo(result)
         _mark_region(result)
         storage.save_products(run_id, result.products)
         _keep_unread(storage, result, previous, run_id)
@@ -172,6 +173,7 @@ def _keep_unread(storage: Storage, result: Any, previous: int | None, run_id: in
     from datetime import datetime, timedelta
 
     from .banks.crawl_adapter import is_product_title, normalize_title
+    from .banks.seo import is_seo_page
 
     fresh_keys = {product_key(p) for p in result.products}
     fresh_titles = {normalize_title(p.title) for p in result.products}
@@ -180,6 +182,8 @@ def _keep_unread(storage: Storage, result: Any, previous: int | None, run_id: in
     for row in storage.products_of_run(previous, result.bank):
         if row["product_key"] in fresh_keys or normalize_title(row["title"]) in fresh_titles:
             continue
+        if is_seo_page(row["source_url"] or ""):
+            continue
         if not is_product_title(row["title"]) or (row["collected_at"] or "") < cutoff:
             continue
         keep.append(row["id"])
@@ -187,6 +191,14 @@ def _keep_unread(storage: Storage, result: Any, previous: int | None, run_id: in
     if kept:
         log.warning("%s: обход неполный — %s продуктов взяты из сбора #%s "
                     "со своей датой", result.bank, kept, previous)
+
+
+def _drop_seo(result: Any) -> None:
+    """SEO-копии продуктов («Кредит на айфон») в базу не пишем."""
+    from .banks.seo import is_seo_page
+
+    result.products = [p for p in result.products
+                       if not is_seo_page(getattr(p, "source_url", ""))]
 
 
 def _mark_region(result: Any) -> None:
@@ -261,7 +273,12 @@ def load_report_data(config: Config, *, competitor: str = "") -> dict[str, Any] 
         titles = registry.titles()
         home_title = titles.get(HOME_BANK, "Сбер")
 
-        all_products = _rows_to_products(storage.products_of_run(run_id))
+        # SEO-страницы отсеиваем и здесь: в базе они остались от прошлых
+        # сборов, а пересобирать ради этого все банки незачем.
+        from .banks.seo import is_seo_page
+
+        all_products = [p for p in _rows_to_products(storage.products_of_run(run_id))
+                        if not is_seo_page(p.source_url)]
         by_bank: dict[str, list[Any]] = {}
         for product in all_products:
             by_bank.setdefault(product.bank, []).append(product)
@@ -417,6 +434,7 @@ def run(config: Config) -> dict[str, Any]:
                 failures.append(result.summary)
                 continue
             banks_ok.append(result.bank)
+            _drop_seo(result)
             _mark_region(result)
             storage.save_products(run_id, result.products)
             _keep_unread(storage, result, previous_ok, run_id)
