@@ -391,3 +391,68 @@ def test_slow_seed_is_retried_at_the_end(monkeypatch):
     assert adapter.collect().ok
     # Вторая попытка — не сразу, а когда браузер уже прогрет другими страницами.
     assert calls.count(calls[0]) == 2 and calls[1] != calls[0]
+
+
+def test_priority_products_are_read_right_after_seeds(monkeypatch):
+    calls: list[str] = []
+
+    class Recording(FakeReader):
+        def read(self, url):
+            calls.append(url)
+            return super().read(url)
+
+    class WithPriority(OnlyCredits):
+        priority = (f"{BASE}/ru/person/credits/money/refinancing",)
+
+    monkeypatch.setattr(crawl, "PageReader", Recording)
+    WithPriority(region=None, settings={"region_cookies": [{"name": "r", "value": "9"}],
+                                        "max_pages": 50}).collect()
+    assert calls[len(OnlyCredits.seeds)] == f"{BASE}/ru/person/credits/money/refinancing"
+
+
+def test_sber_savings_account_family():
+    adapter = SberAdapter(region=None, settings={})
+    assert adapter._family(f"{BASE}/ru/person/contributions/deposits/nakopi") == "Накопительные счета"
+    assert adapter._family(f"{BASE}/ru/person/contributions/deposits/vklad") == "Вклады"
+
+
+def test_share_of_price_and_miles_are_not_rates():
+    from src.banks.generic_site import rates_of
+
+    assert rates_of("Платите 25% стоимости товара на терминале") is None
+    assert rates_of("+50% миль") is None
+    assert rates_of("Ставка до 13,5% годовых") == [13.5]
+
+
+def test_partial_crawl_keeps_unread_products_from_last_run(tmp_path):
+    """Сбер оборвал обход — непрочитанные продукты берутся из прошлого сбора."""
+    from src.banks.base import CollectResult
+    from src.pipeline import _keep_unread
+    from src.psb.parser import Product
+    from src.storage import Storage
+
+    storage = Storage(tmp_path / "db.sqlite")
+    old = storage.start_run("ЛНР")
+    storage.save_products(old, [
+        Product(bank="Сбер", url_path="/family", title="Семейная ипотека", rate_min=6.0,
+                collected_at="2026-10-06T15:00"),
+        Product(bank="Сбер", url_path="/vklad", title="Вклад", rate_max=13.0,
+                collected_at="2026-10-06T15:00"),
+    ])
+    storage.finish_run(old, psb=0, sber=2, promos=0)
+
+    new = storage.start_run("ЛНР")
+    fresh = [Product(bank="Сбер", url_path="/vklad", title="Вклад", rate_max=13.5,
+                     collected_at="2026-10-07T06:00")]
+    storage.save_products(new, fresh)
+    _keep_unread(storage, CollectResult(bank="Сбер", products=fresh, partial=True), old, new)
+
+    rows = {r["product_key"]: r for r in storage.products_of_run(new)}
+    assert rows["/vklad"]["rate_max"] == 13.5                       # свежее не затёрто
+    assert rows["/family"]["collected_at"] == "2026-10-06T15:00"    # старое со своей датой
+
+    # Полный обход ничего не переносит: пропавший продукт действительно пропал.
+    third = storage.start_run("ЛНР")
+    storage.save_products(third, fresh)
+    _keep_unread(storage, CollectResult(bank="Сбер", products=fresh), new, third)
+    assert len(storage.products_of_run(third)) == 1

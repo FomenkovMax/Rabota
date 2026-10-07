@@ -114,6 +114,7 @@ def collect_bank(config: Config, code: str, *, save: bool = True) -> Any:
         storage.set_key_rate(run_id, keyrate.fetch(config.get("key_rate")))
         _mark_region(result)
         storage.save_products(run_id, result.products)
+        _keep_unread(storage, result, previous, run_id)
         # Остальные банки берём из прошлого сбора, иначе свод после
         # обновления одного банка показал бы только его.
         if previous is not None:
@@ -148,6 +149,16 @@ def collect_all(config: Config) -> dict[str, Any]:
             results[code] = adapter._failed(str(exc))
         log.info("  → %s", results[code].summary)
     return results
+
+
+def _keep_unread(storage: Storage, result: Any, previous: int | None, run_id: int) -> None:
+    """Обход оборвался — непрочитанные продукты банка берём из прошлого сбора."""
+    if previous is None or not getattr(result, "partial", False):
+        return
+    kept = storage.carry_missing(previous, run_id, bank=result.bank)
+    if kept:
+        log.warning("%s: обход неполный — %s продуктов взяты из сбора #%s "
+                    "со своей датой", result.bank, kept, previous)
 
 
 def _mark_region(result: Any) -> None:
@@ -357,6 +368,7 @@ def load_report_data(config: Config, *, competitor: str = "") -> dict[str, Any] 
 def run(config: Config) -> dict[str, Any]:
     """Сбор по всем банкам плюс отчёт."""
     storage = Storage(config.path("storage", "db_path", default="data/psb_sber.db"))
+    previous_ok = storage.last_successful_run_id()
     run_id = storage.start_run(config.get("region_label", default=""))
     storage.set_key_rate(run_id, keyrate.fetch(config.get("key_rate")))
 
@@ -372,6 +384,7 @@ def run(config: Config) -> dict[str, Any]:
             banks_ok.append(result.bank)
             _mark_region(result)
             storage.save_products(run_id, result.products)
+            _keep_unread(storage, result, previous_ok, run_id)
 
             insights = classify_all(result.promos, result.bank)
             by_title = {i.title: i for i in insights}

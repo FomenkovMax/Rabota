@@ -63,10 +63,25 @@ class SberAdapter(CrawlAdapter):
         "https://www.sberbank.ru/ru/person/bank_cards/credit_cards",
         "https://www.sberbank.ru/ru/person/bank_cards/debit",
     )
+    # Главные продукты для сравнения — их адреса видны в обходе 06.10.2026.
+    # Сбер пускает около 30 страниц за сеанс, поэтому они идут первыми.
+    priority = (
+        "https://www.sberbank.ru/ru/person/bank_cards/debit/sberkarta",
+        "https://www.sberbank.ru/ru/person/bank_cards/credit_cards/credit_sberkarta",
+        "https://www.sberbank.ru/ru/person/credits/home/family",
+        "https://www.sberbank.ru/ru/person/credits/money/consumer_unsecured",
+        "https://www.sberbank.ru/ru/person/credits/money/consumer_refinance",
+        "https://www.sberbank.ru/ru/person/credits/money/avtokredit",
+        "https://www.sberbank.ru/ru/person/credits/home/buying_project",
+        "https://www.sberbank.ru/ru/person/credits/home/buying_complete_house",
+        "https://www.sberbank.ru/ru/person/contributions/deposits/vklad/vklad_luchshiy_procent",
+        "https://www.sberbank.ru/ru/person/contributions/deposits/vklad_kluchevoy",
+        "https://www.sberbank.ru/ru/person/contributions/deposits/nakopi",
+    )
+    # Порядок важен: точный префикс раньше общего.
     families = (
-        ("/ru/person/contributions/savings", "Накопительные счета"),
-        ("/ru/person/contributions", "Вклады"),
         ("/ru/person/contributions/deposits/nakopi", "Накопительные счета"),
+        ("/ru/person/contributions", "Вклады"),
         ("/ru/person/credits/home", "Ипотека"),
         ("/ru/person/credits", "Кредиты"),
         ("/ru/person/bank_cards/credit", "Кредитные карты"),

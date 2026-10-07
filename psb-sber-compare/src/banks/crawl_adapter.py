@@ -233,6 +233,10 @@ class CrawlAdapter(BankAdapter):
     base_url: str = ""
     #: Страницы-витрины, с которых начинается обход.
     seeds: tuple[str, ...] = ()
+    #: Главные продукты — читаются сразу после витрин. Сайт пускает
+    #: ограниченное число страниц за сеанс, и они должны уйти на то, что
+    #: важно для сравнения, а не на подстраницы.
+    priority: tuple[str, ...] = ()
     #: Разделы розницы: (префикс пути, категория по умолчанию). Порядок
     #: важен — более точный префикс идёт раньше общего.
     families: tuple[tuple[str, str], ...] = ()
@@ -266,8 +270,9 @@ class CrawlAdapter(BankAdapter):
 
         seeds = [self._normalize(url) for url in self.seeds]
         seed_set = set(seeds)
-        queue: deque[str] = deque(seeds)
-        seen: set[str] = set(seeds)
+        first = [self._normalize(url) for url in self.priority]
+        queue: deque[str] = deque(seeds + [u for u in first if u not in seed_set])
+        seen: set[str] = set(queue)
 
         products: dict[str, Product] = {}
         showcase: dict[str, tuple[Any, str, str]] = {}
@@ -279,7 +284,8 @@ class CrawlAdapter(BankAdapter):
         # стоят в меню каждой страницы, рекламные дубли («кредит на 50 000
         # рублей», «кредитка в Курске») — на одной. Лимит страниц и терпение
         # защиты конечны, поэтому сначала читаем самое упоминаемое.
-        popularity: dict[str, int] = {url: 1_000_000 for url in seeds}
+        popularity: dict[str, int] = {url: 500_000 for url in first}
+        popularity.update({url: 1_000_000 for url in seeds})
         started = time.monotonic()
 
         try:
@@ -367,7 +373,8 @@ class CrawlAdapter(BankAdapter):
             return self._failed("ни одного продукта не найдено: "
                                 + ("; ".join(failures[:3]) or "проверьте витрины"))
         return self._result(products=merged, pages_visited=visited,
-                            region_applied=applied, region_method=method)
+                            region_applied=applied, region_method=method,
+                            partial=blocked or bool(queue))
 
     @staticmethod
     def _next(queue: deque[str], popularity: dict[str, int]) -> str:
@@ -384,17 +391,20 @@ class CrawlAdapter(BankAdapter):
         Если и после паузы заглушка, обход останавливается: собранное до
         этого сохраняется, а в итоге видно, на какой странице закрыли доступ.
         """
-        wait = float(self.settings.get("block_pause_s", 120))
-        log.warning("%s: сайт отдал заглушку защиты вместо страницы — пауза %.0f с "
-                    "и повтор со свежим браузером", self.title, wait)
-        reader.close()
-        time.sleep(wait)
-        data = reader.read(url)
-        if is_blocked(data):
-            log.warning("%s: доступ по-прежнему закрыт — обход остановлен, "
-                        "собранное сохраняется", self.title)
-            return None
-        return data
+        wait = float(self.settings.get("block_pause_s", 300))
+        attempts = max(1, int(self.settings.get("block_retries", 1)))
+        for attempt in range(1, attempts + 1):
+            log.warning("%s: сайт отдал заглушку защиты вместо страницы — пауза %.0f с "
+                        "и повтор со свежим браузером (%s из %s)",
+                        self.title, wait, attempt, attempts)
+            reader.close()
+            time.sleep(wait)
+            data = reader.read(url)
+            if not is_blocked(data):
+                return data
+        log.warning("%s: доступ по-прежнему закрыт — обход остановлен, "
+                    "собранное сохраняется", self.title)
+        return None
 
     def _pages_dir(self) -> Path | None:
         folder = self.settings.get("pages_dir")

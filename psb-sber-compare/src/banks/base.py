@@ -40,6 +40,9 @@ class CollectResult:
     region_applied: bool = True
     #: Как условия привязаны к региону: selector | federal | not_confirmed.
     region_method: str = "selector"
+    #: Обход оборвался раньше времени (сайт закрыл доступ или кончился
+    #: лимит страниц): не все продукты банка прочитаны в этот раз.
+    partial: bool = False
 
     @property
     def summary(self) -> str:
