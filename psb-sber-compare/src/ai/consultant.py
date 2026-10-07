@@ -203,6 +203,31 @@ def ask(facts: str, question: str = "", *, effort: str = "high") -> Advice:
     )
 
 
+AUDIT_SYSTEM = """\
+Ты — независимый аудитор. Тебе передан промпт аудита и данные: перепроверка
+значений агента по живым страницам банков (с выдержками текста) и результат
+автоаудита, посчитанный по правилам самого агента. Твоя оценка не обязана
+совпадать с автоаудитом: ищи ошибки и пробелы, ничего не выдумывай, всё, что
+нельзя подтвердить переданными данными, помечай «НЕ ПРОВЕРЕНО».\
+"""
+
+
+def ask_audit(prompt: str) -> Advice:
+    """Независимый LLM-аудит по пакету автоаудита."""
+    client = _client()
+    response = client.messages.create(
+        model=model_name(), max_tokens=12000, system=AUDIT_SYSTEM,
+        messages=[{"role": "user", "content": prompt}],
+    )
+    text = "\n".join(b.text for b in response.content if b.type == "text").strip()
+    if not text:
+        raise ConsultantUnavailable("Модель вернула пустой ответ")
+    usage = getattr(response, "usage", None)
+    return Advice(text=text, model=model_name(),
+                  input_tokens=getattr(usage, "input_tokens", 0) or 0,
+                  output_tokens=getattr(usage, "output_tokens", 0) or 0)
+
+
 def available() -> bool:
     """Можно ли вообще обращаться к консультанту."""
     try:

@@ -32,6 +32,8 @@ thresholds:
 # Отключённый банк не собирается и не попадает в сравнение.
 banks:
   sber:
+    # Присутствие в ЛНР — источник для аудита (охват банков).
+    presence_source: "https://bankprofi.ru/blog/sberbank-v-lnr-karty-uslugi-rezhim-raboty-bankomaty"
     enabled: true
     # Сколько ждать один раздел, секунды. Защита Сбера то отдаёт страницу
     # за восемь секунд, то закручивает проверку надолго; по истечении
@@ -59,6 +61,7 @@ banks:
       - {name: "sbrf.region_manual", value: "true", domain: "www.sberbank.ru"}
       - {name: "sbrf.region_set",    value: "true", domain: "www.sberbank.ru"}
   psb:
+    presence_source: "https://bankprofi.ru/blog/kakie-banki-rabotayut-v-lnr-v-2026-godu"
     enabled: true
     pause: 1.5            # пауза между страницами, секунды
     timeout: 30
@@ -68,6 +71,7 @@ banks:
     include_promos: true
     max_pages: 0          # 0 = без ограничения; поставь 30 для быстрой пробы
   vtb:
+    presence_source: "https://bankprofi.ru/blog/kakie-banki-rabotayut-v-lnr-v-2026-godu"
     enabled: true         # проверено check-bank vtb 07.10.2026
     max_pages: 60         # 40 не хватало до карт (аудит 07.10.2026)
     pause_s: 6
@@ -78,12 +82,14 @@ banks:
     # отдельной странице ипотеки, она в главных продуктах адаптера.
     region_mode: federal
   tbank:
+    presence_source: "https://bankprofi.ru/blog/kakie-banki-rabotayut-v-lnr-v-2026-godu"
     enabled: true         # проверен check-bank 07.10.2026
     # Условия Т-Банка едины по РФ (подтвердил заказчик 07.10.2026).
     region_mode: federal
     max_pages: 40
     pause_s: 6
   rostfinance:
+    presence_source: "https://www.rostfinance.ru/ (город Луганск в списке городов, проверено 07.10.2026)"
     enabled: true         # проверен check-bank 07.10.2026, регион Луганск
     max_pages: 40
     pause_s: 4
@@ -95,6 +101,10 @@ banks:
     region_cookies:
       - {name: "current_region_normal", value: "1877", domain: "www.rostfinance.ru"}
   cmr:
+    presence_source: "https://cmrbank.ru/offices/69/69002.html"
+    # Разделов нет в меню сайта (07.10.2026) — в охвате эти клетки не считаются.
+    coverage_not_offered: ["Ипотека", "Кредитные карты", "Автокредиты", "Инвестиции",
+                           "НПФ и ПДС", "Сейфовые ячейки"]
     enabled: true
     # ЦМР работает только в ЛНР, выбора региона на сайте нет: условия
     # на сайте и есть луганские.
@@ -124,6 +134,7 @@ report:
 export:
   dir: "data/export"
   bi_dir: "data/bi"       # CSV для Power BI / DataLens, история всех срезов
+  audit_dir: "data/audit" # автоаудит: HTML-отчёт и пакет для LLM-аудита
 
 notify:
   digest_file: "data/changes_digest.txt"

@@ -12,6 +12,9 @@
     python run.py suggest              черновые пары продуктов
     python run.py history              история запусков
     python run.py bot                  запустить Telegram-бота
+    python run.py audit                автоаудит: перепроверка цифр по живым страницам,
+                                       баллы по критериям, пакет для LLM-аудита
+    python run.py audit --llm          то же плюс независимый LLM-аудит по пакету
     python run.py dump sber 0          сохранить страницу раздела для разбора
 """
 
@@ -268,7 +271,7 @@ def main() -> int:
     )
     parser.add_argument("command", choices=[
         "collect", "check-bank", "banks", "report", "export",
-        "suggest", "history", "bot", "dump",
+        "suggest", "history", "bot", "dump", "audit",
     ])
     parser.add_argument("target", nargs="?", default="",
                         help="код банка для check-bank и dump")
@@ -279,6 +282,10 @@ def main() -> int:
                         choices=["xlsx", "pdf", "html", "bi", "all"])
     parser.add_argument("--config", default=str(ROOT / "config" / "settings.yaml"))
     parser.add_argument("--open", action="store_true")
+    parser.add_argument("--sample", type=int, default=40,
+                        help="audit: сколько значений перепроверить по живым страницам")
+    parser.add_argument("--llm", action="store_true",
+                        help="audit: отправить пакет на независимый LLM-аудит")
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args()
 
@@ -315,6 +322,16 @@ def main() -> int:
         return 0
     if args.command == "report":
         return cmd_export(config, args.fmt, args.open)
+    if args.command == "audit":
+        from src import audit
+        result, html_path, zip_path = audit.run(config, sample=args.sample, llm=args.llm)
+        print(f"\nАвтоаудит: итог {result.total:.1f} из 10")
+        for score in result.scores:
+            print(f"  {score.title:<45} {score.score:>4.1f}  (вес {score.weight:.0%})")
+        found = sum(1 for e in result.evidence if e.status == audit.FOUND)
+        print(f"  Перепроверено значений: {len(result.evidence)}, найдено на страницах: {found}")
+        print(f"Отчёт: {html_path}\nПакет для LLM-аудита: {zip_path}")
+        return 0
 
     # collect
     if args.bank:
