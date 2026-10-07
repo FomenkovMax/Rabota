@@ -73,13 +73,13 @@ banks:
   genbank:
     enabled: false        # включи после проверки: python run.py check-bank genbank
   tbank:
-    enabled: false        # включи после проверки: python run.py check-bank tbank
+    enabled: true         # проверен check-bank 07.10.2026
     # Условия Т-Банка едины по РФ (подтвердил заказчик 07.10.2026).
     region_mode: federal
     max_pages: 40
     pause_s: 6
   rostfinance:
-    enabled: false        # включи после проверки: python run.py check-bank rostfinance
+    enabled: true         # проверен check-bank 07.10.2026, регион Луганск
     max_pages: 40
     pause_s: 4
     # Город на сайте РостФинанса — кука current_region_normal. 1877 —

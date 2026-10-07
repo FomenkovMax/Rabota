@@ -583,3 +583,75 @@ def test_error_pages_and_tbank_deposit_family():
     adapter = TbankAdapter(region=None, settings={})
     assert adapter._family("https://www.tbank.ru/savings/deposit") == "Вклады"
     assert adapter._family("https://www.tbank.ru/savings/saving-account") == "Накопительные счета"
+
+
+def test_rostfinance_service_pages_and_bonus_caption():
+    from src.banks.generic_site import rates_of  # noqa: F401
+
+    for title in ("ВКЛАДЫ И CЧЕТА", "СТРАХОВАНИЕ ВКЛАДОВ", "СПОСОБЫ ПОПОЛНЕНИЯ КАРТЫ",
+                  "выпуск карты", "Соотношение кредит/залог в процентах"):
+        assert not crawl.is_product_title(title), title
+    for title in ("Горизонты Роста", "IT-ипотека", "Кредитная карта", "Карта ЦМР.Плюс"):
+        assert crawl.is_product_title(title), title
+    page = _page("Кредитная карта", "62 дня", "льготный период", "до 1%", "начисление бонусов")
+    product = crawl.product_from_page(page, bank="РостФинанс", url="https://x/cards/credit-card/",
+                                      category="Кредитные карты", region="", collected_at="")
+    assert product.rate_min is None
+
+
+def test_priority_page_with_subpages_is_a_product(monkeypatch):
+    """«Кредит наличными» Т-Банка ссылается на подстраницы, но это продукт."""
+    from src.banks.others import TbankAdapter
+
+    root = "https://www.tbank.ru"
+    cash = {"h1": "Оформите кредит наличными онлайн", "title": "", "text":
+            "Меню\nОформите кредит наличными онлайн\nНа любые цели",
+            "links": [[f"{root}/loans/cash-loan/{x}"] for x in ("auto", "realty", "pension")]}
+
+    class Reader:
+        def __init__(self, *a, **k):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            pass
+
+        def close(self):
+            pass
+
+        def read(self, url):
+            if url == f"{root}/loans/cash-loan":
+                return cash
+            raise PageFailed("нет")
+
+    class OnlyCash(TbankAdapter):
+        seeds = (f"{root}/loans",)
+        priority = (f"{root}/loans/cash-loan/",)
+
+    monkeypatch.setattr(crawl, "PageReader", Reader)
+    result = OnlyCash(region=None, settings={"region_mode": "federal"}).collect()
+    assert [p.title for p in result.products] == ["Кредит наличными"]
+
+
+def test_bonus_caption_above_the_number():
+    page = _page("Кредитная карта", "Начисление бонусов по программе лояльности",
+                 "до 1%", "годовых")
+    product = crawl.product_from_page(page, bank="РостФинанс", url="https://x/cards/credit-card/",
+                                      category="Кредитные карты", region="", collected_at="")
+    assert product.rate_min is None
+
+
+def test_deposit_title_wins_over_savings_section():
+    from src.banks.generic_site import category_for
+
+    assert category_for("Пополняемый вклад", "Накопительные счета") == "Вклады"
+    assert category_for("Накопительный счет для ближайших целей", "Накопительные счета") \
+        == "Накопительные счета"
+
+
+def test_plural_card_headings_are_not_products():
+    assert not crawl.is_product_title("Банковские карты с кешбэком и бонусами")
+    assert not crawl.is_product_title("Дебетовые карты для путешествий")
+    assert crawl.is_product_title("Дебетовая карта Black")

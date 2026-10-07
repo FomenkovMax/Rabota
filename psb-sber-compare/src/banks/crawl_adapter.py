@@ -72,13 +72,26 @@ def is_blocked(data: dict[str, Any]) -> bool:
 _NOT_A_PRODUCT = re.compile(
     r"^(?:платите|управляйте|создайте|привез[её]м|покупайте|открыть|откройте|"
     r"оформите|узнайте|получите|переведите|подключите)\b|каникул|"
-    r"программ\w*\s+поддержк|^[\w.-]+\.(?:ru|рф|com)$|^404|страница не найдена",
+    r"программ\w*\s+поддержк|^[\w.-]+\.(?:ru|рф|com)$|^404|страница не найдена|"
+    # Служебные страницы РостФинанса (обход 07.10.2026).
+    r"способы\s+пополнения|страхование\s+вкладов|^выпуск\s+карты|соотношение|"
+    r"^вклады\s+и\s+[сc]ч[её]та|^кредиты\s+наличными$|^кредитный\s+лимит|^вкладывайте|"
+    # Заголовки витрин во множественном числе: «Дебетовые карты для
+    # путешествий», «Банковские карты с кешбэком» — подборки, не продукты.
+    r"^(?:банковские|дебетовые|кредитные)\s+карты\b",
     re.I,
 )
 
 
+def _shouting(title: str) -> bool:
+    """Заголовок раздела заглавными буквами: «ВКЛАДЫ И CЧЕТА», «ИПОТЕКА»."""
+    letters = [ch for ch in title if ch.isalpha()]
+    return len(letters) > 4 and all(ch.isupper() for ch in letters)
+
+
 def is_product_title(title: str) -> bool:
-    return bool(title) and not _GENERIC_TITLE.match(title) and not _NOT_A_PRODUCT.search(title)
+    return (bool(title) and not _GENERIC_TITLE.match(title)
+            and not _NOT_A_PRODUCT.search(title) and not _shouting(title))
 
 
 _GENERIC_TITLE = re.compile(
@@ -232,8 +245,14 @@ def product_from_page(data: dict[str, Any], *, bank: str, url: str,
         if values is None:
             continue
         following = body[index + 1] if index + 1 < len(body) else ""
-        # «от 20,1%» с подписью «первоначальный взнос» — не ставка.
-        if caption_rules_out(following):
+        # «от 20,1%» с подписью «первоначальный взнос» — не ставка. Подпись
+        # бывает и над числом: «Начисление бонусов по программе / до 1% / годовых».
+        # Подпись сверху — только если она не подпись к числу перед ней:
+        # «от 20,1% / Первоначальный взнос / от 6%» — взнос относится к 20,1.
+        previous = body[index - 1] if index > 0 else ""
+        before = body[index - 2] if index > 1 else ""
+        caption_above = caption_rules_out(previous) and rates_of(before) is None
+        if caption_rules_out(following) or caption_above:
             continue
         # ПСК — полная стоимость кредита, а не ставка. Кладём её в своё
         # поле: в светофоре ставка сравнивается со ставкой, не с ПСК.
@@ -308,6 +327,7 @@ class CrawlAdapter(BankAdapter):
         seeds = [self._normalize(url) for url in self.seeds]
         seed_set = set(seeds)
         first = [self._normalize(url) for url in self.priority]
+        first_set = set(first)
         queue: deque[str] = deque(seeds + [u for u in first if u not in seed_set])
         seen: set[str] = set(queue)
 
@@ -370,12 +390,21 @@ class CrawlAdapter(BankAdapter):
                     self._save_page(visited, url, data, links)
                     path = urlsplit(url).path
                     deeper = {l for l in links if urlsplit(l).path.startswith(path + "/")}
-                    is_listing = url in seed_set or len(deeper) >= 3
+                    # Главный продукт — всегда страница продукта, даже если
+                    # у него есть подстраницы: у Т-Банка «Кредит наличными»
+                    # ссылается на /cash-loan/auto и т. п. и иначе читался
+                    # как раздел — продукт не создавался.
+                    is_listing = url in seed_set or (url not in first_set
+                                                     and len(deeper) >= 3)
 
                     if is_listing:
                         # С витрины берём пары «название — ставка»: пригодятся
                         # тем продуктам, у которых на своей странице цифры нет.
-                        for item in extract_products(data.get("text") or ""):
+                        # С главной страницы карточки не берём: раздела у
+                        # них нет, а сами продукты есть на витринах разделов
+                        # («Карта Ультра» на главной и «Ультра» в картах).
+                        items = extract_products(data.get("text") or "") if family else []
+                        for item in items:
                             if not is_product_title(item.title):
                                 continue
                             showcase.setdefault(normalize_title(item.title),
