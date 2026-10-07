@@ -425,34 +425,62 @@ def test_share_of_price_and_miles_are_not_rates():
 
 
 def test_partial_crawl_keeps_unread_products_from_last_run(tmp_path):
-    """Сбер оборвал обход — непрочитанные продукты берутся из прошлого сбора."""
+    """Сбер оборвал обход — непрочитанные продукты берутся из прошлого сбора.
+
+    Но не мусор: не дубли свежих по названию, не страницы-услуги и не
+    цифры старше двух недель.
+    """
+    from datetime import datetime, timedelta
+
     from src.banks.base import CollectResult
     from src.pipeline import _keep_unread
     from src.psb.parser import Product
     from src.storage import Storage
 
+    yesterday = (datetime.now() - timedelta(days=1)).isoformat(timespec="seconds")
+    old_date = (datetime.now() - timedelta(days=30)).isoformat(timespec="seconds")
     storage = Storage(tmp_path / "db.sqlite")
     old = storage.start_run("ЛНР")
     storage.save_products(old, [
-        Product(bank="Сбер", url_path="/family", title="Семейная ипотека", rate_min=6.0,
-                collected_at="2026-10-06T15:00"),
+        Product(bank="Сбер", url_path="/deposits", title="Вклад «Сбер Рядом»",
+                rate_max=14.0, collected_at=yesterday),
         Product(bank="Сбер", url_path="/vklad", title="Вклад", rate_max=13.0,
-                collected_at="2026-10-06T15:00"),
+                collected_at=yesterday),
+        Product(bank="Сбер", url_path="/homenew#семейная ипотека", title="Семейная ипотека",
+                rate_min=20.1, collected_at=yesterday),
+        Product(bank="Сбер", url_path="/kanikuly", title="Ипотечные каникулы",
+                rate_min=30.0, collected_at=yesterday),
+        Product(bank="Сбер", url_path="/archive", title="Вклад «Старый»",
+                rate_max=9.0, collected_at=old_date),
     ])
-    storage.finish_run(old, psb=0, sber=2, promos=0)
+    storage.finish_run(old, psb=0, sber=5, promos=0)
 
     new = storage.start_run("ЛНР")
-    fresh = [Product(bank="Сбер", url_path="/vklad", title="Вклад", rate_max=13.5,
-                     collected_at="2026-10-07T06:00")]
+    fresh = [Product(bank="Сбер", url_path="/vklad", title="Вклад", rate_max=13.5),
+             Product(bank="Сбер", url_path="/credits/home/family", title="Семейная ипотека")]
     storage.save_products(new, fresh)
     _keep_unread(storage, CollectResult(bank="Сбер", products=fresh, partial=True), old, new)
 
-    rows = {r["product_key"]: r for r in storage.products_of_run(new)}
-    assert rows["/vklad"]["rate_max"] == 13.5                       # свежее не затёрто
-    assert rows["/family"]["collected_at"] == "2026-10-06T15:00"    # старое со своей датой
+    rows = {r["title"]: r for r in storage.products_of_run(new)}
+    assert set(rows) == {"Вклад", "Семейная ипотека", "Вклад «Сбер Рядом»"}
+    assert rows["Вклад"]["rate_max"] == 13.5                  # свежее не затёрто
+    assert rows["Семейная ипотека"]["rate_min"] is None       # копия со взносом не вернулась
+    assert rows["Вклад «Сбер Рядом»"]["collected_at"] == yesterday
 
     # Полный обход ничего не переносит: пропавший продукт действительно пропал.
     third = storage.start_run("ЛНР")
     storage.save_products(third, fresh)
     _keep_unread(storage, CollectResult(bank="Сбер", products=fresh), new, third)
-    assert len(storage.products_of_run(third)) == 1
+    assert len(storage.products_of_run(third)) == 2
+
+
+def test_education_loan_and_sber_credit_card_categories():
+    from src import market
+    from src.banks.generic_site import category_for
+    from src.psb.parser import Product
+
+    loan = Product(bank="Сбер", title="Кредит на образование с господдержкой",
+                   category="Кредиты", rate_min=3.0, rate_max=3.0)
+    assert market.program_of(loan) == "Образовательный кредит"
+    assert market.assess(loan, key_rate=14.0, region_method="selector").usable
+    assert category_for("Кредитная СберКарта", "Банковские карты") == "Кредитные карты"

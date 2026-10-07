@@ -187,23 +187,18 @@ class Storage:
             " GROUP BY substr(started_at, 1, 10)) ORDER BY id"
         ).fetchall()
 
-    def carry_missing(self, from_run: int, to_run: int, *, bank: str) -> int:
-        """Продукты банка из прошлого сбора, которых нет в новом.
-
-        Нужно, когда обход оборвался: сайт Сбера пускает ограниченное число
-        страниц за сеанс. Без этого продукты, до которых в этот раз не
-        дошли, исчезали бы из отчёта, будто их сняли с продажи. Строки
-        переносятся со своей датой сбора — видно, что цифра не свежая.
-        """
+    def copy_products(self, to_run: int, ids: list[int]) -> int:
+        """Копирует строки продуктов в другой сбор как есть, со своей датой."""
+        if not ids:
+            return 0
         columns = [row["name"] for row in self.conn.execute("PRAGMA table_info(products)")
                    if row["name"] not in ("id", "run_id")]
         listed = ", ".join(columns)
+        marks = ",".join("?" * len(ids))
         cur = self.conn.execute(
             f"INSERT INTO products (run_id, {listed}) "
-            f"SELECT ?, {listed} FROM products WHERE run_id=? AND bank=? "
-            f"AND product_key NOT IN (SELECT product_key FROM products "
-            f"WHERE run_id=? AND bank=?)",
-            (to_run, from_run, bank, to_run, bank),
+            f"SELECT ?, {listed} FROM products WHERE id IN ({marks})",
+            (to_run, *ids),
         )
         self.conn.commit()
         return cur.rowcount or 0

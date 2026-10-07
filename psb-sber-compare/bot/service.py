@@ -14,7 +14,7 @@ from typing import Any
 
 from src.ai import consultant
 from src.compare import GREEN, GREY, RED, YELLOW
-from src.pipeline import Config, collect_bank, load_report_data, run
+from src.pipeline import Config, load_report_data
 
 log = logging.getLogger(__name__)
 
@@ -157,19 +157,41 @@ def ai_answer(question: str) -> str:
 
 # --- сбор ------------------------------------------------------------------
 
-def collect(bank_code: str) -> str:
-    """Запускает сбор по одному банку или по всем."""
-    config = _config()
+ROOT = Path(__file__).resolve().parent.parent
 
-    if bank_code == "all":
-        result = run(config)
-        counts = result["counts"]
-        return (f"Сбор завершён.\n"
-                f"Банков: {len(result['banks'])}, "
-                f"продуктов: {result['products_total']}, "
-                f"акций: {result['promos_total']}.\n"
-                f"🔴 {counts[RED]}  🟡 {counts[YELLOW]}  "
-                f"🟢 {counts[GREEN]}  ⚪ {counts[GREY]}")
 
-    outcome = collect_bank(config, bank_code)
-    return outcome.summary
+def collect_command(bank_code: str) -> list[str]:
+    """Команда сбора отдельным процессом: все банки или один."""
+    import sys
+
+    command = [sys.executable, str(ROOT / "run.py"), "collect"]
+    if bank_code != "all":
+        command += ["--bank", bank_code]
+    return command
+
+
+def collect_summary(bank_code: str, returncode: int, tail: list[str]) -> str:
+    """Сообщение по итогам сбора, который шёл отдельным процессом.
+
+    Сбор вынесен из процесса бота: браузер ест много памяти, и когда
+    7 октября системе её не хватило, вместе со сбором погиб и бот —
+    сообщение «готово» так и не пришло. Теперь гибнет только сбор, а бот
+    объясняет, что случилось.
+    """
+    if returncode < 0:
+        return ("⚠️ Сбор прервался: процесс остановлен системой "
+                f"(сигнал {-returncode}). Чаще всего так бывает, когда серверу "
+                "не хватает памяти. Данные прошлых сборов на месте, выгрузка "
+                "покажет их.")
+    if returncode != 0:
+        last = "\n".join(_esc(line) for line in tail[-5:])
+        return f"⚠️ Сбор завершился с ошибкой (код {returncode}).\n<pre>{last}</pre>"
+
+    data = load_report_data(_config())
+    if data is None:
+        return "Сбор завершён, но данных в базе нет — смотри лог сбора."
+    counts = data["counts"]
+    banks = ", ".join(f"{bank} {n}" for bank, n in data["product_counts"].items())
+    head = "Сбор завершён." if bank_code == "all" else "Банк обновлён."
+    return (f"{head}\nПродуктов: {banks}.\n"
+            f"🔴 {counts[RED]}  🟡 {counts[YELLOW]}  🟢 {counts[GREEN]}  ⚪ {counts[GREY]}")

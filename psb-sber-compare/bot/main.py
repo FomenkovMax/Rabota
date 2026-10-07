@@ -44,7 +44,7 @@ log = logging.getLogger("bot")
 WELCOME = (
     "<b>Сравнение розничных продуктов</b>\n"
     "Сбер против конкурентов в Луганской Народной Республике.\n\n"
-    "🔄 <b>Обновить все банки</b> — свежий сбор с сайтов, 15–25 мин\n"
+    "🔄 <b>Обновить все банки</b> — свежий сбор с сайтов, 25–35 мин\n"
     "🏦 <b>Сравнить</b> — светофор Сбера против одного банка\n"
     "📊 <b>Выгрузить свод</b> — Excel, PDF или HTML по всем банкам\n"
     "🤖 <b>AI-консультант</b> — совет по собранным цифрам\n"
@@ -319,19 +319,40 @@ async def on_collect(call: CallbackQuery) -> None:
         await call.answer("Запустил сбор")
         if code == "all":
             await call.message.edit_text(
-                "🔄 Обновляю все банки. Это 15–25 минут — напишу, когда закончу.\n"
+                "🔄 Обновляю все банки. Это 25–35 минут — напишу, когда закончу.\n"
                 "Ботом можно пользоваться и сейчас: выгрузка покажет прошлый сбор.")
         else:
             await call.message.edit_text(
                 "🔁 Обновляю банк. Это 5–12 минут — напишу, когда закончу.")
 
         try:
-            report = await asyncio.to_thread(service.collect, code)
+            report = await _collect_in_process(code)
         except Exception as exc:                  # noqa: BLE001
             log.exception("Сбор %s не удался", code)
             report = f"Сбор не удался: {html.escape(str(exc))[:400]}"
 
     await call.message.answer(report, reply_markup=kb.main_menu())
+
+
+async def _collect_in_process(code: str) -> str:
+    """Сбор отдельным процессом: если его убьют, бот останется жив.
+
+    Строки сбора идут в лог бота как есть — по docker logs видно ход.
+    """
+    process = await asyncio.create_subprocess_exec(
+        *service.collect_command(code), cwd=str(service.ROOT),
+        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT)
+    tail: list[str] = []
+    assert process.stdout is not None
+    async for raw in process.stdout:
+        line = raw.decode("utf-8", "replace").rstrip()
+        if line:
+            print(line, flush=True)
+            tail = (tail + [line])[-20:]
+    returncode = await process.wait()
+    if returncode != 0:
+        log.warning("Сбор %s завершился с кодом %s", code, returncode)
+    return await asyncio.to_thread(service.collect_summary, code, returncode, tail)
 
 
 class IconFallback(BaseRequestMiddleware):

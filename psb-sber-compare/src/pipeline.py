@@ -151,11 +151,39 @@ def collect_all(config: Config) -> dict[str, Any]:
     return results
 
 
+#: Сколько дней продукт из прошлых сборов можно переносить, не перечитав.
+#: Дольше — цифра слишком старая, честнее показать, что её нет.
+KEEP_UNREAD_DAYS = 14
+
+
 def _keep_unread(storage: Storage, result: Any, previous: int | None, run_id: int) -> None:
-    """Обход оборвался — непрочитанные продукты банка берём из прошлого сбора."""
+    """Обход оборвался — непрочитанные продукты банка берём из прошлого сбора.
+
+    Переносится не всё подряд. Первый перенос 07.10.2026 вернул в отчёт
+    вчерашний мусор, разобранный ещё старыми правилами: «Ипотечные
+    каникулы 30 %» и копию семейной ипотеки со взносом 20,1 % вместо
+    ставки — рядом со свежей страницей той же ипотеки. Поэтому не
+    переносятся: продукты с тем же названием, что и свежие (адрес у
+    карточки на витрине и у страницы продукта разный), страницы, которые
+    нынешние правила продуктом не считают, и всё старше двух недель.
+    """
     if previous is None or not getattr(result, "partial", False):
         return
-    kept = storage.carry_missing(previous, run_id, bank=result.bank)
+    from datetime import datetime, timedelta
+
+    from .banks.crawl_adapter import is_product_title, normalize_title
+
+    fresh_keys = {product_key(p) for p in result.products}
+    fresh_titles = {normalize_title(p.title) for p in result.products}
+    cutoff = (datetime.now() - timedelta(days=KEEP_UNREAD_DAYS)).isoformat()
+    keep = []
+    for row in storage.products_of_run(previous, result.bank):
+        if row["product_key"] in fresh_keys or normalize_title(row["title"]) in fresh_titles:
+            continue
+        if not is_product_title(row["title"]) or (row["collected_at"] or "") < cutoff:
+            continue
+        keep.append(row["id"])
+    kept = storage.copy_products(run_id, keep)
     if kept:
         log.warning("%s: обход неполный — %s продуктов взяты из сбора #%s "
                     "со своей датой", result.bank, kept, previous)
