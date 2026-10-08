@@ -33,6 +33,15 @@ _SEO_PAGES = {
         r"vklady-(?:dolgosrochnye|kratkosrochnye|s-ezhemesyachnymi-vyplatami)|"
         r"srochnyy-vklad|schet-tipa-c|schyot_amana|tec)/?$"
         r"|^/ru/person/contributions/accounts/(?:candidate|special)/?$"
+        # Сбор 09.10.2026: посадочные страницы кредитов и кредитных карт,
+        # тарифы и взыскание — не продукты.
+        r"|^/ru/person/contributions/deposits/(?:vklad-\d+-rubley|vklad_dlya-zarplatnikov)/?$"
+        r"|^/ru/person/credits/money/(?:dengi-do-zarplaty|dlya_molodezhi|na_kartu|"
+        r"po_pasportu)/?$"
+        r"|^/ru/person/credits/(?:kredit|collection/[\w-]+)/?$"
+        r"|^/ru/person/bank_cards/credit_cards/(?:dlya_puteshestvij|luchshaya|mir|"
+        r"momentalnye_po_pasportu|rassrochka|s_beplatnym_obsluzhivaniyem|"
+        r"s_bolshojt_kreditnojt_nagruzkoj|za_5_minut|grace|s_lgotnym_periodom)/?$"
     ),
     "tbank.ru": re.compile(
         r"^/loans/cash-loan/(?:na-[\w-]+|pensioneram|studentam|selfemployed|"
