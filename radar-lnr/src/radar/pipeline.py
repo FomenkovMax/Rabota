@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, timezone
 from .config import get_env, get_settings, load_channels, load_yaml
 from .db import DB
 from .dedup import group_similar
+from .enrichment.service import Enricher, build_adapters
 from .llm.classifier import Classifier
 from .llm.client import LLMAuthError, make_client
 from .llm.cost import CostTracker
@@ -77,6 +78,13 @@ async def run_once(db: DB, hours: float | None = None, dry_run: bool = False, li
             relevant = await clf.filter_groups(groups)
             log.info("Релевантных после фильтра: %d из %d", len(relevant), len(groups))
             res.events = await clf.analyze_all(relevant)
+            # обогащение организаций (DaData и др.); сбой обогащения не ломает запуск
+            enricher = Enricher(db, build_adapters(env, cfg), cfg["enrichment"]["cache_ttl_days"])
+            for ev in res.events:
+                try:
+                    await enricher.enrich_event(ev)
+                except Exception as e:
+                    log.warning("обогащение не удалось для %r: %s", ev.get("title"), e)
 
         # ---- 4. сохранение и дайджест ----
         if not dry_run:

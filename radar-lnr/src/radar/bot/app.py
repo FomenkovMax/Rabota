@@ -5,19 +5,22 @@ import asyncio
 import logging
 from html import escape
 
-from aiogram import Bot, Dispatcher, Router
+from aiogram import Bot, Dispatcher, F, Router
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.filters import Command, CommandObject
-from aiogram.types import Message
+from aiogram.types import BufferedInputFile, Message
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 
 from ..config import get_env, get_settings, load_channels, setup_logging
 from ..db import DB
 from ..llm.client import LLMAuthError, LLMError, make_client
+from ..enrichment.service import Enricher, build_adapters
 from ..pipeline import run_once
+from ..report.excel import cards_workbook
 from .auth import WhitelistMiddleware
+from .inn_file import MAX_INNS, SUPPORTED, parse_inn_file
 from .sender import broadcast, recipients, safe_send
 
 log = logging.getLogger(__name__)
@@ -102,6 +105,64 @@ async def cmd_mute(m: Message):
 async def cmd_unmute(m: Message):
     ctx.db.set_dm(m.from_user.id, True)
     await m.answer("🔔 Дайджест в личку включён.")
+
+
+def _enricher() -> Enricher:
+    return Enricher(ctx.db, build_adapters(get_env(), get_settings()), get_settings()["enrichment"]["cache_ttl_days"])
+
+
+def _card_text(res) -> str:
+    if res.status != "found":
+        return {"not_found": "🔎 Не найдено.", "disabled": "⚙️ Обогащение выключено: не задан DADATA_API_KEY.",
+                "needs_review": "❓ Требует проверки"}.get(res.status, "❌ " + res.message) + (f" {escape(res.message)}" if res.status == "not_found" else "")
+    c, n = res.card, "н/д"
+    f = lambda v: escape(", ".join(v)) if isinstance(v, list) and v else escape(str(v)) if v else n  # noqa: E731
+    return (f"🏢 <b>{f(c.name_full)}</b>\nИНН {f(c.inn)} · ОГРН {f(c.ogrn)}\nСтатус: {f(c.status)}\nОКВЭД: {f(c.okved)}\n"
+            f"Адрес: {f(c.address)}\n👤 ЛПР: {f(c.director)}{(', ' + escape(c.director_post)) if c.director_post else ''}\n"
+            f"Учредители: {f(c.founders)}\nЧисленность: {f(c.employees)}\nТелефон: {f(c.phones)} · Email: {f(c.emails)}")
+
+
+@router.message(Command("inn"))
+async def cmd_inn(m: Message, command: CommandObject):
+    if not command.args:
+        await m.answer("Использование: <code>/inn 7707083893</code>\nИли пришли файл .xlsx/.csv/.txt со списком ИНН (до 50).")
+        return
+    res = await _enricher().lookup_inn(command.args.strip())
+    await m.answer(_card_text(res))
+    if res.status == "needs_review":
+        await m.answer(escape("\n".join(f"{i}. {c.name_full} (ИНН {c.inn})" for i, c in enumerate(res.candidates, 1))))
+
+
+@router.message(F.document)
+async def on_document(m: Message):
+    """Пакетная проверка: файл со списком ИНН -> один Excel со всеми карточками."""
+    doc = m.document
+    if not (doc.file_name or "").lower().endswith(SUPPORTED):
+        await m.answer("Нужен файл .xlsx, .csv или .txt со списком ИНН.")
+        return
+    if (doc.file_size or 0) > 2_000_000:
+        await m.answer("Файл слишком большой (макс. 2 МБ).")
+        return
+    buf = await ctx.bot.download(doc)
+    try:
+        valid, invalid, truncated = parse_inn_file(doc.file_name, buf.read())
+    except Exception as e:
+        await m.answer(f"Не смог прочитать файл: {escape(str(e))}")
+        return
+    if not valid and not invalid:
+        await m.answer("В файле не нашлось ИНН (10 или 12 цифр).")
+        return
+    await m.answer(f"Нашёл ИНН: {len(valid)}" + (f" (взял первые {MAX_INNS})" if truncated else "")
+                   + (f", с ошибкой в номере: {len(invalid)}" if invalid else "") + ". Проверяю… ⏳")
+    enr, items = _enricher(), []
+    for inn in valid:
+        items.append((inn, await enr.lookup_inn(inn)))
+        await asyncio.sleep(0.15)
+    from ..enrichment.base import LookupResult
+    for inn in invalid:   # битые ИНН не выбрасываем молча — показываем в файле
+        items.append((inn, LookupResult("error", message="ИНН не прошёл проверку контрольной суммы")))
+    await m.answer_document(BufferedInputFile(cards_workbook(items), filename="inn_cards.xlsx"),
+                            caption=f"Готово: найдено {sum(r.status == 'found' for _, r in items)} из {len(items)}")
 
 
 @router.message(Command("channels"))
