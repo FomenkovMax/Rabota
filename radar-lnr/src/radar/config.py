@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from functools import lru_cache
 from pathlib import Path
 
@@ -10,7 +11,8 @@ from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Корень проекта (папка, где лежат config/ и channels.yaml)
-ROOT = Path(__file__).resolve().parents[2]
+# RADAR_HOME можно задать переменной (в Docker это /app); по умолчанию — папка проекта
+ROOT = Path(os.environ.get("RADAR_HOME") or Path(__file__).resolve().parents[2])
 
 
 def _ids(raw: str) -> list[int]:

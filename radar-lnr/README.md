@@ -1,0 +1,165 @@
+# 📡 Радар ЛНР
+
+Бот, который раз в 4 часа читает ~90 Telegram-каналов ЛНР, отбирает важное для Сбера (Розничный бизнес, КСБ, РГС), обогащает организации по ИНН и присылает **одно** сообщение-дайджест + HTML-дашборд + Excel.
+
+```
+каналы (t.me/s) → дедуп → LLM-фильтр → LLM-разбор (JSON) → DaData → ≈ФОТ/потенциал → дайджест + дашборд + Excel
+```
+
+## Что умеет и чего не умеет (честно)
+
+| Работает | Не сделано / ограничено |
+|---|---|
+| Сбор постов из t.me/s, дедуп, 8 категорий, проверка «не выдумывай» (ИНН/суммы/имена/численность сверяются с текстом) | **companium.ru и bus.gov.ru не подключены**: robots.txt не удалось прочитать, парсеры не написаны (в `settings.yaml` выключены) |
+| DaData: карточка по ИНН и поиск по названию **только в ЛНР**, неоднозначное → «требует проверки» + топ-3 | **Численность** на бесплатном тарифе DaData не приходит → ≈оценка в большинстве событий «н/д» |
+| `/inn`, пакетная проверка файла (до 50 ИНН) → Excel | **Зарплаты по ОКВЭД и коэффициенты — заглушки** (`config/salaries.yaml`, `settings.yaml`, помечены TODO) |
+| Whitelist, `/mute`, лимиты Telegram, ротация логов | Telethon, VK, MAX — только заготовки интерфейса (Фаза 2) |
+| Стоимость в **токенах** всегда; в $ — если заполнить цены | Канал `admrov` (Ровеньки) не читается: у него нет веб-превью |
+
+## 1. Получить токены и ключи
+
+### Telegram-бот (BOT_TOKEN)
+1. В Telegram открой **@BotFather** → `/newbot` → имя и username (оканчивается на `bot`).
+2. Получишь токен вида `123456:AA…` → это `BOT_TOKEN`. Никому не показывай.
+3. Токен утёк? В @BotFather: `/mybots` → бот → **API Token** → **Revoke current token**.
+
+### Твой user_id (ADMIN_USER_ID)
+Запусти бота и напиши ему `/myid` (до запуска можно узнать у @userinfobot).
+
+### Claude через прокси (LLM_*)
+Берётся из кабинета сервиса, где купили доступ.
+- `LLM_API_FORMAT` — `anthropic` (если в инструкции `ANTHROPIC_BASE_URL`) или `openai`.
+- `LLM_BASE_URL` — адрес сервиса. `LLM_API_KEY` — ключ.
+- Модели смотри запросом `GET <LLM_BASE_URL>/v1/models`. Сейчас: `MODEL_FILTER=claude-haiku-4-5`, `MODEL_ANALYZE=claude-sonnet-5`.
+- `LLM_AUTH_STYLE=bearer` (по умолчанию) или `x-api-key`, если прокси требует другой заголовок.
+- Проверка: `uv run python scripts/check_llm.py` (понятно пишет, что не так с ключом/URL/моделью).
+- Цены в $ за 1 млн токенов впиши в `config/settings.yaml` → `llm.prices`, иначе стоимость запуска в логе «н/д».
+
+### DaData (DADATA_API_KEY)
+Зарегистрируйся на dadata.ru → личный кабинет → раздел с ключами (профиль/настройки) → скопируй **API-ключ**. Секретный ключ не нужен. Без ключа `/inn` отвечает «Обогащение выключено», дайджест работает без ИНН.
+
+## 2. Запуск локально (Windows / Python 3.13 / uv)
+
+```powershell
+cd radar-lnr
+uv sync                          # поставить зависимости
+copy .env.example .env           # затем открой .env и заполни
+uv run pytest -q                 # тесты (должны быть зелёные)
+uv run python scripts/check_llm.py
+uv run python -m radar run --hours 24 --dry-run     # пробный прогон, в БД не пишет, в Telegram не шлёт
+uv run python -m radar bot       # бот + планировщик (раз в 4 часа)
+```
+`.env` лежит рядом с `pyproject.toml`, в git не попадает.
+
+## 3. Деплой на VPS через Docker (рекомендуется)
+
+**Нужно:** сервер Ubuntu 22.04/24.04 с доступом по SSH. С него должны открываться `t.me`, `api.telegram.org`, адрес `LLM_BASE_URL` (проверь: `curl -I https://t.me/s/government_lnr`).
+
+### Вариант А: через git (проще обновлять)
+```bash
+ssh user@IP_СЕРВЕРА
+git clone <URL_ТВОЕГО_РЕПО> && cd <репо>/radar-lnr      # приватный репо: нужен deploy key или токен GitHub
+bash scripts/vps_setup.sh        # 1-й запуск: поставит Docker и создаст .env из шаблона, попросит заполнить
+nano .env                        # вставь секреты (см. таблицу ниже)
+bash scripts/vps_setup.sh        # 2-й запуск: соберёт образ и запустит
+docker compose logs -f           # смотреть логи (выход: Ctrl+C, бот продолжит работать)
+```
+
+### Вариант Б: без git, с твоего компьютера (Linux / macOS / WSL / Git Bash)
+```bash
+bash scripts/deploy.sh user@IP_СЕРВЕРА --env     # зальёт код + твой .env (права 600) и запустит
+bash scripts/deploy.sh user@IP_СЕРВЕРА logs      # логи
+```
+
+### Автозапуск после перезагрузки VPS
+Уже настроен: `restart: unless-stopped` в `docker-compose.yml` + `vps_setup.sh` включает автозапуск Docker. Проверка: `sudo reboot`, через минуту `docker ps` — контейнер `radar-lnr` должен быть `Up`.
+
+### Подключить группу и коллег
+1. Создай закрытую группу, добавь **бота** и 4 коллег.
+2. В группе напиши `/chatid@ИМЯ_БОТА` (или просто `/chatid`) → бот пришлёт ID группы (отрицательное число, например `-1001234567890`).
+3. Каждый коллега пишет боту в личку `/start` и `/myid` и присылает тебе число.
+4. В `.env`:
+   ```
+   ALLOWED_USER_IDS=111,222,333,444,555
+   DIGEST_CHAT_IDS=-1001234567890
+   ```
+   Дайджест уходит в группу **и** каждому из `ALLOWED_USER_IDS` в личку (кто не нажал `/mute`).
+5. Применить изменения `.env`: `docker compose up -d --force-recreate` (просто `restart` `.env` не перечитывает).
+6. Проверка: админ пишет боту `/digest` — запустится внеплановый прогон.
+
+> ⚠️ Бот не может первым написать человеку, который ни разу не нажал **Start**. Для таких в логе будет «бот заблокирован или не добавлен» — это не ошибка.
+
+### Переменные .env
+
+| Переменная | Что это |
+|---|---|
+| `BOT_TOKEN` | токен бота |
+| `ADMIN_USER_ID` | твой user_id: служебные уведомления (ошибки, недоступные каналы, проблемы с ключом) идут только тебе |
+| `ALLOWED_USER_IDS` | user_id тех, кому разрешены команды (через запятую) |
+| `DIGEST_CHAT_IDS` | куда слать дайджест: id группы и/или личные id |
+| `LLM_API_FORMAT`, `LLM_API_KEY`, `LLM_BASE_URL`, `LLM_AUTH_STYLE`, `MODEL_FILTER`, `MODEL_ANALYZE` | LLM |
+| `DADATA_API_KEY` | обогащение по ИНН |
+| `DATA_DIR` | в Docker задаётся автоматически (`/data` → папка `data/` рядом с compose) |
+
+## 4. Повседневное
+
+**Добавить канал:** открой `channels.yaml`, допиши строку, перезапуск не нужен (читается на каждом запуске):
+```yaml
+- {username: имя_канала, title: Название, section: Раздел, priority: 2, group: Доп}
+```
+Либо обнови xlsx и выполни `uv run python scripts/import_xlsx.py файл.xlsx` (группа «Доп» сохранится).
+
+**Изменить настройки** (`config/settings.yaml`, `salaries.yaml`, `competitors.yaml`): правь файл → `docker compose restart`.
+
+**Обновить версию (вариант А):** `bash scripts/update.sh`. **Вариант Б:** снова `bash scripts/deploy.sh user@IP`.
+
+**Логи:** `docker compose logs -f --tail=100`; файлы с ротацией — `data/logs/radar.log` (5 МБ × 5).
+
+**Выгрузки:** `data/exports/` (HTML + Excel каждого запуска). **База:** `data/radar.db` — копируй для бэкапа (`cp data/radar.db backup.db`).
+
+**Остановить/запустить:** `docker compose down` / `docker compose up -d`.
+
+### Команды бота
+`/start` · `/myid` (всем) · `/chatid` · `/inn <ИНН>` или файл .xlsx/.txt/.csv до 50 ИНН → Excel · `/channels` · `/stats` · `/mute` / `/unmute` (личка) · `/digest [часы]` (только админ). Остальным посторонним — вежливый отказ, попытка пишется в лог.
+
+## 5. Вариант без Docker (systemd)
+
+```bash
+sudo useradd -r -m -d /opt/radar-lnr radar
+sudo -u radar git clone <URL_РЕПО> /tmp/r && sudo cp -r /tmp/r/radar-lnr/. /opt/radar-lnr/ && sudo chown -R radar /opt/radar-lnr
+curl -LsSf https://astral.sh/uv/install.sh | sudo -u radar sh           # поставить uv
+cd /opt/radar-lnr && sudo -u radar ~radar/.local/bin/uv sync --no-dev   # зависимости (нужен Python 3.11+; uv сам скачает)
+sudo -u radar cp .env.example .env && sudo -u radar nano .env && sudo chmod 600 .env
+sudo cp deploy/radar-lnr.service /etc/systemd/system/
+sudo systemctl daemon-reload && sudo systemctl enable --now radar-lnr
+journalctl -u radar-lnr -f                                              # логи
+```
+
+## 6. Если что-то не работает
+
+| Симптом | Что делать |
+|---|---|
+| `chat not found` при отправке | человек не нажал **Start** у бота |
+| В логе `401/403` от LLM | неверный ключ/URL или гео-блок: `scripts/check_llm.py`; админу приходит уведомление |
+| `/inn` → «Обогащение выключено» | не задан `DADATA_API_KEY` |
+| «⚠️ не удалось прочитать: N каналов» | список — в `/channels` и админу в личку; канал закрыт или без веб-превью |
+| Бот не отвечает после смены `.env` | `docker compose up -d --force-recreate` |
+| `permission denied` на `data/` | `sudo chown -R 10001:10001 data` |
+| В группе бот молчит | убедись, что бот добавлен в группу и твой id в `ALLOWED_USER_IDS` |
+
+## 7. Безопасность
+
+- Секреты только в `.env` (права 600), не в git, не в образе Docker, в логи не пишутся.
+- Если ключ/токен попадал в чат или скриншот — **перевыпусти**.
+- В LLM уходят только тексты публичных каналов. Перед боевым использованием согласуй с безопасностью использование стороннего прокси.
+- ЛПР и контакты берутся только из публичных реестров (DaData), личные контакты физлиц не собираются.
+
+## 8. Структура
+
+```
+channels.yaml  config/ (settings, salaries, competitors)  scripts/ (import_xlsx, check_llm, vps_setup, update, deploy)
+src/radar/  sources/ (t.me/s, заглушки Telethon/VK/MAX)  llm/ (клиент, промпты, проверка фактов)
+            enrichment/ (DaData, кэш)  report/ (дайджест, дашборд, Excel)  bot/ (команды, whitelist, отправка)
+            pipeline.py  finance.py  dedup.py  db.py
+Dockerfile  docker-compose.yml  deploy/radar-lnr.service  tests/
+```

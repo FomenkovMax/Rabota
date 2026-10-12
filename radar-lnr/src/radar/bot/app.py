@@ -76,13 +76,19 @@ async def do_digest(hours: float | None = None, to_admin_only: bool = False) -> 
 @router.message(Command("start"))
 async def cmd_start(m: Message):
     await m.answer("📡 <b>Радар ЛНР</b>\nРаз в 4 часа присылаю дайджест новостей региона.\n\n"
-                   "/myid — твой user_id\n/channels — каналы\n/stats — статистика\n"
+                   "/myid — твой user_id\n/chatid — ID чата (для группы)\n/inn — карточка по ИНН (или пришли файл)\n/channels — каналы\n/stats — статистика\n"
                    "/mute, /unmute — отключить/включить дайджест в личку\n/digest — запустить сейчас (админ)")
 
 
 @router.message(Command("myid"))
 async def cmd_myid(m: Message):
     await m.answer(f"Твой user_id: <code>{m.from_user.id}</code>")
+
+
+@router.message(Command("chatid"))
+async def cmd_chatid(m: Message):
+    """Напиши в группе — бот покажет её ID (его нужно вписать в DIGEST_CHAT_IDS)."""
+    await m.answer(f"ID этого чата: <code>{m.chat.id}</code>")
 
 
 @router.message(Command("digest"))
