@@ -50,7 +50,7 @@ class Enricher:
 
     async def lookup_name(self, name: str, region: str | None = None) -> LookupResult:
         """Поиск по названию. Единственный и очень похожий кандидат — найден; иначе «требует проверки» + топ-3."""
-        key = f"name:{_clean_name(name)}:{region or self.region}"
+        key = f"name:v2-lnr:{_clean_name(name)}"   # v2: поиск только в ЛНР (по kladr_id)
         if (cached := self.db.cache_get(key, self.ttl)):
             return LookupResult.from_dict(cached)
         if not self.adapters:

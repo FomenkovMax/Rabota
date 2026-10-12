@@ -119,3 +119,16 @@ def test_excel_cards_workbook_has_nd_and_review_sheet():
     assert rows[1][1] == "Найдено" and rows[1][7] == "Иванов Иван Иванович"
     assert rows[2][1] == "Требует проверки" and rows[2][2] == "н/д"
     assert wb["Требует проверки (топ-3)"].max_row == 2
+
+
+async def test_name_search_is_restricted_to_lnr_by_kladr(tmp_path):
+    seen = []
+
+    def handler(req):
+        import json as j
+        seen.append(j.loads(req.content))
+        return httpx.Response(200, json={"suggestions": []})
+
+    res = await Enricher(DB(tmp_path / "t.db"), [adapter(handler)]).lookup_name("Клеверфарм")
+    assert seen[0]["locations"] == [{"kladr_id": "9400000000000"}]
+    assert res.status == "not_found"      # нет в ЛНР — не подставляем московских однофамильцев

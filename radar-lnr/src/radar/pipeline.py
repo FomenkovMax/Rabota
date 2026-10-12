@@ -8,6 +8,8 @@ from datetime import datetime, timedelta, timezone
 from .config import get_env, get_settings, load_channels, load_yaml
 from .db import DB
 from .dedup import group_similar
+from .finance import effect_text, estimate
+from .report.export import export_files
 from .enrichment.service import Enricher, build_adapters
 from .llm.classifier import Classifier
 from .llm.client import LLMAuthError, make_client
@@ -28,6 +30,7 @@ class RunResult:
     posts_new: int = 0
     cost: CostTracker | None = None
     digest: str = ""
+    files: list = field(default_factory=list)   # HTML-дашборд и Excel для вложения
 
 
 async def run_once(db: DB, hours: float | None = None, dry_run: bool = False, limit_channels: int | None = None,
@@ -85,6 +88,9 @@ async def run_once(db: DB, hours: float | None = None, dry_run: bool = False, li
                     await enricher.enrich_event(ev)
                 except Exception as e:
                     log.warning("обогащение не удалось для %r: %s", ev.get("title"), e)
+            for ev in res.events:   # оценка фин. эффекта (после обогащения: нужна численность/ОКВЭД)
+                ev["finance"] = estimate(ev)
+                ev["fin_effect_text"] = effect_text(ev["finance"])
 
         # ---- 4. сохранение и дайджест ----
         if not dry_run:
@@ -94,6 +100,8 @@ async def run_once(db: DB, hours: float | None = None, dry_run: bool = False, li
         d = cfg["digest"]
         res.digest = build_digest(res.events, since, until, len(res.channel_errors), d["timezone"],
                                   d["max_events"], d["min_score"])
+        if res.events:
+            res.files = export_files(res.events, since, until, get_env().data_path / "exports")
         log.info(res.cost.summary())
         if not dry_run:
             db.finish_run(run_id, "ok", posts_new=res.posts_new, events_n=len(res.events),

@@ -59,3 +59,51 @@ def cards_workbook(items: list[tuple[str, LookupResult]]) -> bytes:
     buf = io.BytesIO()
     wb.save(buf)
     return buf.getvalue()
+
+
+EV_COLS = ["Оценка", "Категория", "Заголовок", "Суть", "Организация", "ИНН", "Район", "ЛПР", "Численность",
+           "≈ ФОТ в год, ₽", "≈ Потенциал в год, ₽", "Возможность для Сбера", "Источники"]
+
+
+def district_of(ev: dict, channel_districts: dict[str, str] | None = None) -> str:
+    """Район: из текста (region организации) или из района канала-источника. Иначе «н/д»."""
+    for o in ev.get("organizations") or []:
+        if o.get("region"):
+            return o["region"]
+    for ch in ev.get("channels") or []:
+        if (channel_districts or {}).get(ch):
+            return channel_districts[ch]
+    return NA
+
+
+def events_workbook(events: list[dict], channel_districts: dict[str, str] | None = None) -> bytes:
+    """Excel-выгрузка событий запуска + лист «Формула» с допущениями оценки."""
+    from ..finance import FORMULA
+    from ..llm.schemas import CATEGORIES
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "События"
+    ws.append(EV_COLS)
+    for ev in sorted(events, key=lambda e: -e["relevance_score"]):
+        enr = ev.get("enriched") or {}
+        card = enr.get("card") if enr.get("status") == "found" else None
+        org = (ev.get("organizations") or [{}])[0]
+        fin = ev.get("finance") or {}
+        inn = (card or {}).get("inn") or org.get("inn_if_in_text") or ("требует проверки" if enr.get("status") == "needs_review" else None)
+        persons = ev.get("persons") or []
+        lpr = (card or {}).get("director") or (persons[0]["name"] if persons else None)
+        ws.append([ev["relevance_score"], f"{CATEGORIES[ev['category']][0]} {CATEGORIES[ev['category']][1]}", ev["title"],
+                   ev["summary"], _val(org.get("name")), _val(inn), district_of(ev, channel_districts), _val(lpr),
+                   _val(fin.get("employees")), _val(round(fin["fot_year"]) if fin.get("fot_year") else None),
+                   _val(round(fin["potential_year"]) if fin.get("potential_year") else None),
+                   _val(ev.get("business_opportunity")), "\n".join(ev.get("source_urls") or [])])
+    _style(ws, [8, 30, 40, 60, 32, 16, 18, 28, 12, 16, 18, 40, 40])
+    ws.auto_filter.ref = ws.dimensions
+    f = wb.create_sheet("Формула")
+    f.append(["Как считается ≈ оценка"])
+    f.append([FORMULA])
+    f.column_dimensions["A"].width = 120
+    f["A2"].alignment = Alignment(wrap_text=True)
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()

@@ -67,7 +67,7 @@ async def do_digest(hours: float | None = None, to_admin_only: bool = False) -> 
         lines = "\n".join(f"• {k}: {escape(v)}" for k, v in list(res.channel_errors.items())[:20])
         await notify_admin(f"⚠️ Недоступно каналов: {len(res.channel_errors)}\n{lines}")
     chats = [env.admin_user_id] if to_admin_only else recipients(env.chat_ids, env.allowed_ids, ctx.db.dm_muted())
-    delivered = await broadcast(ctx.bot, chats, res.digest)
+    delivered = await broadcast(ctx.bot, chats, res.digest, res.files)
     ok = sum(delivered.values())
     return f"Готово: событий {len(res.events)}, доставлено {ok}/{len(chats)}. {res.cost.summary() if res.cost else ''}"
 

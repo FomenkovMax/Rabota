@@ -41,8 +41,7 @@ def _fmt_event(ev: dict) -> str:
         lpr = persons[0]["name"] + (f", {persons[0]['position']}" if persons[0].get("position") else "")
     if lpr:
         lines.append("👤 " + escape(lpr))
-    if ev.get("fin_effect_text"):
-        lines.append("💵 " + escape(ev["fin_effect_text"]))
+    lines.append("💵 " + escape(ev.get("fin_effect_text") or "н/д"))
     if ev.get("business_opportunity"):
         lines.append("🎯 " + escape(ev["business_opportunity"]))
     links = ev.get("source_urls") or []

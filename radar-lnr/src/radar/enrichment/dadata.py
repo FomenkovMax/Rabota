@@ -6,6 +6,9 @@ import httpx
 from .base import Adapter, AdapterError, OrgCard
 
 BASE = "https://suggestions.dadata.ru/suggestions/api/4_1/rs"
+# Фильтр «только ЛНР». Фильтры по названию региона и ISO-коду DaData молча игнорирует (проверено вживую),
+# работает только kladr_id региона.
+LNR_KLADR_ID = "9400000000000"
 STATUS_RU = {"ACTIVE": "Действует", "LIQUIDATING": "Ликвидируется", "LIQUIDATED": "Ликвидирована",
              "BANKRUPT": "Банкротство", "REORGANIZING": "Реорганизация"}
 
@@ -65,7 +68,6 @@ class DaDataAdapter(Adapter):
         return main or cards
 
     async def by_name(self, name: str, region: str | None = None) -> list[OrgCard]:
-        body = {"query": name, "count": 5}
-        if region:
-            body["locations"] = [{"region": region}]
+        # поиск по названию — ТОЛЬКО в ЛНР (иначе находятся однофамильцы из других регионов)
+        body = {"query": name, "count": 5, "locations": [{"kladr_id": LNR_KLADR_ID}]}
         return [parse_party(s) for s in await self._post("suggest/party", body)]
