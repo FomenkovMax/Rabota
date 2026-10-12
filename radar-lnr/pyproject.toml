@@ -1,0 +1,35 @@
+[project]
+name = "radar-lnr"
+version = "0.1.0"
+description = "Радар ЛНР: мониторинг новостей региона для Сбера"
+requires-python = ">=3.11"
+dependencies = [
+  "httpx>=0.27",
+  "selectolax>=0.3.21",
+  "pydantic>=2.7",
+  "pydantic-settings>=2.3",
+  "pyyaml>=6",
+  "openpyxl>=3.1",
+  "anthropic>=0.40",
+  "openai>=1.40",
+  "aiogram>=3.10",
+  "apscheduler>=3.10,<4",
+  "rapidfuzz>=3.9",
+  "jinja2>=3.1",
+  "tzdata",
+]
+
+[dependency-groups]
+dev = ["pytest>=8", "pytest-asyncio>=0.23"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/radar"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+pythonpath = ["src"]

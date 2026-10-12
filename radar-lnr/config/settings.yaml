@@ -1,0 +1,42 @@
+# Настройки, которые можно менять без правки кода
+
+scrape:
+  delay_min_s: 1.0        # пауза между каналами (вежливый парсинг)
+  delay_max_s: 2.5
+  retries: 3
+  timeout_s: 20
+  user_agent: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
+  max_posts_per_channel: 40   # сколько последних постов смотрим за один заход
+  first_run_hours: 24         # если прошлого запуска нет — смотрим за столько часов
+  max_text_chars: 3000        # длинные посты обрезаем перед отправкой в LLM
+
+dedup:
+  similarity_threshold: 88    # 0..100, похожесть текста (rapidfuzz token_set_ratio)
+
+llm:
+  filter_batch_size: 15       # постов в одном запросе дешёвого фильтра
+  max_retries: 2              # повтор при невалидном JSON
+  # Цена за 1 млн токенов в USD — ЗАПОЛНИ по тарифам своего прокси.
+  # Пока null — стоимость в логе будет «н/д» (токены считаются всегда).
+  prices:
+    filter:  {input: null, output: null}
+    analyze: {input: null, output: null}
+
+digest:
+  every_hours: 4
+  timezone: Europe/Moscow
+  max_events: 12              # сколько событий в сообщении (остальное в дашборде)
+  min_score: 2                # события с relevance_score ниже в дайджест не идут
+
+enrichment:
+  cache_ttl_days: 7
+  dadata: {enabled: true}
+  companium: {enabled: false}   # включишь после проверки robots.txt (этап 2)
+  busgov: {enabled: false}
+
+finance:
+  # Доля сотрудников, которые перейдут на зарплатный проект Сбера, и годовая
+  # доходность пакета на одного сотрудника (руб.). TODO(Макс): уточни у коллег.
+  salary_share: 0.5
+  yield_per_payroll_rub: 0.02   # доля от ФОТ в год (заглушка)
+  months: 12

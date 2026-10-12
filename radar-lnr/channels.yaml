@@ -1,0 +1,439 @@
+channels:
+- username: glava_lnr_info
+  title: Леонид Пасечник
+  section: Глава и Правительство
+  priority: 1
+  group: xlsx
+- username: government_lnr
+  title: Правительство ЛНР
+  section: Глава и Правительство
+  priority: 1
+  group: xlsx
+- username: parlamentLNR
+  title: Народный Совет ЛНР
+  section: Власть и права граждан
+  priority: 3
+  group: xlsx
+- username: ombudsman_lpr_rf
+  title: Уполномоченный по правам человека в ЛНР
+  section: Власть и права граждан
+  priority: 3
+  group: xlsx
+- username: minfinlnr
+  title: Министерство финансов ЛНР
+  section: Министерства
+  priority: 1
+  group: xlsx
+- username: mu_lnr
+  title: Министерство юстиции ЛНР
+  section: Министерства
+  priority: 1
+  group: xlsx
+- username: mzlnr
+  title: Министерство здравоохранения ЛНР
+  section: Министерства
+  priority: 1
+  group: xlsx
+- username: mintrudlnr
+  title: Министерство труда и социальной политики ЛНР
+  section: Министерства
+  priority: 1
+  group: xlsx
+- username: minobrlnr
+  title: Министерство образования и науки ЛНР
+  section: Министерства
+  priority: 1
+  group: xlsx
+- username: minec_lpr
+  title: Министерство экономического развития ЛНР
+  section: Министерства
+  priority: 1
+  group: xlsx
+- username: mpt_lnr
+  title: Министерство промышленности и торговли ЛНР
+  section: Министерства
+  priority: 1
+  group: xlsx
+- username: mintopenergoLPR
+  title: Министерство топлива, энергетики и угольной промышленности ЛНР
+  section: Министерства
+  priority: 1
+  group: xlsx
+- username: minstroylnr
+  title: Министерство строительства и ЖКХ ЛНР
+  section: Министерства
+  priority: 1
+  group: xlsx
+- username: mshiplnr
+  title: Министерство сельского хозяйства и продовольствия ЛНР
+  section: Министерства
+  priority: 1
+  group: xlsx
+- username: mintrans_lnr
+  title: Министерство инфраструктуры и транспорта ЛНР
+  section: Министерства
+  priority: 1
+  group: xlsx
+- username: mincomlpr
+  title: Министерство цифрового развития, связи и массовых коммуникаций ЛНР
+  section: Министерства
+  priority: 1
+  group: xlsx
+- username: mprlnr
+  title: Министерство природных ресурсов и экологии ЛНР
+  section: Министерства
+  priority: 1
+  group: xlsx
+- username: MK_LNR
+  title: Министерство культуры ЛНР
+  section: Министерства
+  priority: 1
+  group: xlsx
+- username: MSPORTLNR
+  title: Министерство спорта ЛНР
+  section: Министерства
+  priority: 1
+  group: xlsx
+- username: minmol_LPR
+  title: Министерство молодёжной политики ЛНР
+  section: Министерства
+  priority: 1
+  group: xlsx
+- username: mvdlnr_official
+  title: МВД по ЛНР
+  section: Региональные органы федеральных ведомств
+  priority: 1
+  group: xlsx
+- username: mchslnr
+  title: ГУ МЧС России по ЛНР
+  section: Региональные органы федеральных ведомств
+  priority: 1
+  group: xlsx
+- username: sledcom_lnr
+  title: Следственное управление СК России по ЛНР
+  section: Региональные органы федеральных ведомств
+  priority: 1
+  group: xlsx
+- username: proclnr
+  title: Прокуратура ЛНР
+  section: Региональные органы федеральных ведомств
+  priority: 1
+  group: xlsx
+- username: r81_rosreestr
+  title: Управление Росреестра по ЛНР
+  section: Региональные органы федеральных ведомств
+  priority: 1
+  group: xlsx
+- username: rospotrebnadzor_lnr
+  title: Управление Роспотребнадзора по ЛНР
+  section: Региональные органы федеральных ведомств
+  priority: 1
+  group: xlsx
+- username: sfr_lnr
+  title: Социальный фонд России по ЛНР
+  section: Региональные органы федеральных ведомств
+  priority: 1
+  group: xlsx
+- username: agl_lnr
+  title: 'Администрация: Луганск'
+  section: Муниципалитеты — города
+  priority: 2
+  group: xlsx
+  district: Луганск
+- username: AGA_LNR
+  title: 'Администрация: Алчевск'
+  section: Муниципалитеты — города
+  priority: 2
+  group: xlsx
+  district: Алчевск
+- username: Bryanka_AGB_LNR
+  title: 'Администрация: Брянка'
+  section: Муниципалитеты — города
+  priority: 2
+  group: xlsx
+  district: Брянка
+- username: agklnr
+  title: 'Администрация: Кировск'
+  section: Муниципалитеты — города
+  priority: 2
+  group: xlsx
+  district: Кировск
+- username: krasnyluchpress
+  title: 'Администрация: Красный Луч'
+  section: Муниципалитеты — города
+  priority: 2
+  group: xlsx
+  district: Красный Луч
+- username: lisichansk_adm
+  title: 'Администрация: Лисичанск'
+  section: Муниципалитеты — города
+  priority: 2
+  group: xlsx
+  district: Лисичанск
+- username: agp_lnr
+  title: 'Администрация: Первомайск'
+  section: Муниципалитеты — города
+  priority: 2
+  group: xlsx
+  district: Первомайск
+- username: admrov
+  title: 'Администрация: Ровеньки'
+  section: Муниципалитеты — города
+  priority: 2
+  group: xlsx
+  district: Ровеньки
+- username: Agr_lnr
+  title: 'Администрация: Рубежное'
+  section: Муниципалитеты — города
+  priority: 2
+  group: xlsx
+  district: Рубежное
+- username: svr_lnr
+  title: 'Администрация: Северодонецк'
+  section: Муниципалитеты — города
+  priority: 2
+  group: xlsx
+  district: Северодонецк
+- username: AGStakhanov
+  title: 'Администрация: Стаханов'
+  section: Муниципалитеты — города
+  priority: 2
+  group: xlsx
+  district: Стаханов
+- username: antratsitpressa
+  title: 'Администрация: Антрацитовский округ'
+  section: Муниципалитеты — округа
+  priority: 2
+  group: xlsx
+  district: Антрацитовский округ
+- username: belovodskADM
+  title: 'Администрация: Беловодский округ'
+  section: Муниципалитеты — округа
+  priority: 2
+  group: xlsx
+  district: Беловодский округ
+- username: adm_belokurakino
+  title: 'Администрация: Белокуракинский округ'
+  section: Муниципалитеты — округа
+  priority: 2
+  group: xlsx
+  district: Белокуракинский округ
+- username: krasnodoninfo
+  title: 'Администрация: Краснодонский округ'
+  section: Муниципалитеты — округа
+  priority: 2
+  group: xlsx
+  district: Краснодонский округ
+- username: krem_adm
+  title: 'Администрация: Кременской округ'
+  section: Муниципалитеты — округа
+  priority: 2
+  group: xlsx
+  district: Кременской округ
+- username: lutugino_lnr
+  title: 'Администрация: Лутугинский округ'
+  section: Муниципалитеты — округа
+  priority: 2
+  group: xlsx
+  district: Лутугинский округ
+- username: marrgalprofficial
+  title: 'Администрация: Марковский округ'
+  section: Муниципалитеты — округа
+  priority: 2
+  group: xlsx
+  district: Марковский округ
+- username: melovoelnr
+  title: 'Администрация: Меловской округ'
+  section: Муниципалитеты — округа
+  priority: 2
+  group: xlsx
+  district: Меловской округ
+- username: adm_novoaidar
+  title: 'Администрация: Новоайдарский округ'
+  section: Муниципалитеты — округа
+  priority: 2
+  group: xlsx
+  district: Новоайдарский округ
+- username: novopskovlnr
+  title: 'Администрация: Новопсковский округ'
+  section: Муниципалитеты — округа
+  priority: 2
+  group: xlsx
+  district: Новопсковский округ
+- username: perevalsklnr
+  title: 'Администрация: Перевальский округ'
+  section: Муниципалитеты — округа
+  priority: 2
+  group: xlsx
+  district: Перевальский округ
+- username: svatovoLNR
+  title: 'Администрация: Сватовский округ'
+  section: Муниципалитеты — округа
+  priority: 2
+  group: xlsx
+  district: Сватовский округ
+- username: AdmSvkLNR
+  title: 'Администрация: Свердловский округ'
+  section: Муниципалитеты — округа
+  priority: 2
+  group: xlsx
+  district: Свердловский округ
+- username: slavlnr
+  title: 'Администрация: Славяносербский округ'
+  section: Муниципалитеты — округа
+  priority: 2
+  group: xlsx
+  district: Славяносербский округ
+- username: stanicalug
+  title: 'Администрация: Станично-Луганский округ'
+  section: Муниципалитеты — округа
+  priority: 2
+  group: xlsx
+  district: Станично-Луганский округ
+- username: starobelsk1686
+  title: 'Администрация: Старобельский округ'
+  section: Муниципалитеты — округа
+  priority: 2
+  group: xlsx
+  district: Старобельский округ
+- username: troitskoelnr
+  title: 'Администрация: Троицкий округ'
+  section: Муниципалитеты — округа
+  priority: 2
+  group: xlsx
+  district: Троицкий округ
+- username: GTRKLNR_Lugansk24
+  title: Луганск 24
+  section: СМИ
+  priority: 2
+  group: xlsx
+- username: LIC_LPR
+  title: Луганский информационный центр
+  section: СМИ
+  priority: 2
+  group: xlsx
+- username: GTRKLUG
+  title: Вести Луганск
+  section: СМИ
+  priority: 2
+  group: xlsx
+- username: luganmedia
+  title: ГБУ ЛНР Луганьмедиа
+  section: СМИ
+  priority: 2
+  group: xlsx
+- username: moibiz81
+  title: Центр «Мой бизнес» ЛНР
+  section: Бизнес и инвестиции
+  priority: 1
+  group: xlsx
+- username: mkrfin_lnr
+  title: Фонд микрофинансирования ЛНР
+  section: Бизнес и инвестиции
+  priority: 1
+  group: xlsx
+- username: Gflnr
+  title: Гарантийный фонд ЛНР
+  section: Бизнес и инвестиции
+  priority: 1
+  group: xlsx
+- username: exportlnr
+  title: Центр поддержки экспорта ЛНР
+  section: Бизнес и инвестиции
+  priority: 1
+  group: xlsx
+- username: frpLNR
+  title: Фонд развития промышленности ЛНР
+  section: Бизнес и инвестиции
+  priority: 1
+  group: xlsx
+- username: ciss_lnr
+  title: Центр инноваций социальной сферы (ЦИСС)
+  section: Бизнес и инвестиции
+  priority: 1
+  group: xlsx
+- username: luganet_lg
+  title: Луганет
+  section: Компании ЛНР
+  priority: 1
+  group: xlsx
+- username: ygmka
+  title: ЮГМК
+  section: Компании ЛНР
+  priority: 1
+  group: xlsx
+- username: rabotalnrru
+  title: Работа ЛНР (вакансии Луганск), частный проект
+  section: Труд и занятость
+  priority: 3
+  group: xlsx
+- username: luganskgaz_lnr
+  title: Луганскгаз — филиал ООО Черноморнефтегаз
+  section: Предприятия и услуги
+  priority: 3
+  group: xlsx
+- username: NRlcjA4mJcowM2Uy
+  title: Лугансквода
+  section: Предприятия и услуги
+  priority: 3
+  group: xlsx
+- username: postLNR
+  title: Почта ЛНР
+  section: Предприятия и услуги
+  priority: 3
+  group: xlsx
+- username: mfclnr
+  title: МФЦ ЛНР
+  section: Предприятия и услуги
+  priority: 3
+  group: xlsx
+- username: teplo_lnr
+  title: ГУП ЛНР «Луганская тепловая организация»
+  section: Предприятия и услуги
+  priority: 3
+  group: xlsx
+- username: lrkblnr
+  title: Луганская республиканская клиническая больница
+  section: Здравоохранение и культура
+  priority: 3
+  group: xlsx
+- username: fil_lnr
+  title: Луганская академическая филармония
+  section: Здравоохранение и культура
+  priority: 3
+  group: xlsx
+- username: dahluniverlnr
+  title: ЛГУ имени Владимира Даля
+  section: Образование
+  priority: 3
+  group: xlsx
+- username: lgpu_lugansk
+  title: Луганский государственный педагогический университет
+  section: Образование
+  priority: 3
+  group: xlsx
+- username: lgau_univer
+  title: ЛГАУ имени К. Е. Ворошилова
+  section: Образование
+  priority: 3
+  group: xlsx
+- username: lgmulnr
+  title: Луганский медицинский университет
+  section: Образование
+  priority: 3
+  group: xlsx
+- username: pklgau
+  title: Политехнический колледж ЛГАУ
+  section: Образование
+  priority: 3
+  group: xlsx
+- {username: incidentLNR_Lugansk, title: incidentLNR_Lugansk, section: Происшествия, priority: 2, group: Доп}
+- {username: ya_pashenko, title: ya_pashenko, section: Доп. каналы, priority: 2, group: Доп}
+- {username: obstanovkalnr, title: obstanovkalnr, section: Происшествия, priority: 2, group: Доп}
+- {username: mlnrlive, title: mlnrlive, section: Доп. каналы, priority: 2, group: Доп}
+- {username: regionlg_181, title: regionlg_181, section: Доп. каналы, priority: 2, group: Доп}
+- {username: krd_dnr, title: krd_dnr, section: Доп. каналы, priority: 3, group: Доп, note: "проверить — возможно ДНР"}
+- {username: soyuzmash81, title: soyuzmash81, section: Компании ЛНР, priority: 1, group: Доп}
+- {username: luganskallnews, title: luganskallnews, section: СМИ, priority: 2, group: Доп}
+- {username: business_LNR, title: business_LNR, section: Бизнес и инвестиции, priority: 1, group: Доп}
+- {username: psb_dlya_svoih, title: ПСБ для своих (конкурент), section: Банки-конкуренты, priority: 1, group: Доп, note: канал конкурента ПСБ}
