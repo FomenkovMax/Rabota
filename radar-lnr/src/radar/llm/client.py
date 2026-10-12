@@ -42,16 +42,18 @@ class LLMClient(ABC):
 
 
 class AnthropicClient(LLMClient):
-    def __init__(self, api_key: str, base_url: str):
+    def __init__(self, api_key: str, base_url: str, bearer: bool = True):
         import anthropic
         self._sdk = anthropic
-        self.client = anthropic.AsyncAnthropic(api_key=api_key, base_url=base_url or None, max_retries=2)
+        # Многие прокси выдают «ANTHROPIC_AUTH_TOKEN» — он уходит заголовком Authorization: Bearer
+        auth = {"auth_token": api_key} if bearer else {"api_key": api_key}
+        self.client = anthropic.AsyncAnthropic(base_url=base_url or None, max_retries=2, **auth)
 
     async def complete(self, model, system, user, max_tokens=1500) -> LLMResult:
         try:
             r = await self.client.messages.create(
                 model=model, max_tokens=max_tokens, system=system,
-                messages=[{"role": "user", "content": user}], temperature=0)
+                messages=[{"role": "user", "content": user}])
         except self._sdk.APIStatusError as e:
             raise _explain(e.status_code, str(e)) from None
         except self._sdk.APIConnectionError as e:
@@ -85,7 +87,7 @@ def make_client(env) -> LLMClient:
         raise LLMAuthError("LLM_API_KEY пуст — заполни .env")
     fmt = env.llm_api_format.lower()
     if fmt == "anthropic":
-        return AnthropicClient(key, env.llm_base_url)
+        return AnthropicClient(key, env.llm_base_url, bearer=env.llm_auth_style != "x-api-key")
     if fmt == "openai":
         return OpenAIClient(key, env.llm_base_url)
     raise LLMError(f"LLM_API_FORMAT должен быть anthropic или openai, сейчас: {fmt!r}")

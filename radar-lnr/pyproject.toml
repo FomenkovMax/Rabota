@@ -33,3 +33,6 @@ packages = ["src/radar"]
 asyncio_mode = "auto"
 testpaths = ["tests"]
 pythonpath = ["src"]
+
+[tool.uv]
+package = true

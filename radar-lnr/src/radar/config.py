@@ -31,6 +31,7 @@ class Env(BaseSettings):
     llm_api_format: str = "anthropic"  # anthropic | openai
     llm_api_key: SecretStr = SecretStr("")
     llm_base_url: str = ""
+    llm_auth_style: str = "bearer"  # bearer | x-api-key (только для формата anthropic)
     model_filter: str = ""
     model_analyze: str = ""
 
