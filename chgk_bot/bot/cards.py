@@ -6,6 +6,7 @@ from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
 
 ASSETS = Path(__file__).resolve().parent.parent / "assets"
+ART_SRC = Path(__file__).resolve().parent.parent / "art_src"  # сгенерированные Higgsfield фоны без текста
 W, H = 1280, 640
 FONT_CANDIDATES = [
     "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
@@ -45,7 +46,37 @@ def _wheel(d: ImageDraw.ImageDraw, cx: int, cy: int, r: int, accent) -> None:
     d.ellipse([cx - 12, cy - 12, cx + 12, cy + 12], fill=accent)
 
 
+def render_art(kind: str, out: Path) -> bool:
+    """Фон из art_src/<kind>.png + русский текст слева (кириллицу ИИ рисует плохо, поэтому текст кладём сами)."""
+    src = ART_SRC / f"{kind}.png"
+    if not src.exists():
+        return False
+    t = THEMES[kind]
+    img = Image.open(src).convert("RGB").resize((1280, 720), Image.LANCZOS)
+    # затемняем левую часть под текст
+    shade = Image.new("L", img.size, 0)
+    sd = ImageDraw.Draw(shade)
+    for x in range(700):
+        sd.line([x, 0, x, 720], fill=int(190 * (1 - x / 700) ** 1.5))
+    img.paste(Image.new("RGB", img.size, (0, 0, 0)), mask=shade)
+    d = ImageDraw.Draw(img)
+    lines = t["title"].split(" ") if kind == "welcome" else [t["title"]]
+    size = 92 if kind == "welcome" else 104
+    f = _font(size)
+    y = 360 - (len(lines) * (size + 10)) // 2 - 30
+    for ln in lines:
+        d.text((64 + 3, y + 3), ln, font=f, fill=(0, 0, 0))   # тень
+        d.text((64, y), ln, font=f, fill=t["accent"])
+        y += size + 10
+    d.rectangle([66, y + 8, 66 + 300, y + 13], fill=t["accent"])
+    d.text((66, y + 30), t["sub"], font=_font(34), fill=(235, 238, 248))
+    img.save(out, optimize=True)
+    return True
+
+
 def render(kind: str, out: Path) -> None:
+    if render_art(kind, out):
+        return
     t = THEMES[kind]
     img = Image.new("RGB", (W, H), t["bg"])
     d = ImageDraw.Draw(img)
