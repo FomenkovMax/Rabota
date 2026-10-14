@@ -84,3 +84,13 @@ def test_stats(tmp_path):
     assert st.seen(1) == {"a", "b", "c"}
     assert st.summary(1) == {"played": 3, "points": 1.5, "correct": 1, "close": 1}
     assert st.summary(2)["played"] == 0
+
+
+def test_judge_timeout_falls_back(monkeypatch):
+    class Slow(FakeLLM):
+        async def create(self, **kw):
+            await asyncio.sleep(5)
+
+    monkeypatch.setattr(J, "JUDGE_TIMEOUT", 0.1)
+    v = asyncio.run(J.judge(Slow(""), "m", Q, "хлеб"))
+    assert v.level == "wrong"  # не зависли и не упали

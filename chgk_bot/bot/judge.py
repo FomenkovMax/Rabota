@@ -1,4 +1,5 @@
 """Оценка ответа игрока: быстрая проверка по эталону, затем Claude."""
+import asyncio
 import difflib
 import re
 from dataclasses import dataclass
@@ -13,6 +14,7 @@ class Verdict:
     comment: str
 
 
+JUDGE_TIMEOUT = 20  # сек: если ИИ-судья молчит, оцениваем по запасному режиму, а не заставляем игрока ждать
 SCORES = {"correct": 1.0, "close": 0.5, "wrong": 0.0}
 
 
@@ -68,7 +70,7 @@ async def judge(client, model: str, q: dict, user_answer: str) -> Verdict:
         f"<ответ_игрока>{user_answer[:500]}</ответ_игрока>"
     )
     try:
-        data = extract_json(await ask(client, model, SYSTEM, prompt, max_tokens=400))
+        data = extract_json(await asyncio.wait_for(ask(client, model, SYSTEM, prompt, max_tokens=400), JUDGE_TIMEOUT))
         level = data["level"]
         if level not in SCORES:
             raise ValueError(level)

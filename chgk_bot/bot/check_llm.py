@@ -4,6 +4,7 @@
 import asyncio
 import json
 import os
+import time
 
 from dotenv import load_dotenv
 
@@ -18,10 +19,11 @@ async def try_mode(mode: str, model: str) -> bool:
     client = make_client(os.environ["ANTHROPIC_API_KEY"], mode)
     print(f"\n--- режим авторизации: {mode} ---")
     try:
-        reply = await ask(client, model, "Отвечай одним словом.", "Столица Франции?", max_tokens=20)
-        print("✅ Ответ модели:", reply.strip())
+        t0 = time.time()
+        reply = await asyncio.wait_for(ask(client, model, "Отвечай одним словом.", "Столица Франции?", max_tokens=20), 45)
+        print(f"✅ Ответ модели: {reply.strip()}  ({time.time() - t0:.1f} сек)")
     except Exception as e:
-        print(f"❌ {type(e).__name__}: {str(e)[:300]}")
+        print(f"❌ {type(e).__name__}: {str(e)[:300] or 'нет ответа за 45 сек (модель/провайдер молчит)'}")
         try:  # у многих посредников есть список моделей — подскажем реальные имена
             models = await client.models.list(limit=100)
             ids = [m.id for m in models.data]
