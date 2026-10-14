@@ -12,6 +12,7 @@ from aiogram.filters import Command, CommandObject
 from aiogram.types import BufferedInputFile, Message
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.date import DateTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
 from ..config import get_env, get_settings, load_channels, setup_logging
@@ -23,7 +24,8 @@ from ..report.excel import cards_workbook
 from .auth import WhitelistMiddleware
 from .inn_file import MAX_INNS, SUPPORTED, parse_inn_file
 from ..report.snapshot import build_report, parse_hours
-from .sender import broadcast, is_quiet, recipients, safe_send
+from .schedule import is_silent_slot, needs_catchup
+from .sender import broadcast, recipients, safe_send
 
 log = logging.getLogger(__name__)
 router = Router()
@@ -57,10 +59,16 @@ async def alert_once(key: str, hours: float, text: str) -> None:
     await notify_admin(text)
 
 
-async def do_digest(hours: float | None = None, to_admin_only: bool = False) -> str:
-    """Полный цикл + рассылка. Возвращает короткий статус."""
+async def do_digest(hours: float | None = None, to_admin_only: bool = False, scheduled: bool = False) -> str:
+    """Полный цикл + рассылка. scheduled=True — плановый запуск по расписанию: он НЕ пропускается, если в этот
+    момент идёт ручной /digest (ждёт своей очереди), и ночные слоты (silent_hours) рассылает без звука.
+    Ручной /digest всегда со звуком."""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
     env = get_env()
-    if _run_lock.locked():
+    cfg_d = get_settings()["digest"]
+    slot_hour = datetime.now(ZoneInfo(cfg_d["timezone"])).hour      # час слота фиксируем в момент старта запуска
+    if _run_lock.locked() and not scheduled:
         return "Запуск уже идёт, подожди."
     async with _run_lock:
         try:
@@ -83,11 +91,9 @@ async def do_digest(hours: float | None = None, to_admin_only: bool = False) -> 
     if res.channel_errors:  # недоступные каналы — админу, подробно
         lines = "\n".join(f"• {k}: {escape(v)}" for k, v in list(res.channel_errors.items())[:20])
         await notify_admin(f"⚠️ Недоступно каналов: {len(res.channel_errors)}\n{lines}")
-    chats = [env.admin_user_id] if to_admin_only else recipients(env.chat_ids, env.allowed_ids, ctx.db.dm_muted())
-    from datetime import datetime
-    from zoneinfo import ZoneInfo
-    cfg_d = get_settings()["digest"]
-    silent = is_quiet(datetime.now(ZoneInfo(cfg_d["timezone"])).hour, cfg_d.get("quiet_hours"))   # ночью — без звука
+    dm_ids = env.allowed_ids if cfg_d.get("send_dm", True) else set()
+    chats = [env.admin_user_id] if to_admin_only else recipients(env.chat_ids, dm_ids, ctx.db.dm_muted())
+    silent = scheduled and is_silent_slot(slot_hour, cfg_d.get("silent_hours"))   # 00:00 и 04:00 — без звука
     delivered = await broadcast(ctx.bot, chats, res.digest, res.files, silent=silent)
     ok = sum(delivered.values())
     warn = get_settings()["llm"].get("low_balance_warn")
@@ -273,8 +279,15 @@ async def run_bot() -> None:
     # По часам на часах (00:00, 04:00, 08:00…), а не «через 4 часа после старта» — расписание не сдвигается перезапусками
     trigger = (CronTrigger(hour=",".join(str(h) for h in hours_list), minute=0, timezone=dcfg["timezone"])
                if hours_list else IntervalTrigger(hours=dcfg["every_hours"]))
-    sched.add_job(do_digest, trigger, id="digest", max_instances=1, coalesce=True, misfire_grace_time=600)
+    sched.add_job(do_digest, trigger, kwargs={"scheduled": True}, id="digest",
+                  max_instances=1, coalesce=True, misfire_grace_time=600)
     sched.start()
+    # Если слот пропущен (простой/перезапуск в момент слота) — один раз наверстываем сразу, не ждём следующего
+    from datetime import datetime, timedelta, timezone
+    if needs_catchup(ctx.db.last_success(), datetime.now(timezone.utc), hours_list, dcfg["every_hours"]):
+        sched.add_job(do_digest, DateTrigger(run_date=datetime.now(timezone.utc) + timedelta(seconds=15)),
+                      kwargs={"scheduled": True}, id="catchup")
+        log.info("Прошлый успешный запуск слишком давно — наверстаю дайджест через 15 секунд")
     nxt = sched.get_job("digest").next_run_time
     log.info("Бот запущен. Whitelist: %d пользователей, чатов для дайджеста: %d. Следующий дайджест: %s",
              len(env.allowed_ids), len(env.chat_ids), nxt)
