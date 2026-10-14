@@ -132,3 +132,61 @@ async def test_name_search_is_restricted_to_lnr_by_kladr(tmp_path):
     res = await Enricher(DB(tmp_path / "t.db"), [adapter(handler)]).lookup_name("Клеверфарм")
     assert seen[0]["locations"] == [{"kladr_id": "9400000000000"}]
     assert res.status == "not_found"      # нет в ЛНР — не подставляем московских однофамильцев
+
+
+# ---------- v3: сравнение названий, подсказки вне ЛНР, несколько организаций ----------
+def _party(name, inn, addr="Луганская Народная Респ, г Луганск"):
+    return {"value": name, "data": {"inn": inn, "name": {"full_with_opf": name, "short_with_opf": name},
+                                    "address": {"value": addr}}}
+
+
+def _by_scope(lnr_items, wide_items):
+    """Заглушка DaData: с фильтром kladr_id отдаёт ЛНР-список, без фильтра — общий."""
+    def handler(req):
+        import json as j
+        body = j.loads(req.content)
+        items = lnr_items if body.get("locations") else wide_items
+        return httpx.Response(200, json={"suggestions": items})
+    return handler
+
+
+async def test_subset_name_is_not_a_match_political_group_vs_company(tmp_path):
+    # «ПГ Родина» ⊂ «Промышленная группа Родина»: раньше это давало ложное совпадение
+    wide = [_party('АО "ПРОМЫШЛЕННАЯ ГРУППА "РОДИНА"', "7733358632", "г Москва, ул Молдавская")]
+    enr = Enricher(DB(tmp_path / "t.db"), [adapter(_by_scope([], wide))])
+    res = await enr.lookup_name("ПГ «Родина»")
+    assert res.status == "needs_review"          # только подсказка, не «found»
+    assert res.card is None and "вне ЛНР" in res.message
+
+
+async def test_outside_lnr_is_only_a_hint_even_for_exact_name(tmp_path):
+    wide = [_party('ООО "ЭНЕРГОСБЫТ ЛУГАНСК"', "9725129223", "г Москва, проезд Проектируемый")]
+    res = await Enricher(DB(tmp_path / "t.db"), [adapter(_by_scope([], wide))]).lookup_name('ООО "Энергосбыт Луганск"')
+    assert res.status == "needs_review" and res.candidates[0].inn == "9725129223"
+
+
+async def test_clear_winner_in_lnr_is_found(tmp_path):
+    lnr = [_party('ГУП ЛНР "Лугансктеплокоммунэнерго"', "9400000001"),
+           _party("ПЕРВИЧНАЯ ПРОФСОЮЗНАЯ ОРГАНИЗАЦИЯ РАБОТНИКОВ ЛУГАНСКТЕПЛОКОММУНЭНЕРГО", "9400000002")]
+    res = await Enricher(DB(tmp_path / "t.db"), [adapter(_by_scope(lnr, []))]).lookup_name("Лугансктеплокоммунэнерго")
+    assert res.status == "found" and res.card.inn == "9400000001"
+
+
+async def test_ambiguous_in_lnr_shows_top3_with_inns(tmp_path):
+    lnr = [_party(f'ГБОУ ЛНР "Краснолучская школа № {i}"', f"94100000{i}") for i in (3, 4, 5, 6)]
+    res = await Enricher(DB(tmp_path / "t.db"), [adapter(_by_scope(lnr, []))]).lookup_name("Краснолучская школа № 7")
+    assert res.status == "needs_review" and len(res.candidates) == 3
+
+
+async def test_enrich_event_prefers_found_org_among_first_three(tmp_path):
+    lnr = [_party('ООО "Ромашка"', SBER)]
+
+    def handler(req):
+        import json as j
+        q = j.loads(req.content)["query"]
+        return httpx.Response(200, json={"suggestions": lnr if "Ромашка" in q else []})
+
+    enr = Enricher(DB(tmp_path / "t.db"), [adapter(handler)])
+    ev = {"organizations": [{"name": "Неизвестная контора"}, {"name": 'ООО "Ромашка"'}]}
+    await enr.enrich_event(ev)
+    assert ev["enriched"]["status"] == "found" and ev["enriched"]["matched_org"] == 'ООО "Ромашка"'

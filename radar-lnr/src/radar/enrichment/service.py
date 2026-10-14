@@ -11,13 +11,22 @@ from ..llm.verify import inn_checksum_ok
 from .base import Adapter, AdapterError, LookupResult, OrgCard
 
 log = logging.getLogger(__name__)
-NAME_MATCH = 90   # порог похожести названия, при котором единственный кандидат считается найденным
+NAME_MATCH = 90   # порог похожести названия для автоматического принятия
+NAME_GAP = 15     # и отрыв от второго кандидата (если их несколько), иначе — «требует проверки»
 OPF = r"\b(ооо|оао|зао|пао|ао|гуп|муп|гбу|гбуз|фгуп|фгбу|нко|ип)\b"
 
 
 def _clean_name(s: str) -> str:
     import re
     return re.sub(OPF, " ", normalize(s)).strip()
+
+
+def name_score(query: str, card: OrgCard) -> float:
+    """Похожесть названия из новости и названия в реестре, 0..100.
+    Сравниваем целиком (ratio / token_sort), а НЕ token_set: тот даёт 100, когда одно название — подмножество
+    другого («ПГ Родина» ⊂ «Промышленная группа Родина»), и это приводило к ложным совпадениям."""
+    a, b = _clean_name(query), _clean_name(card.name_short or card.name_full or "")
+    return max(fuzz.ratio(a, b), fuzz.token_sort_ratio(a, b))
 
 
 class Enricher:
@@ -49,44 +58,65 @@ class Enricher:
         return res
 
     async def lookup_name(self, name: str, region: str | None = None) -> LookupResult:
-        """Поиск по названию. Единственный и очень похожий кандидат — найден; иначе «требует проверки» + топ-3."""
-        key = f"name:v2-lnr:{_clean_name(name)}"   # v2: поиск только в ЛНР (по kladr_id)
+        """Поиск по названию.
+        1) Ищем в ЛНР. Один явный победитель по названию -> found; иначе -> «требует проверки» + топ-3.
+        2) Если в ЛНР пусто — ищем по России и показываем варианты ТОЛЬКО как подсказку (needs_review),
+           автоматически такие совпадения не принимаются."""
+        key = f"name:v3:{_clean_name(name)}"   # v3: ранжирование по полному совпадению + подсказки вне ЛНР
         if (cached := self.db.cache_get(key, self.ttl)):
             return LookupResult.from_dict(cached)
         if not self.adapters:
             return LookupResult("disabled", message="Обогащение выключено (нет ключа DaData)")
-        cands: list[OrgCard] = []
-        for ad in self.adapters:
-            try:
-                cands = await ad.by_name(name, self.region)
-            except AdapterError as e:
-                return LookupResult("error", message=str(e))
-            if cands:
-                break
-        if not cands:
-            res = LookupResult("not_found", message="Не найдено в ЛНР")
-        else:
-            q = _clean_name(name)
-            score = lambda c: fuzz.token_set_ratio(q, _clean_name(c.name_short or c.name_full or ""))  # noqa: E731
-            ranked = sorted(cands, key=score, reverse=True)
-            # единственный кандидат с высокой похожестью — не гадаем, если их несколько
-            if len(ranked) == 1 and score(ranked[0]) >= NAME_MATCH:
+
+        async def search(anywhere: bool) -> list[OrgCard]:
+            for ad in self.adapters:
+                found = await ad.by_name(name, self.region, anywhere=anywhere)
+                if found:
+                    return found
+            return []
+
+        try:
+            lnr = await search(False)
+            wide = [] if lnr else await search(True)
+        except AdapterError as e:
+            return LookupResult("error", message=str(e))   # ошибки не кэшируем
+
+        if lnr:
+            ranked = sorted(lnr, key=lambda c: name_score(name, c), reverse=True)
+            top = name_score(name, ranked[0])
+            gap_ok = len(ranked) == 1 or top - name_score(name, ranked[1]) >= NAME_GAP
+            if top >= NAME_MATCH and gap_ok:
                 res = LookupResult("found", card=ranked[0])
             else:
-                res = LookupResult("needs_review", candidates=ranked[:3], message="Требует проверки: несколько вариантов")
+                res = LookupResult("needs_review", candidates=ranked[:3],
+                                   message="Требует проверки: несколько вариантов в ЛНР")
+        elif wide:
+            ranked = sorted(wide, key=lambda c: name_score(name, c), reverse=True)
+            res = LookupResult("needs_review", candidates=ranked[:3],
+                               message="В ЛНР не найдено. Варианты вне ЛНР — только подсказка, проверь вручную")
+        else:
+            res = LookupResult("not_found", message="Не найдено")
         self.db.cache_put(key, res.to_dict())
         return res
 
     async def enrich_event(self, ev: dict) -> None:
-        """Дописывает ev['enriched'] для главной организации события (если она есть)."""
-        orgs = ev.get("organizations") or []
+        """Дописывает ev['enriched'] — лучший результат среди первых 3 организаций новости:
+        сначала любая «found», иначе первая «needs_review». Поле matched_org — какая именно организация."""
+        orgs = (ev.get("organizations") or [])[:3]
         if not orgs or not self.adapters:
             return
-        org = orgs[0]
-        res = (await self.lookup_inn(org["inn_if_in_text"]) if org.get("inn_if_in_text")
-               else await self.lookup_name(org["name"], org.get("region")))
-        if res.status in ("found", "needs_review"):
-            ev["enriched"] = res.to_dict()
+        best = None
+        for org in orgs:
+            res = (await self.lookup_inn(org["inn_if_in_text"]) if org.get("inn_if_in_text")
+                   else await self.lookup_name(org["name"], org.get("region")))
+            if res.status == "found":
+                best = (org, res)
+                break
+            if res.status == "needs_review" and best is None:
+                best = (org, res)
+        if best:
+            org, res = best
+            ev["enriched"] = {**res.to_dict(), "matched_org": org["name"]}
 
 
 def build_adapters(env, cfg: dict) -> list[Adapter]:

@@ -99,9 +99,10 @@ async def run_once(db: DB, hours: float | None = None, dry_run: bool = False, li
                 ev["id"] = db.save_event(run_id, ev)
         d = cfg["digest"]
         res.digest = build_digest(res.events, since, until, len(res.channel_errors), d["timezone"],
-                                  d["max_events"], d["min_score"])
-        if res.events:
-            res.files = export_files(res.events, since, until, get_env().data_path / "exports")
+                                  d["max_events"], d["min_score"], d.get("dashboard_min_score", 2))
+        dash_events = [e for e in res.events if e["relevance_score"] >= d.get("dashboard_min_score", 2)]
+        if dash_events:   # в дашборд и Excel — события от 2 звёзд
+            res.files = export_files(dash_events, since, until, get_env().data_path / "exports")
         log.info(res.cost.summary())
         if not dry_run:
             db.finish_run(run_id, "ok", posts_new=res.posts_new, events_n=len(res.events),

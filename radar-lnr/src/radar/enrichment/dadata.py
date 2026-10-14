@@ -67,7 +67,10 @@ class DaDataAdapter(Adapter):
         main = [c for c, s in zip(cards, items) if (s.get("data") or {}).get("branch_type") != "BRANCH"]
         return main or cards
 
-    async def by_name(self, name: str, region: str | None = None) -> list[OrgCard]:
-        # поиск по названию — ТОЛЬКО в ЛНР (иначе находятся однофамильцы из других регионов)
-        body = {"query": name, "count": 5, "locations": [{"kladr_id": LNR_KLADR_ID}]}
+    async def by_name(self, name: str, region: str | None = None, anywhere: bool = False) -> list[OrgCard]:
+        # по умолчанию поиск ТОЛЬКО в ЛНР (иначе находятся однофамильцы из других регионов);
+        # anywhere=True используется лишь как подсказка «вне ЛНР» и никогда не принимается автоматически
+        body = {"query": name, "count": 5}
+        if not anywhere:
+            body["locations"] = [{"kladr_id": LNR_KLADR_ID}]
         return [parse_party(s) for s in await self._post("suggest/party", body)]

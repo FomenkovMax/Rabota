@@ -74,3 +74,31 @@ async def test_full_pipeline_with_fakes(tmp_path, monkeypatch):
     assert db.stats()["events"] == 1 and db.last_success() is not None
     res2 = await pipeline.run_once(db, source=FakeSource())        # те же посты — уже известны
     assert res2.posts_new == 0
+
+
+def _evs(scores):
+    return [_ev(i, score=sc, cat=3 + (i % 2)) for i, sc in enumerate(scores)]
+
+
+def test_digest_shows_only_3_plus_and_counts_dashboard_extra():
+    now = datetime.now(timezone.utc)
+    events = _evs([5, 4, 3, 2, 2, 1])          # 3 события ≥3⭐, ещё 2 — только для дашборда (2⭐), 1⭐ нигде
+    txt = build_digest(events, now - timedelta(hours=4), now, 0, min_score=3, dash_min_score=2)
+    assert "⭐5" in txt and "⭐3" in txt and "⭐2" not in txt and "⭐1" not in txt
+    assert "Событий от 3⭐: 3" in txt
+    assert "ещё 2" in txt and "дашборд" in txt   # 2⭐-события доступны в дашборде
+
+
+def test_digest_only_two_star_events_points_to_dashboard():
+    now = datetime.now(timezone.utc)
+    txt = build_digest(_evs([2, 2]), now - timedelta(hours=4), now, 0, min_score=3, dash_min_score=2)
+    assert "Новых значимых событий нет (от 3⭐)" in txt and "В дашборде ещё 2" in txt
+
+
+def test_digest_shows_candidate_inns_for_needs_review():
+    now = datetime.now(timezone.utc)
+    e = _ev(1)
+    e["enriched"] = {"status": "needs_review", "matched_org": "ООО Ромашка", "card": None,
+                     "candidates": [{"name_full": "ООО Ромашка-1", "inn": "7707083893", "address": "Луганская Народная Респ, г Луганск"}]}
+    txt = build_digest([e], now - timedelta(hours=4), now, 0)
+    assert "требует проверки" in txt and "7707083893" in txt and "Варианты" in txt

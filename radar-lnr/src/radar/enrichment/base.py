@@ -63,5 +63,6 @@ class Adapter(ABC):
         ...
 
     @abstractmethod
-    async def by_name(self, name: str, region: str | None = None) -> list[OrgCard]:
+    async def by_name(self, name: str, region: str | None = None, anywhere: bool = False) -> list[OrgCard]:
+        """По названию. По умолчанию только ЛНР; anywhere=True — по всей России (только как подсказка)."""
         ...

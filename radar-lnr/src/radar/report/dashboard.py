@@ -11,7 +11,8 @@ from zoneinfo import ZoneInfo
 
 from ..finance import FORMULA
 from ..llm.schemas import CATEGORIES
-from .excel import district_of
+from .digest import candidate_text
+from .excel import district_of, matched_org
 
 TEMPLATE = """<!doctype html><html lang="ru"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>Радар ЛНР — __PERIOD__</title>
@@ -69,6 +70,7 @@ function render(){
   k.append(el('h3',e.title),el('div',e.summary));
   k.append(el('div','🏷 '+e.org+' (ИНН '+e.inn+')','mut'),el('div','👤 '+(e.lpr||'н/д'),'mut'));
   k.append(el('div','💵 '+e.effect,e.potential==null?'nd':'est'));
+  if(e.cands.length)k.append(el('div','🔎 Варианты (проверить): '+e.cands.join(' · '),'mut'));
   if(e.opportunity)k.append(el('div','🎯 '+e.opportunity));
   const l=el('div');e.urls.forEach((u,i)=>{const a=link(u,i+1);if(a){l.append(a,' ')}});k.append(l);cards.append(k);
   const tr=el('tr');[e.score,e.cat,e.title,e.org+' / '+e.inn,e.district,e.lpr||'н/д',e.potential==null?'н/д':'≈ '+fmt(e.potential)].forEach(v=>tr.append(el('td',v)));tb.append(tr)});
@@ -80,7 +82,7 @@ function render(){
 def _row(ev: dict, districts: dict[str, str]) -> dict:
     enr = ev.get("enriched") or {}
     card = enr.get("card") if enr.get("status") == "found" else None
-    org = (ev.get("organizations") or [{}])[0]
+    org = matched_org(ev)
     persons = ev.get("persons") or []
     inn = (card or {}).get("inn") or org.get("inn_if_in_text") or ("требует проверки" if enr.get("status") == "needs_review" else "н/д")
     lpr = (card or {}).get("director") or (persons[0]["name"] if persons else None)
@@ -89,7 +91,9 @@ def _row(ev: dict, districts: dict[str, str]) -> dict:
             "title": ev["title"], "summary": ev["summary"], "org": org.get("name") or "н/д", "inn": inn,
             "district": district_of(ev, districts), "lpr": lpr, "potential": fin.get("potential_year"),
             "effect": ev.get("fin_effect_text") or "н/д", "opportunity": ev.get("business_opportunity"),
-            "urls": ev.get("source_urls") or []}
+            "urls": ev.get("source_urls") or [],
+            "cands": [candidate_text(c, short=False, esc=False) for c in (enr.get("candidates") or [])[:3]]
+                     if enr.get("status") == "needs_review" else []}
 
 
 def render_dashboard(events: list[dict], since: datetime, until: datetime, districts: dict[str, str] | None = None,

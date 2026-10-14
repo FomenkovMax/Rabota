@@ -17,22 +17,37 @@ def _plural(n: int, one: str, few: str, many: str) -> str:
     return one if n10 == 1 and n100 != 11 else few if 2 <= n10 <= 4 and not 12 <= n100 <= 14 else many
 
 
+def candidate_text(c: dict, short: bool = True, esc: bool = True) -> str:
+    """«Название (ИНН …, регион)» для вариантов «требует проверки». short — укороченный вид для Telegram."""
+    name = c.get("name_short") or c.get("name_full") or "н/д"
+    if short and len(name) > 38:
+        name = name[:37] + "…"
+    addr = (c.get("address") or "")
+    region = "ЛНР" if "Луганская Народная" in addr else (addr.split(",")[0][:20] if addr else "")
+    text = f"{name} (ИНН {c.get('inn') or 'н/д'}{', ' + region if region else ''})"
+    return escape(text) if esc else text
+
+
 def _fmt_event(ev: dict) -> str:
     """Один блок события. Всё, чего нет в источнике, пишем «н/д»."""
     lines = [f"<b>{escape(ev['title'])}</b>", escape(ev["summary"])]
     orgs = ev.get("organizations") or []
     enr = ev.get("enriched") or {}
+    matched = enr.get("matched_org")                  # какая организация новости получила карточку
     card = enr.get("card") if enr.get("status") == "found" else None
     if orgs:
         parts = []
-        for k, o in enumerate(orgs[:2]):
-            if k == 0 and card:                       # данные из DaData (подтверждены источником)
+        for o in orgs[:2]:
+            is_matched = bool(enr) and (matched == o["name"] or (matched is None and o is orgs[0]))
+            if is_matched and card:                   # данные из DaData (подтверждены источником)
                 parts.append(f"{escape(card.get('name_short') or card.get('name_full') or o['name'])} (ИНН {card.get('inn') or 'н/д'})")
-            elif k == 0 and enr.get("status") == "needs_review":
+            elif is_matched and enr.get("status") == "needs_review":
                 parts.append(f"{escape(o['name'])} (ИНН: требует проверки)")
             else:
                 parts.append(f"{escape(o['name'])} (ИНН {o.get('inn_if_in_text') or 'н/д'})")
         lines.append("🏷 " + "; ".join(parts))
+    if enr.get("status") == "needs_review" and enr.get("candidates"):
+        lines.append("🔎 Варианты: " + " · ".join(candidate_text(c) for c in enr["candidates"][:3]))
     persons = ev.get("persons") or []
     lpr = None
     if card and card.get("director"):
@@ -51,7 +66,8 @@ def _fmt_event(ev: dict) -> str:
 
 
 def build_digest(events: list[dict], since: datetime, until: datetime, failed_channels: int,
-                 tz: str = "Europe/Moscow", max_events: int = 12, min_score: int = 2) -> str:
+                 tz: str = "Europe/Moscow", max_events: int = 12, min_score: int = 3,
+                 dash_min_score: int = 2) -> str:
     z = ZoneInfo(tz)
     period = f"{since.astimezone(z):%d.%m %H:%M} – {until.astimezone(z):%d.%m %H:%M}"
     head = f"📡 <b>Радар ЛНР</b> · {period}"
@@ -59,14 +75,16 @@ def build_digest(events: list[dict], since: datetime, until: datetime, failed_ch
 
     shown = sorted((e for e in events if e["relevance_score"] >= min_score),
                    key=lambda e: -e["relevance_score"])
+    dash_n = sum(1 for e in events if e["relevance_score"] >= dash_min_score)
     if not shown:
-        return f"{head}\nНовых значимых событий нет.{foot}"
+        extra = f"\nВ дашборде ещё {dash_n} событ. с оценкой от {dash_min_score}⭐." if dash_n else ""
+        return f"{head}\nНовых значимых событий нет (от {min_score}⭐).{extra}{foot}"
 
     counts = defaultdict(int)
-    for e in events:
+    for e in shown:
         counts[e["category"]] += 1
     summary = " ".join(f"{CATEGORIES[c][0]}{n}" for c, n in sorted(counts.items()))
-    head += f"\nСобытий: {len(events)} · {summary}"
+    head += f"\nСобытий от {min_score}⭐: {len(shown)} · {summary}"
 
     top = shown[:max_events]
     by_cat = defaultdict(list)
@@ -88,7 +106,7 @@ def build_digest(events: list[dict], since: datetime, until: datetime, failed_ch
         if len(chunk) > 1:
             out.extend(chunk)
             used += sum(map(len, chunk))
-    hidden = len(events) - included
+    hidden = dash_n - included          # всё, что не влезло в сообщение, но есть в дашборде (от 2⭐)
     if hidden > 0:
         out.append(f"\n…и ещё {hidden} — в приложенном дашборде.")
     return "\n".join(out) + foot
