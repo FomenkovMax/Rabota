@@ -128,7 +128,7 @@ def test_generate_filters_and_ranks():
     assert any("викторина" in r for r in rejected)               # слабый отсеян критиком
 
 
-def test_generate_accepts_score_three_and_stores_meta():
+def test_generate_stores_score_and_pattern():
     from bot.generator import generate
 
     class Seq:
@@ -138,7 +138,24 @@ def test_generate_accepts_score_three_and_stores_meta():
             return type("R", (), {"content": [type("B", (), {"text": self.replies.pop(0)})()]})()
 
     d = [{"text": "Загадка про скрипача и родник", "answer": "Ключ", "explanation": "разбор", "facts": ["a", "b", "c"]}]
-    critic = [{"i": 0, "ok": True, "chgk": 3}]
+    critic = [{"i": 0, "ok": True, "chgk": 4}]
     good, rejected = asyncio.run(generate(Seq([json.dumps(d), json.dumps(critic)]), "m", n=1, pattern="дуплет"))
-    assert good and good[0]["chgk"] == 3.0 and good[0]["pattern"] == "дуплет"
+    assert good and good[0]["chgk"] == 4.0 and good[0]["pattern"] == "дуплет"
     assert any("приём: дуплет" in r for r in rejected)
+
+
+def test_generate_rejects_score_three_and_long_answers():
+    from bot.generator import generate
+
+    class Seq:
+        def __init__(self, replies):
+            self.replies, self.messages = list(replies), self
+        async def create(self, **kw):
+            return type("R", (), {"content": [type("B", (), {"text": self.replies.pop(0)})()]})()
+
+    d = [{"text": "Загадка про скрипача и родник", "answer": "Ключ", "explanation": "e"},
+         {"text": "Про цепь привидения", "answer": "Из последствий его поступков при жизни на земле", "explanation": "e"}]
+    critic = [{"i": 0, "ok": True, "chgk": 3, "reason": "слабоват"}]
+    good, rejected = asyncio.run(generate(Seq([json.dumps(d), json.dumps(critic)]), "m", n=2))
+    assert good == []
+    assert any("слишком длинный" in r for r in rejected) and any("слабоват" in r for r in rejected)
