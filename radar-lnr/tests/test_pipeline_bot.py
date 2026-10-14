@@ -106,9 +106,8 @@ def test_digest_shows_candidate_inns_for_needs_review():
 
 def test_digest_hours_argument_parsing():
     """Окно в часах берётся из первого слова; «@Radar_Bank_Bot» после числа не мешает."""
-    def parse(args):
-        first = (args or "").split()[:1]
-        return min(float(first[0].replace(",", ".")), 168.0) if first and first[0].replace(",", ".").replace(".", "", 1).isdigit() else None
+    from radar.report.snapshot import parse_hours as parse
     assert parse("24 @Radar_Bank_Bot") == 24.0 and parse("6") == 6.0 and parse("1,5") == 1.5
     assert parse(None) is None and parse("@Radar_Bank_Bot") is None and parse("abc") is None
     assert parse("9999") == 168.0                         # не больше недели
+    assert parse(None, default=24.0) == 24.0

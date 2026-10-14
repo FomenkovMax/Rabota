@@ -82,10 +82,10 @@ def _fmt_event(ev: dict) -> str:
 
 def build_digest(events: list[dict], since: datetime, until: datetime, failed_channels: int,
                  tz: str = "Europe/Moscow", max_events: int = 12, min_score: int = 3,
-                 dash_min_score: int = 2, tokens_line: str = "") -> str:
+                 dash_min_score: int = 2, tokens_line: str = "", note: str = "") -> str:
     z = ZoneInfo(tz)
     period = f"{since.astimezone(z):%d.%m %H:%M} – {until.astimezone(z):%d.%m %H:%M}"
-    head = f"📡 <b>Радар ЛНР</b> · {period}"
+    head = f"📡 <b>Радар ЛНР</b> · {period}" + (f"\n{note}" if note else "")
     foot = f"\n⚠️ не удалось прочитать: {failed_channels} {_plural(failed_channels, 'канал', 'канала', 'каналов')}" if failed_channels else ""
     if tokens_line:       # строка про токены — всегда самая последняя
         foot += "\n" + tokens_line

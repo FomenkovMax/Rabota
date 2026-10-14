@@ -11,6 +11,7 @@ from aiogram.enums import ParseMode
 from aiogram.filters import Command, CommandObject
 from aiogram.types import BufferedInputFile, Message
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
 from ..config import get_env, get_settings, load_channels, setup_logging
@@ -21,7 +22,8 @@ from ..pipeline import run_once
 from ..report.excel import cards_workbook
 from .auth import WhitelistMiddleware
 from .inn_file import MAX_INNS, SUPPORTED, parse_inn_file
-from .sender import broadcast, recipients, safe_send
+from ..report.snapshot import build_report, parse_hours
+from .sender import broadcast, is_quiet, recipients, safe_send
 
 log = logging.getLogger(__name__)
 router = Router()
@@ -82,7 +84,11 @@ async def do_digest(hours: float | None = None, to_admin_only: bool = False) -> 
         lines = "\n".join(f"• {k}: {escape(v)}" for k, v in list(res.channel_errors.items())[:20])
         await notify_admin(f"⚠️ Недоступно каналов: {len(res.channel_errors)}\n{lines}")
     chats = [env.admin_user_id] if to_admin_only else recipients(env.chat_ids, env.allowed_ids, ctx.db.dm_muted())
-    delivered = await broadcast(ctx.bot, chats, res.digest, res.files)
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    cfg_d = get_settings()["digest"]
+    silent = is_quiet(datetime.now(ZoneInfo(cfg_d["timezone"])).hour, cfg_d.get("quiet_hours"))   # ночью — без звука
+    delivered = await broadcast(ctx.bot, chats, res.digest, res.files, silent=silent)
     ok = sum(delivered.values())
     warn = get_settings()["llm"].get("low_balance_warn")
     if res.tokens_left is not None and warn and res.tokens_left < warn:   # заранее предупредить админа
@@ -95,8 +101,11 @@ async def do_digest(hours: float | None = None, to_admin_only: bool = False) -> 
 @router.message(Command("start", "help", "menu"))
 async def cmd_start(m: Message):
     await m.answer("📡 <b>Радар ЛНР</b>\nРаз в 4 часа присылаю дайджест новостей региона.\n\n"
-                   "/myid — твой user_id\n/chatid — ID чата (для группы)\n/inn — карточка по ИНН (или пришли файл)\n/channels — каналы\n/stats — статистика\n"
-                   "/mute, /unmute — отключить/включить дайджест в личку\n/digest — запустить сейчас (админ); в группе: /digest@Radar_Bank_Bot [часы]")
+                   "/report [часы] — дайджест за N часов (по умолчанию 24) из сохранённого, без трат токенов\n"
+                   "/myid — твой user_id\n/chatid — ID чата (для группы)\n/inn — карточка по ИНН (или пришли файл)\n/channels — каналы\n/stats — статистика и токены\n"
+                   "/mute, /unmute — отключить/включить дайджест в личку\n"
+                   "/digest [часы] — свежий сбор новостей прямо сейчас (только админ, тратит токены)\n"
+                   "В группе добавляй имя бота: /report@Radar_Bank_Bot 24")
 
 
 @router.message(Command("myid"))
@@ -115,11 +124,24 @@ async def cmd_digest(m: Message, command: CommandObject):
     if m.from_user.id != get_env().admin_user_id:
         await m.answer("Эта команда только для администратора.")
         return
-    # окно в часах — первое слово аргументов; всё остальное (например, «@Radar_Bank_Bot» после числа) игнорируем
-    first = (command.args or "").split()[:1]
-    hours = min(float(first[0].replace(",", ".")), 168.0) if first and first[0].replace(",", ".").replace(".", "", 1).isdigit() else None
+    hours = parse_hours(command.args)       # окно в часах — первое слово аргументов, остальное игнорируем
     await m.answer("Запускаю… это займёт несколько минут ⏳")
     await m.answer(escape(await do_digest(hours)))
+
+
+@router.message(Command("report"))
+async def cmd_report(m: Message, command: CommandObject):
+    """Дайджест за N часов (по умолчанию 24) из СОХРАНЁННОГО: без сбора и без LLM, токены не тратятся.
+    Ответ уходит в тот чат, где команду написали. Доступна всем участникам группы дайджеста."""
+    hours = parse_hours(command.args, default=24.0)
+    await m.answer(f"Собираю отчёт за {hours:g} ч… ⏳")
+    try:
+        bal = await make_client(get_env()).get_balance()
+    except LLMError:
+        bal = None
+    text, files, n = await build_report(ctx.db, hours, get_settings(), get_env().data_path / "exports", bal)
+    if not await safe_send(ctx.bot, m.chat.id, text, files):
+        await m.answer("Не удалось отправить отчёт.")
 
 
 @router.message(Command("mute"))
@@ -242,16 +264,25 @@ async def run_bot() -> None:
     ctx.bot = Bot(token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
     ctx.db = DB(env.data_path / "radar.db")
     dp = Dispatcher()
-    router.message.outer_middleware(WhitelistMiddleware(env.allowed_ids))
+    router.message.outer_middleware(WhitelistMiddleware(env.allowed_ids, set(env.chat_ids)))
     dp.include_router(router)
 
-    sched = AsyncIOScheduler(timezone=cfg["digest"]["timezone"])
-    sched.add_job(do_digest, IntervalTrigger(hours=cfg["digest"]["every_hours"]), id="digest",
-                  max_instances=1, coalesce=True, misfire_grace_time=600)
+    dcfg = cfg["digest"]
+    sched = AsyncIOScheduler(timezone=dcfg["timezone"])
+    hours_list = dcfg.get("schedule_hours")
+    # По часам на часах (00:00, 04:00, 08:00…), а не «через 4 часа после старта» — расписание не сдвигается перезапусками
+    trigger = (CronTrigger(hour=",".join(str(h) for h in hours_list), minute=0, timezone=dcfg["timezone"])
+               if hours_list else IntervalTrigger(hours=dcfg["every_hours"]))
+    sched.add_job(do_digest, trigger, id="digest", max_instances=1, coalesce=True, misfire_grace_time=600)
     sched.start()
-    log.info("Бот запущен. Whitelist: %d пользователей, чатов для дайджеста: %d", len(env.allowed_ids), len(env.chat_ids))
+    nxt = sched.get_job("digest").next_run_time
+    log.info("Бот запущен. Whitelist: %d пользователей, чатов для дайджеста: %d. Следующий дайджест: %s",
+             len(env.allowed_ids), len(env.chat_ids), nxt)
     await startup_check()
     try:
+        if nxt:
+            await notify_admin(f"🟢 Радар запущен. Следующий дайджест: <b>{nxt:%d.%m %H:%M}</b> ({dcfg['timezone']}); "
+                               f"расписание по часам: {', '.join(f'{h:02d}:00' for h in hours_list) if hours_list else 'каждые ' + str(dcfg['every_hours']) + ' ч'}.")
         await dp.start_polling(ctx.bot)
     finally:
         sched.shutdown(wait=False)
