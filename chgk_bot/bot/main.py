@@ -38,6 +38,7 @@ class Session:
     phase: str = "think"  # think -> answer -> judging
     task: asyncio.Task | None = None
     timer_msg_id: int | None = None
+    timer_is_anim: bool = False  # таймер — подпись к анимации с лошадкой, а не текстовое сообщение
     started: float = field(default_factory=time.time)
 
 
@@ -58,6 +59,27 @@ def bar(left: int, total: int, width: int = 12) -> str:
 
 async def photo(chat_id: int, kind: str, caption: str, markup=None) -> Message:
     return await bot.send_photo(chat_id, FSInputFile(ASSETS / f"{kind}.png"), caption=caption, reply_markup=markup)
+
+
+HORSE = ASSETS / "horse.mp4"
+TICK = 10  # как часто обновлять отсчёт, сек (Telegram не любит частые правки)
+
+
+async def timer_send(s: Session, chat_id: int, text: str, markup) -> None:
+    """Таймер минуты: анимация с бегущей лошадкой (подпись = отсчёт); без файла — обычный текст."""
+    if HORSE.exists():
+        msg = await bot.send_animation(chat_id, FSInputFile(HORSE), caption=text, reply_markup=markup)
+        s.timer_is_anim = True
+    else:
+        msg = await bot.send_message(chat_id, text, reply_markup=markup)
+    s.timer_msg_id = msg.message_id
+
+
+async def timer_edit(s: Session, chat_id: int, text: str, markup=None) -> None:
+    if s.timer_is_anim:
+        await bot.edit_message_caption(chat_id=chat_id, message_id=s.timer_msg_id, caption=text, reply_markup=markup)
+    else:
+        await bot.edit_message_text(text, chat_id, s.timer_msg_id, reply_markup=markup)
 
 
 # ---------- команды ----------
@@ -175,16 +197,15 @@ async def start_question(chat_id: int, user_id: int) -> None:
     note = "" if fresh else "\n<i>Ты прошёл все вопросы — начинаем повторы.</i>"
     stars = "★" * int(q.get("difficulty", 3)) + "☆" * (5 - int(q.get("difficulty", 3)))
     await photo(chat_id, "question", f"<b>Внимание, вопрос!</b>  {stars}\n\n{html.escape(q['text'])}{note}")
-    msg = await bot.send_message(
-        chat_id, f"⏳ Осталось <b>{cfg.think_seconds}</b> сек\n{bar(cfg.think_seconds, cfg.think_seconds)}",
-        reply_markup=kb(("✋ Готов отвечать", "ready"), ("🏳 Сдаюсь", "skip")),
+    await timer_send(
+        s, chat_id, f"⏳ Осталось <b>{cfg.think_seconds}</b> сек\n{bar(cfg.think_seconds, cfg.think_seconds)}",
+        kb(("✋ Готов отвечать", "ready"), ("🏳 Сдаюсь", "skip")),
     )
-    s.timer_msg_id = msg.message_id
     s.task = asyncio.create_task(think_phase(chat_id, user_id, s))
 
 
 async def think_phase(chat_id: int, user_id: int, s: Session) -> None:
-    total, step = cfg.think_seconds, 10
+    total, step = cfg.think_seconds, TICK
     end = s.started + total
     try:
         while (left := round(end - time.time())) > 0:
@@ -195,10 +216,7 @@ async def think_phase(chat_id: int, user_id: int, s: Session) -> None:
             markup = kb(("✋ Готов отвечать", "ready"), ("🏳 Сдаюсь", "skip"))
             tail = "  ⚠️" if left <= 10 else ""
             try:
-                await bot.edit_message_text(
-                    f"⏳ Осталось <b>{left}</b> сек{tail}\n{bar(left, total)}",
-                    chat_id, s.timer_msg_id, reply_markup=markup,
-                )
+                await timer_edit(s, chat_id, f"⏳ Осталось <b>{left}</b> сек{tail}\n{bar(left, total)}", markup)
             except Exception:
                 pass
         await answer_phase(chat_id, user_id, s, early=False)
@@ -209,7 +227,7 @@ async def think_phase(chat_id: int, user_id: int, s: Session) -> None:
 async def answer_phase(chat_id: int, user_id: int, s: Session, early: bool) -> None:
     s.phase = "answer"
     try:
-        await bot.edit_message_text("⏱ Минута закончилась" if not early else "✋ Ответ готов", chat_id, s.timer_msg_id)
+        await timer_edit(s, chat_id, "⏱ Минута закончилась" if not early else "✋ Ответ готов")
     except Exception:
         pass
     await bot.send_message(

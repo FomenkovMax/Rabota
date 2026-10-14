@@ -11,7 +11,7 @@ from bot import main as M
 
 class FakeBot:
     def __init__(self):
-        self.sent, self.edits = [], []
+        self.sent, self.edits, self.animations, self.caption_edits = [], [], [], []
 
     async def send_message(self, chat_id, text, **kw):
         self.sent.append(text)
@@ -23,6 +23,13 @@ class FakeBot:
 
     async def edit_message_text(self, text, chat_id, message_id, **kw):
         self.edits.append(text)
+
+    async def send_animation(self, chat_id, animation, caption=None, **kw):
+        self.animations.append(caption or "")
+        return type("Msg", (), {"message_id": 100 + len(self.animations)})()
+
+    async def edit_message_caption(self, chat_id, message_id, caption=None, **kw):
+        self.caption_edits.append(caption or "")
 
     async def send_chat_action(self, *a, **kw):
         pass
@@ -71,3 +78,20 @@ def test_second_question_blocked_while_active(game):
         M.sessions[5].task.cancel()
     asyncio.run(run())
     assert any("ещё не закончил" in t for t in game.sent)
+
+
+def test_timer_uses_horse_animation_when_file_exists(game, tmp_path, monkeypatch):
+    horse = tmp_path / "horse.mp4"
+    horse.write_bytes(b"fake")
+    monkeypatch.setattr(M, "HORSE", horse)
+    monkeypatch.setattr(M, "TICK", 1)
+    monkeypatch.setattr(M, "cfg", dataclasses.replace(M.cfg, think_seconds=3, answer_seconds=1))
+
+    async def run():
+        await M.start_question(1, 9)
+        await asyncio.sleep(5)
+    asyncio.run(run())
+    assert len(game.animations) == 1 and "Осталось" in game.animations[0]
+    assert any("Осталось" in c for c in game.caption_edits)   # таймер идёт через подпись
+    assert any("Минута закончилась" in c for c in game.caption_edits)
+    assert not game.edits                                       # текстовых правок нет
