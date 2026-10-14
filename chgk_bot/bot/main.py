@@ -2,6 +2,7 @@
 import asyncio
 import html
 import logging
+import os
 import time
 from dataclasses import dataclass, field
 
@@ -15,6 +16,7 @@ from .cards import ASSETS
 from .config import PKG_DIR, load_settings
 from .generator import generate
 from .judge import judge
+from .llm import make_client
 from .storage import QuestionBank, Stats
 
 log = logging.getLogger("chgk")
@@ -24,9 +26,7 @@ stats = Stats(cfg.data_dir / "stats.sqlite")
 
 llm = None
 if cfg.anthropic_key:
-    from anthropic import AsyncAnthropic
-
-    llm = AsyncAnthropic(api_key=cfg.anthropic_key)
+    llm = make_client(cfg.anthropic_key, os.getenv("ANTHROPIC_AUTH_MODE", "x-api-key"))
 
 bot = Bot(cfg.bot_token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 dp = Dispatcher()

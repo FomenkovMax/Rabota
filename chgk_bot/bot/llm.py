@@ -25,3 +25,13 @@ async def ask(client, model: str, system: str, user: str, max_tokens: int = 4000
         messages=[{"role": "user", "content": user}],
     )
     return "".join(b.text for b in resp.content if getattr(b, "text", None))
+
+
+def make_client(api_key: str, mode: str = "x-api-key"):
+    """Клиент Anthropic. mode='bearer' — для провайдеров, ждущих заголовок Authorization: Bearer.
+    Адрес берётся из ANTHROPIC_BASE_URL (SDK читает его сам)."""
+    from anthropic import AsyncAnthropic
+
+    if mode == "bearer":
+        return AsyncAnthropic(api_key=None, auth_token=api_key)
+    return AsyncAnthropic(api_key=api_key)
