@@ -6,3 +6,5 @@ data/
 .pytest_cache/
 *.session
 *.log
+.coverage
+htmlcov/
