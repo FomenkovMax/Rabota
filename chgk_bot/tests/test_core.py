@@ -94,3 +94,35 @@ def test_judge_timeout_falls_back(monkeypatch):
     monkeypatch.setattr(J, "JUDGE_TIMEOUT", 0.1)
     v = asyncio.run(J.judge(Slow(""), "m", Q, "хлеб"))
     assert v.level == "wrong"  # не зависли и не упали
+
+
+def test_leaks_answer_detects_answer_in_text():
+    from bot.generator import leaks_answer
+    assert leaks_answer({"text": "Власти облагали налогом окна домов. Как назывался налог?", "answer": "Налог на окна"})
+    assert not leaks_answer({"text": "Ученик, подмастерье и мастер", "answer": "Гильдия"})
+    assert not leaks_answer({"text": "что угодно", "answer": "Я"})  # короткие слова не проверяем
+
+
+def test_generate_filters_and_ranks():
+    from bot.generator import generate
+
+    class Seq:
+        def __init__(self, replies):
+            self.replies, self.messages = list(replies), self
+        async def create(self, **kw):
+            return type("R", (), {"content": [type("B", (), {"text": self.replies.pop(0)})()]})()
+
+    def mk(text, ans):
+        return {"text": text, "answer": ans, "explanation": "разбор", "accepted": []}
+
+    drafts = [mk("Облагали налогом окна. Как назывался налог?", "Налог на окна"),
+              mk("Загадка про скрипача, шпиона и родник", "Ключ"),
+              mk("Загадка про лампу и джинна", "Лампа"),
+              mk("Ещё вопрос про зебру", "Полоска")]
+    critic = [{"i": 1, "ok": True, "chgk": 4},
+              {"i": 2, "ok": True, "chgk": 5},
+              {"i": 3, "ok": False, "chgk": 2, "reason": "викторина"}]
+    good, rejected = asyncio.run(generate(Seq([json.dumps(drafts), json.dumps(critic)]), "m", n=2))
+    assert [q["answer"] for q in good] == ["Лампа", "Ключ"]       # лучшие по баллу идут первыми
+    assert any("уже есть в тексте" in r for r in rejected)       # утечка отсеяна без критика
+    assert any("викторина" in r for r in rejected)               # слабый отсеян критиком
