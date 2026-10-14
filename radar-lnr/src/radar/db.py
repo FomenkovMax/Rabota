@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 SCHEMA = """
@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS runs (
 CREATE TABLE IF NOT EXISTS posts (
   channel TEXT NOT NULL, post_id INTEGER NOT NULL,
   url TEXT, text TEXT, published_at TEXT, fetched_at TEXT, run_id INTEGER,
+  event_id INTEGER,                      -- к какому событию отнесён пост (NULL = нерелевантный)
   PRIMARY KEY (channel, post_id)         -- дедупликация по (channel, post_id)
 );
 CREATE TABLE IF NOT EXISTS events (
@@ -43,6 +44,9 @@ class DB:
         self.path = path
         with self.conn() as c:
             c.executescript(SCHEMA)
+            # миграция для баз, созданных до появления event_id
+            if "event_id" not in {r["name"] for r in c.execute("PRAGMA table_info(posts)")}:
+                c.execute("ALTER TABLE posts ADD COLUMN event_id INTEGER")
 
     @contextmanager
     def conn(self):
@@ -90,7 +94,45 @@ class DB:
                 " VALUES (?,?,?,?,?,?,?)",
                 [(p.channel, p.post_id, p.url, p.text, p.published_at.isoformat(), now_iso(), run_id) for p in posts])
 
+    def link_posts(self, event_id: int, keys: list[str]) -> None:
+        """Привязывает посты (ключи вида 'канал/id') к событию — чтобы повтор через сутки узнавался."""
+        rows = []
+        for k in keys:
+            ch, _, pid = k.rpartition("/")
+            if ch and pid.isdigit():
+                rows.append((event_id, ch, int(pid)))
+        if rows:
+            with self.conn() as c:
+                c.executemany("UPDATE posts SET event_id=? WHERE channel=? AND post_id=?", rows)
+
+    def recent_posts(self, days: float) -> list[dict]:
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat(timespec="seconds")
+        with self.conn() as c:
+            rows = c.execute("SELECT channel, post_id, url, text, event_id FROM posts WHERE fetched_at >= ?", (cutoff,))
+            return [dict(r) for r in rows]
+
     # ---- events ----
+    def recent_events(self, days: float) -> list[dict]:
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat(timespec="seconds")
+        with self.conn() as c:
+            rows = c.execute("SELECT id, data FROM events WHERE created_at >= ?", (cutoff,)).fetchall()
+        out = []
+        for r in rows:
+            ev = json.loads(r["data"])
+            ev["id"] = r["id"]
+            out.append(ev)
+        return out
+
+    def get_event(self, event_id: int) -> dict | None:
+        with self.conn() as c:
+            r = c.execute("SELECT id, data FROM events WHERE id=?", (event_id,)).fetchone()
+        return {**json.loads(r["data"]), "id": r["id"]} if r else None
+
+    def update_event(self, event_id: int, ev: dict) -> None:
+        with self.conn() as c:
+            c.execute("UPDATE events SET data=?, title=?, score=? WHERE id=?",
+                      (json.dumps(ev, ensure_ascii=False), ev.get("title"), ev.get("relevance_score"), event_id))
+
     def save_event(self, run_id: int, ev: dict) -> int:
         with self.conn() as c:
             return c.execute(

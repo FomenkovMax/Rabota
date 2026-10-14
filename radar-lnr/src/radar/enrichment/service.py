@@ -6,21 +6,13 @@ import logging
 from rapidfuzz import fuzz
 
 from ..db import DB
-from ..dedup import normalize
+from ..dedup import clean_org_name as _clean_name
 from ..llm.verify import inn_checksum_ok
 from .base import Adapter, AdapterError, LookupResult, OrgCard
 
 log = logging.getLogger(__name__)
 NAME_MATCH = 90   # порог похожести названия для автоматического принятия
 NAME_GAP = 15     # и отрыв от второго кандидата (если их несколько), иначе — «требует проверки»
-OPF = r"\b(ооо|оао|зао|пао|ао|гуп|муп|гбу|гбуз|фгуп|фгбу|нко|ип)\b"
-
-
-def _clean_name(s: str) -> str:
-    import re
-    return re.sub(OPF, " ", normalize(s)).strip()
-
-
 def name_score(query: str, card: OrgCard) -> float:
     """Похожесть названия из новости и названия в реестре, 0..100.
     Сравниваем целиком (ratio / token_sort), а НЕ token_set: тот даёт 100, когда одно название — подмножество

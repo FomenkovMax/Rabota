@@ -7,7 +7,8 @@ from datetime import datetime, timedelta, timezone
 
 from .config import get_env, get_settings, load_channels, load_yaml
 from .db import DB
-from .dedup import group_similar
+from .dedup import group_similar, match_history_posts, merge_event_into
+from .event_dedup import dedup_events
 from .finance import effect_text, estimate
 from .report.export import export_files
 from .report.pdf import make_onepager
@@ -72,9 +73,22 @@ async def run_once(db: DB, hours: float | None = None, dry_run: bool = False, li
         res.posts_new = len(all_posts)
         log.info("Собрано новых постов: %d, ошибок каналов: %d", len(all_posts), len(res.channel_errors))
 
-        # ---- 2. дедуп по тексту ----
-        groups = group_similar(all_posts, cfg["dedup"]["similarity_threshold"])
-        log.info("Групп (инфоповодов) после дедупа: %d", len(groups))
+        # ---- 2. дедуп по тексту: внутри запуска и с постами прошлых дней ----
+        dcfg = cfg["dedup"]
+        groups = group_similar(all_posts, dcfg["similarity_threshold"])
+        log.info("Групп (инфоповодов) после дедупа внутри запуска: %d", len(groups))
+        history_posts = db.recent_posts(dcfg["history_days"])
+        groups, attach, skipped_old = match_history_posts(groups, history_posts, dcfg["similarity_threshold"])
+        log.info("Повторов прошлых постов: к событиям %d, нерелевантных пропущено %d; новых групп: %d",
+                 sum(len(v) for v in attach.values()), skipped_old, len(groups))
+        if attach and not dry_run:   # новый источник к уже показанному событию, без повторного показа
+            for eid, gs in attach.items():
+                if (old := db.get_event(eid)):
+                    for g in gs:
+                        merge_event_into(old, {"source_urls": g.urls, "channels": sorted({p.channel for p in g.posts}),
+                                               "post_keys": [f"{p.channel}/{p.post_id}" for p in g.posts]})
+                    db.update_event(eid, old)
+                    db.link_posts(eid, old["post_keys"])
 
         # ---- 3. LLM ----
         if groups:
@@ -82,6 +96,12 @@ async def run_once(db: DB, hours: float | None = None, dry_run: bool = False, li
             relevant = await clf.filter_groups(groups)
             log.info("Релевантных после фильтра: %d из %d", len(relevant), len(groups))
             res.events = await clf.analyze_all(relevant)
+            # ---- склейка по смыслу: пересказы и повторы через несколько часов/дней ----
+            res.events, n_in, n_old = await dedup_events(
+                res.events, db.recent_events(dcfg["history_days"]), clf, None if dry_run else db,
+                dcfg.get("llm_max_calls", 15))
+            log.info("Дубли по смыслу: склеено внутри запуска %d, привязано к прошлым событиям %d; новых: %d",
+                     n_in, n_old, len(res.events))
             # обогащение организаций (DaData и др.); сбой обогащения не ломает запуск
             enricher = Enricher(db, build_adapters(env, cfg), cfg["enrichment"]["cache_ttl_days"])
             for ev in res.events:
@@ -98,6 +118,7 @@ async def run_once(db: DB, hours: float | None = None, dry_run: bool = False, li
             db.save_posts(all_posts, run_id)
             for ev in res.events:
                 ev["id"] = db.save_event(run_id, ev)
+                db.link_posts(ev["id"], ev.get("post_keys") or [])
         d = cfg["digest"]
         res.digest = build_digest(res.events, since, until, len(res.channel_errors), d["timezone"],
                                   d["max_events"], d["min_score"], d.get("dashboard_min_score", 2))

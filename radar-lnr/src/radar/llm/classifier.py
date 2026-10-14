@@ -11,8 +11,8 @@ from pydantic import ValidationError
 from ..dedup import PostGroup
 from .client import LLMClient, LLMError
 from .cost import CostTracker
-from .prompts import ANALYZE_SYSTEM, CATEGORY_LIST, FILTER_SYSTEM
-from .schemas import Event, FilterResult
+from .prompts import ANALYZE_SYSTEM, CATEGORY_LIST, FILTER_SYSTEM, SAME_SYSTEM
+from .schemas import Event, FilterResult, SameNews
 from .verify import sanitize_event
 
 log = logging.getLogger(__name__)
@@ -76,9 +76,22 @@ class Classifier:
         d = ev.model_dump()
         d["source_urls"] = g.urls          # ссылки подставляем сами — LLM их не придумает
         d["channels"] = sorted({p.channel for p in g.posts})
+        d["post_keys"] = [f"{p.channel}/{p.post_id}" for p in g.posts]   # чтобы повторы узнавались в следующих запусках
         d["image_url"] = next((p.image_url for p in sorted(g.posts, key=lambda p: p is not g.main) if p.image_url), None)
         d["published_at"] = g.main.published_at.isoformat()
         return d
+
+    async def same_news(self, a: dict, b: dict) -> bool:
+        """Спорная пара событий: одна ли это новость? Ошибка LLM = «нет» (лучше повтор, чем потеря новости)."""
+        user = (f"Новость А: {a.get('title')}. {a.get('summary')}\n\n"
+                f"Новость Б: {b.get('title')}. {b.get('summary')}")
+        try:
+            return (await self._ask_json("filter", self.model_filter, SAME_SYSTEM, user, SameNews, 60)).same
+        except LLMError as e:
+            if "401" in str(e) or "403" in str(e):
+                raise
+            log.warning("проверка дубля не удалась: %s", e)
+            return False
 
     async def analyze_all(self, groups: list[PostGroup], concurrency: int = 3) -> list[dict]:
         sem = asyncio.Semaphore(concurrency)

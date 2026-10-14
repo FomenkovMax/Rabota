@@ -37,6 +37,10 @@ class FilterResult(BaseModel):
     results: list[FilterItem]
 
 
+class SameNews(BaseModel):
+    same: bool
+
+
 class Event(BaseModel):
     category: int = Field(ge=1, le=8)
     title: str
