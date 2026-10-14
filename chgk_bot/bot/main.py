@@ -43,6 +43,7 @@ class Guard(BaseMiddleware):
     async def __call__(self, handler, event, data):
         user = getattr(event, "from_user", None)
         if user and not is_allowed(user.id):
+            log.warning("Отказано в доступе: id=%s username=@%s имя=%s", user.id, user.username, user.full_name)
             if isinstance(event, Message):
                 await event.answer("Бот приватный: доступ только для команды.")
             elif isinstance(event, CallbackQuery):
@@ -317,6 +318,7 @@ async def main() -> None:
     if llm is None:
         log.warning("ANTHROPIC_API_KEY не задан: оценка только по точному совпадению, /gen недоступен")
     log.info("Вопросов в базе: %d", len(bank.items))
+    log.info("Доступ: %s", f"только {sorted(ALLOWED)} (+админ)" if ALLOWED else "ОТКРЫТ ВСЕМ (ALLOWED_IDS не задан)")
     await dp.start_polling(bot)
 
 

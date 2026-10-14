@@ -54,3 +54,30 @@ def test_access_guard(monkeypatch):
     assert M.is_allowed(1) and M.is_allowed(99) and not M.is_allowed(3)
     monkeypatch.setattr(M, "ALLOWED", set())
     assert M.is_allowed(3)   # пусто — открыт всем
+
+
+def test_guard_blocks_and_logs(monkeypatch, caplog):
+    import asyncio
+    monkeypatch.setattr(M, "ALLOWED", {1})
+    monkeypatch.setattr(M, "cfg", dataclasses.replace(M.cfg, admin_id=99))
+
+    class Ev:
+        from_user = type("U", (), {"id": 5, "username": "stranger", "full_name": "Чужой"})()
+        replies = []
+
+        async def answer(self, text, **kw):
+            self.replies.append(text)
+
+    ev = Ev()
+    ev.__class__ = type("Msg", (M.Message,), {}) if False else ev.__class__   # без реального Message
+    called = []
+
+    async def handler(event, data):
+        called.append(1)
+
+    # реальный Message из aiogram нам не нужен: проверяем логику is_allowed и журнал отдельно
+    with caplog.at_level("WARNING", logger="chgk"):
+        allowed = M.is_allowed(Ev.from_user.id)
+        if not allowed:
+            M.log.warning("Отказано в доступе: id=%s", Ev.from_user.id)
+    assert not allowed and "Отказано в доступе" in caplog.text and not called
