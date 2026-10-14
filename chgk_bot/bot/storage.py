@@ -36,10 +36,22 @@ class QuestionBank:
         tmp.write_text(json.dumps(self.items, ensure_ascii=False, indent=2), encoding="utf-8")
         tmp.replace(self.path)
 
-    def add(self, new: list[dict]) -> int:
-        """Добавляет вопросы, пропуская дубли и неполные. Возвращает число добавленных."""
+    def remove_answers(self, answers: list[str]) -> int:
+        """Удаляет вопросы по точному ответу (регистр не важен). Возвращает число удалённых."""
+        wanted = {a.strip().lower() for a in answers}
+        keep = [q for q in self.items if str(q["answer"]).strip().lower() not in wanted]
+        removed = len(self.items) - len(keep)
+        if removed:
+            self.items = keep
+            self._save()
+        return removed
+
+    def add(self, new: list[dict], update: bool = False) -> int:
+        """Добавляет вопросы, пропуская дубли и неполные. update=True — заменяет уже существующие (по тексту).
+        Возвращает число добавленных."""
         known = {q["id"] for q in self.items}
         added = 0
+        changed = False
         for q in new:
             if not all(str(q.get(k, "")).strip() for k in REQUIRED):
                 continue
@@ -49,11 +61,14 @@ class QuestionBank:
             q.setdefault("tags", [])
             q.setdefault("difficulty", 3)
             if q["id"] in known:
+                if update:
+                    self.items = [q if x["id"] == q["id"] else x for x in self.items]
+                    changed = True
                 continue
             known.add(q["id"])
             self.items.append(q)
             added += 1
-        if added:
+        if added or changed:
             self._save()
         return added
 

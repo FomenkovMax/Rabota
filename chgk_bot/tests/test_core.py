@@ -159,3 +159,14 @@ def test_generate_rejects_score_three_and_long_answers():
     good, rejected = asyncio.run(generate(Seq([json.dumps(d), json.dumps(critic)]), "m", n=2))
     assert good == []
     assert any("слишком длинный" in r for r in rejected) and any("слабоват" in r for r in rejected)
+
+
+def test_bank_update_and_remove(tmp_path):
+    bank = QuestionBank(tmp_path / "q.json")
+    q = {"text": "Вопрос?", "answer": "Да", "explanation": "e", "accepted": []}
+    assert bank.add([q]) == 1
+    assert bank.add([dict(q, accepted=["Ага"])]) == 0           # без update — дубль пропускается
+    assert bank.items[0]["accepted"] == []
+    assert bank.add([dict(q, accepted=["Ага"])], update=True) == 0  # с update — заменяется, но «добавлено» 0
+    assert QuestionBank(tmp_path / "q.json").items[0]["accepted"] == ["Ага"]
+    assert bank.remove_answers(["да"]) == 1 and bank.items == []
