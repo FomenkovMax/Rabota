@@ -126,3 +126,19 @@ def test_generate_filters_and_ranks():
     assert [q["answer"] for q in good] == ["Лампа", "Ключ"]       # лучшие по баллу идут первыми
     assert any("уже есть в тексте" in r for r in rejected)       # утечка отсеяна без критика
     assert any("викторина" in r for r in rejected)               # слабый отсеян критиком
+
+
+def test_generate_accepts_score_three_and_stores_meta():
+    from bot.generator import generate
+
+    class Seq:
+        def __init__(self, replies):
+            self.replies, self.messages = list(replies), self
+        async def create(self, **kw):
+            return type("R", (), {"content": [type("B", (), {"text": self.replies.pop(0)})()]})()
+
+    d = [{"text": "Загадка про скрипача и родник", "answer": "Ключ", "explanation": "разбор", "facts": ["a", "b", "c"]}]
+    critic = [{"i": 0, "ok": True, "chgk": 3}]
+    good, rejected = asyncio.run(generate(Seq([json.dumps(d), json.dumps(critic)]), "m", n=1, pattern="дуплет"))
+    assert good and good[0]["chgk"] == 3.0 and good[0]["pattern"] == "дуплет"
+    assert any("приём: дуплет" in r for r in rejected)

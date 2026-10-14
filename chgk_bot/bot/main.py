@@ -121,7 +121,7 @@ async def cmd_gen(m: Message, command: CommandObject):
     topic = args[1] if len(args) > 1 else (args[0] if args and not args[0].isdigit() else None)
     await m.answer(f"⏳ Генерирую {n} вопросов (автор + проверка критиком)…")
     try:
-        good, rejected = await generate(llm, cfg.model, n=min(n, 10), topic=topic)
+        good, rejected = await generate(llm, os.getenv("GEN_MODEL") or cfg.model, n=min(n, 10), topic=topic)
     except Exception as e:
         log.exception("generate failed")
         await m.answer(f"Не вышло: {html.escape(str(e))}")
