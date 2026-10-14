@@ -24,6 +24,12 @@ else
 fi
 cd "$DIR/chgk_bot"
 
+# Можно заранее положить готовые настройки в /root/chgk.env — скрипт заберёт их вместо вопросов
+if [ ! -f .env ] && [ -f /root/chgk.env ]; then
+  mv /root/chgk.env .env && chmod 600 .env
+  echo "==> Взял настройки из /root/chgk.env"
+fi
+
 if [ ! -f .env ]; then
   echo "==> Настройка. Ввод скрытый — символы не отображаются."
   read -rsp "BOT_TOKEN (от @BotFather): " BOT_TOKEN; echo
