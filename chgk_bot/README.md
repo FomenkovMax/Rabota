@@ -20,7 +20,13 @@ python -m bot.main
 python -m pytest -q      # тесты
 ```
 
-## Деплой на сервер (VPS с Docker)
+## Деплой на VPS одной командой (Ubuntu, от root)
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/FomenkovMax/Rabota/claude/gracious-lovelace-w0b4kc/chgk_bot/deploy/setup.sh)
+```
+Скрипт поставит Docker, скачает проект, спросит токен/ключи (скрытый ввод), запустит бота и проверит ключ. Повторный запуск того же скрипта обновляет бота (твой `.env` и данные сохраняются).
+
+## Деплой вручную (VPS с Docker)
 ```bash
 git clone <репозиторий> && cd Rabota/chgk_bot
 cp .env.example .env && nano .env
