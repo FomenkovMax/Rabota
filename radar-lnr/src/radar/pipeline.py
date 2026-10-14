@@ -14,9 +14,9 @@ from .report.export import export_files
 from .report.pdf import make_onepager
 from .enrichment.service import Enricher, build_adapters
 from .llm.classifier import Classifier
-from .llm.client import LLMAuthError, make_client
+from .llm.client import LLMAuthError, LLMBalanceError, make_client
 from .llm.cost import CostTracker
-from .report.digest import build_digest
+from .report.digest import build_digest, usage_line
 from .sources.tme_web import ChannelUnavailable, TmeWebSource
 
 log = logging.getLogger(__name__)
@@ -32,7 +32,11 @@ class RunResult:
     posts_new: int = 0
     cost: CostTracker | None = None
     digest: str = ""
-    files: list = field(default_factory=list)   # HTML-дашборд и Excel для вложения
+    files: list = field(default_factory=list)   # PDF, HTML-дашборд и Excel для вложения
+    tokens_before: int | None = None             # остаток токенов у LLM-сервиса до запуска
+    tokens_left: int | None = None               # ...и после запуска
+    tokens_spent: int | None = None
+    tokens_approx: bool = False                  # True — «потрачено» оценено самим ботом (сервис баланс не отдаёт)
 
 
 async def run_once(db: DB, hours: float | None = None, dry_run: bool = False, limit_channels: int | None = None,
@@ -53,6 +57,13 @@ async def run_once(db: DB, hours: float | None = None, dry_run: bool = False, li
     own_source = source is None
     source = source or TmeWebSource(cfg["scrape"])
     try:
+        client = make_client(env)
+        # ---- 0. баланс токенов: если закончились — не начинаем, понятно сообщаем ----
+        res.tokens_before = await client.get_balance()
+        if res.tokens_before is not None:
+            log.info("Баланс токенов до запуска: %s", res.tokens_before)
+            if res.tokens_before <= cfg["llm"].get("min_balance_to_run", 0):
+                raise LLMBalanceError(f"токены закончились: осталось {res.tokens_before}")
         # ---- 1. сбор ----
         channels = load_channels()[:limit_channels]
         all_posts = []
@@ -92,7 +103,7 @@ async def run_once(db: DB, hours: float | None = None, dry_run: bool = False, li
 
         # ---- 3. LLM ----
         if groups:
-            clf = Classifier(make_client(env), env, cfg, load_yaml("config/competitors.yaml")["banks"], res.cost)
+            clf = Classifier(client, env, cfg, load_yaml("config/competitors.yaml")["banks"], res.cost)
             relevant = await clf.filter_groups(groups)
             log.info("Релевантных после фильтра: %d из %d", len(relevant), len(groups))
             res.events = await clf.analyze_all(relevant)
@@ -119,9 +130,17 @@ async def run_once(db: DB, hours: float | None = None, dry_run: bool = False, li
             for ev in res.events:
                 ev["id"] = db.save_event(run_id, ev)
                 db.link_posts(ev["id"], ev.get("post_keys") or [])
+        # ---- остаток и расход токенов: по данным сервиса (разница баланса); нет баланса — оценка бота ----
+        res.tokens_left = await client.get_balance()
+        if res.tokens_before is not None and res.tokens_left is not None:
+            res.tokens_spent = max(0, res.tokens_before - res.tokens_left)
+        else:
+            res.tokens_spent, res.tokens_approx = res.cost.tokens_in + res.cost.tokens_out, True
+        warn = cfg["llm"].get("low_balance_warn")
+        tokens_line = usage_line(res.tokens_spent, res.tokens_left, res.tokens_approx, warn)
         d = cfg["digest"]
         res.digest = build_digest(res.events, since, until, len(res.channel_errors), d["timezone"],
-                                  d["max_events"], d["min_score"], d.get("dashboard_min_score", 2))
+                                  d["max_events"], d["min_score"], d.get("dashboard_min_score", 2), tokens_line)
         dash_events = [e for e in res.events if e["relevance_score"] >= d.get("dashboard_min_score", 2)]
         exports = get_env().data_path / "exports"
         if dash_events:   # в дашборд и Excel — события от 2 звёзд
@@ -137,6 +156,10 @@ async def run_once(db: DB, hours: float | None = None, dry_run: bool = False, li
                           tokens_in=res.cost.tokens_in, tokens_out=res.cost.tokens_out,
                           cost_usd=res.cost.cost_usd, channel_errors=res.channel_errors)
         return res
+    except LLMBalanceError:
+        if not dry_run:
+            db.finish_run(run_id, "llm_balance_empty", channel_errors=res.channel_errors)
+        raise
     except LLMAuthError:
         if not dry_run:
             db.finish_run(run_id, "llm_auth_error", channel_errors=res.channel_errors)

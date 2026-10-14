@@ -15,7 +15,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 
 from ..config import get_env, get_settings, load_channels, setup_logging
 from ..db import DB
-from ..llm.client import LLMAuthError, LLMError, make_client
+from ..llm.client import LLMAuthError, LLMBalanceError, LLMError, make_client
 from ..enrichment.service import Enricher, build_adapters
 from ..pipeline import run_once
 from ..report.excel import cards_workbook
@@ -45,6 +45,16 @@ async def notify_admin(text: str) -> None:
         log.error("ADMIN_USER_ID не задан, служебное сообщение потеряно: %s", text)
 
 
+async def alert_once(key: str, hours: float, text: str) -> None:
+    """Служебное уведомление админу не чаще раза в `hours` часов (чтобы не спамить каждые 4 часа)."""
+    from datetime import datetime, timedelta, timezone
+    last = ctx.db.get_meta(key)
+    if last and datetime.now(timezone.utc) - datetime.fromisoformat(last) < timedelta(hours=hours):
+        return
+    ctx.db.set_meta(key, datetime.now(timezone.utc).isoformat(timespec="seconds"))
+    await notify_admin(text)
+
+
 async def do_digest(hours: float | None = None, to_admin_only: bool = False) -> str:
     """Полный цикл + рассылка. Возвращает короткий статус."""
     env = get_env()
@@ -53,6 +63,11 @@ async def do_digest(hours: float | None = None, to_admin_only: bool = False) -> 
     async with _run_lock:
         try:
             res = await run_once(ctx.db, hours=hours)
+        except LLMBalanceError as e:
+            log.error("токены закончились: %s", e)
+            await alert_once("alert_balance_empty", 12, f"💳 <b>Токены закончились</b>: {escape(str(e))}\n"
+                             "Дайджест не сформирован. Пополни баланс у продавца — запуски возобновятся сами.")
+            return "Токены закончились — дайджест не сформирован"
         except LLMAuthError as e:
             msg = f"🔑 Проблема с LLM-ключом: {escape(str(e))}\nПроверь .env и запусти scripts/check_llm.py"
             log.error(msg)
@@ -69,6 +84,10 @@ async def do_digest(hours: float | None = None, to_admin_only: bool = False) -> 
     chats = [env.admin_user_id] if to_admin_only else recipients(env.chat_ids, env.allowed_ids, ctx.db.dm_muted())
     delivered = await broadcast(ctx.bot, chats, res.digest, res.files)
     ok = sum(delivered.values())
+    warn = get_settings()["llm"].get("low_balance_warn")
+    if res.tokens_left is not None and warn and res.tokens_left < warn:   # заранее предупредить админа
+        await alert_once("alert_low_balance", 24, f"⚠️ Токенов мало: осталось {res.tokens_left:,}".replace(",", " ")
+                         + ". Пополни баланс, иначе дайджесты остановятся.")
     return f"Готово: событий {len(res.events)}, доставлено {ok}/{len(chats)}. {res.cost.summary() if res.cost else ''}"
 
 
@@ -190,7 +209,13 @@ async def cmd_channels(m: Message):
 async def cmd_stats(m: Message):
     s = ctx.db.stats()
     cost = f"${s['cost_usd']:.2f}" if s["cost_usd"] is not None else "н/д"
-    await m.answer(f"📊 Запусков: {s['runs']}\nПостов в базе: {s['posts']}\nСобытий: {s['events']}\nLLM всего: {cost}")
+    try:
+        bal = await make_client(get_env()).get_balance()
+    except LLMError:
+        bal = None
+    left = f"{bal:,}".replace(",", " ") if bal is not None else "н/д"
+    await m.answer(f"📊 Запусков: {s['runs']}\nПостов в базе: {s['posts']}\nСобытий: {s['events']}\n"
+                   f"LLM всего: {cost}\n🪙 Токенов осталось: {left}")
 
 
 # ---------------- запуск ----------------

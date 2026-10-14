@@ -17,6 +17,21 @@ def _plural(n: int, one: str, few: str, many: str) -> str:
     return one if n10 == 1 and n100 != 11 else few if 2 <= n10 <= 4 and not 12 <= n100 <= 14 else many
 
 
+def _n(x: int) -> str:
+    """1234567 -> '1 234 567'."""
+    return f"{x:,}".replace(",", " ")
+
+
+def usage_line(spent: int | None, left: int | None, approx: bool = False, warn_below: int | None = None) -> str:
+    """Последняя строка дайджеста: «🪙 Токенов: потрачено X / осталось Y». approx — потрачено оценено самим ботом."""
+    sp = "н/д" if spent is None else ("≈" if approx else "") + _n(spent)
+    lf = "н/д" if left is None else _n(left)
+    line = f"🪙 Токенов: потрачено {sp} / осталось {lf}"
+    if left is not None and warn_below is not None and left < warn_below:
+        line += "\n⚠️ Токенов мало — пополни баланс у продавца"
+    return line
+
+
 def candidate_text(c: dict, short: bool = True, esc: bool = True) -> str:
     """«Название (ИНН …, регион)» для вариантов «требует проверки». short — укороченный вид для Telegram."""
     name = c.get("name_short") or c.get("name_full") or "н/д"
@@ -67,11 +82,13 @@ def _fmt_event(ev: dict) -> str:
 
 def build_digest(events: list[dict], since: datetime, until: datetime, failed_channels: int,
                  tz: str = "Europe/Moscow", max_events: int = 12, min_score: int = 3,
-                 dash_min_score: int = 2) -> str:
+                 dash_min_score: int = 2, tokens_line: str = "") -> str:
     z = ZoneInfo(tz)
     period = f"{since.astimezone(z):%d.%m %H:%M} – {until.astimezone(z):%d.%m %H:%M}"
     head = f"📡 <b>Радар ЛНР</b> · {period}"
     foot = f"\n⚠️ не удалось прочитать: {failed_channels} {_plural(failed_channels, 'канал', 'канала', 'каналов')}" if failed_channels else ""
+    if tokens_line:       # строка про токены — всегда самая последняя
+        foot += "\n" + tokens_line
 
     shown = sorted((e for e in events if e["relevance_score"] >= min_score),
                    key=lambda e: -e["relevance_score"])

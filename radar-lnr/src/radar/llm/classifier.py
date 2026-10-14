@@ -9,7 +9,7 @@ import re
 from pydantic import ValidationError
 
 from ..dedup import PostGroup
-from .client import LLMClient, LLMError
+from .client import LLMAuthError, LLMBalanceError, LLMClient, LLMError
 from .cost import CostTracker
 from .prompts import ANALYZE_SYSTEM, CATEGORY_LIST, FILTER_SYSTEM, SAME_SYSTEM
 from .schemas import Event, FilterResult, SameNews
@@ -62,9 +62,9 @@ class Classifier:
                 fr = await self._ask_json("filter", self.model_filter, self.filter_sys, user, FilterResult, 800)
                 rel = {r.i for r in fr.results if r.relevant}
                 keep += [g for i, g in enumerate(chunk) if i in rel]
+            except (LLMAuthError, LLMBalanceError):
+                raise
             except LLMError as e:
-                if "401" in str(e) or "403" in str(e):
-                    raise
                 log.error("фильтр не сработал для батча, оставляем все посты: %s", e)
                 keep += chunk
         return keep
@@ -87,9 +87,9 @@ class Classifier:
                 f"Новость Б: {b.get('title')}. {b.get('summary')}")
         try:
             return (await self._ask_json("filter", self.model_filter, SAME_SYSTEM, user, SameNews, 60)).same
-        except LLMError as e:
-            if "401" in str(e) or "403" in str(e):
-                raise
+        except LLMAuthError:
+            raise
+        except LLMError as e:      # в т.ч. «токены закончились»: разбор уже сделан, запуск доводим до конца
             log.warning("проверка дубля не удалась: %s", e)
             return False
 
@@ -100,9 +100,9 @@ class Classifier:
             async with sem:
                 try:
                     return await self.analyze_group(g)
+                except (LLMAuthError, LLMBalanceError):
+                    raise
                 except LLMError as e:
-                    if "401" in str(e) or "403" in str(e):
-                        raise
                     log.error("разбор не удался (%s): %s", g.main.url, e)
                     return None
 

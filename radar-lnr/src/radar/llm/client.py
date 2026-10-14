@@ -2,8 +2,11 @@
 from __future__ import annotations
 
 import logging
+import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+
+import httpx
 
 log = logging.getLogger(__name__)
 
@@ -16,6 +19,10 @@ class LLMAuthError(LLMError):
     """Неверный ключ / нет доступа / гео-блок (401, 403)."""
 
 
+class LLMBalanceError(LLMError):
+    """Токены (баланс прокси) закончились — дальше платить нечем."""
+
+
 @dataclass
 class LLMResult:
     text: str
@@ -23,7 +30,13 @@ class LLMResult:
     tokens_out: int
 
 
+_BALANCE_WORDS = re.compile(r"insufficient|balance|quota|credit|out of tokens|баланс|недостаточно|закончил|лимит токен", re.I)
+
+
 def _explain(status: int | None, detail: str) -> LLMError:
+    # 402 Payment Required, либо 403/429 с текстом про баланс/квоту = токены закончились (а не «неверный ключ»)
+    if status == 402 or (status in (403, 429) and _BALANCE_WORDS.search(detail or "")):
+        return LLMBalanceError("токены закончились: баланс сервиса LLM исчерпан — пополни у продавца")
     if status == 401:
         return LLMAuthError("401: ключ LLM_API_KEY неверный или не подходит к этому LLM_BASE_URL")
     if status == 403:
@@ -35,10 +48,38 @@ def _explain(status: int | None, detail: str) -> LLMError:
     return LLMError(f"ошибка LLM ({status}): {detail[:200]}")
 
 
+async def fetch_balance(base_url: str, api_key: str, bearer: bool = True, path: str = "/v1/balance",
+                        client: httpx.AsyncClient | None = None) -> int | None:
+    """Остаток токенов у прокси (GET <base>/v1/balance -> {"token_balance": N}). Нет такого адреса/ошибка -> None."""
+    root = re.sub(r"/v1/?$", "", (base_url or "").rstrip("/"))
+    headers = {"Authorization": f"Bearer {api_key}"} if bearer else {"x-api-key": api_key}
+    own = client or httpx.AsyncClient(timeout=15)
+    try:
+        r = await own.get(root + path, headers=headers)
+        if r.status_code != 200:
+            return None
+        data = r.json()
+        for key in ("token_balance", "balance", "tokens", "remaining"):
+            if isinstance(data.get(key), (int, float)):
+                return int(data[key])
+    except (httpx.HTTPError, ValueError, AttributeError):
+        log.info("баланс у LLM-сервиса получить не удалось")
+    finally:
+        if client is None:
+            await own.aclose()
+    return None
+
+
 class LLMClient(ABC):
+    balance_path = "/v1/balance"
+
     @abstractmethod
     async def complete(self, model: str, system: str, user: str, max_tokens: int = 1500) -> LLMResult:
         ...
+
+    async def get_balance(self) -> int | None:
+        """Остаток токенов, если сервис это отдаёт; иначе None (тогда показываем «н/д»)."""
+        return None
 
 
 class AnthropicClient(LLMClient):
@@ -48,6 +89,10 @@ class AnthropicClient(LLMClient):
         # Многие прокси выдают «ANTHROPIC_AUTH_TOKEN» — он уходит заголовком Authorization: Bearer
         auth = {"auth_token": api_key} if bearer else {"api_key": api_key}
         self.client = anthropic.AsyncAnthropic(base_url=base_url or None, max_retries=2, **auth)
+        self._bal = (base_url, api_key, bearer)
+
+    async def get_balance(self) -> int | None:
+        return await fetch_balance(*self._bal, path=self.balance_path)
 
     async def complete(self, model, system, user, max_tokens=1500) -> LLMResult:
         try:
@@ -67,6 +112,10 @@ class OpenAIClient(LLMClient):
         import openai
         self._sdk = openai
         self.client = openai.AsyncOpenAI(api_key=api_key, base_url=base_url or None, max_retries=2)
+        self._bal = (base_url, api_key, True)
+
+    async def get_balance(self) -> int | None:
+        return await fetch_balance(*self._bal, path=self.balance_path)
 
     async def complete(self, model, system, user, max_tokens=1500) -> LLMResult:
         try:

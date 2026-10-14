@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS organizations (
   key TEXT PRIMARY KEY,                  -- ИНН или нормализованное название
   data TEXT NOT NULL, fetched_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
 CREATE TABLE IF NOT EXISTS subscribers (
   user_id INTEGER PRIMARY KEY, dm_enabled INTEGER DEFAULT 1
 );
@@ -153,6 +154,16 @@ class DB:
         with self.conn() as c:
             c.execute("INSERT OR REPLACE INTO organizations(key, data, fetched_at) VALUES (?,?,?)",
                       (key, json.dumps(data, ensure_ascii=False), now_iso()))
+
+    # ---- meta: служебные значения (например, когда последний раз предупреждали о малом балансе) ----
+    def get_meta(self, key: str) -> str | None:
+        with self.conn() as c:
+            r = c.execute("SELECT value FROM meta WHERE key=?", (key,)).fetchone()
+        return r["value"] if r else None
+
+    def set_meta(self, key: str, value: str) -> None:
+        with self.conn() as c:
+            c.execute("INSERT OR REPLACE INTO meta(key, value) VALUES (?, ?)", (key, value))
 
     # ---- subscribers (/mute, /unmute) ----
     def set_dm(self, user_id: int, enabled: bool) -> None:
