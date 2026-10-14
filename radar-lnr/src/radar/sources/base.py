@@ -14,6 +14,7 @@ class Post:
     text: str
     published_at: datetime  # всегда с таймзоной (UTC)
     source: str = "telegram"
+    image_url: str | None = None   # фото из превью поста (для визуала в PDF), если есть
 
 
 class Source(ABC):

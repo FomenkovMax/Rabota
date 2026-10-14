@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import random
+import re
 from datetime import datetime, timezone
 
 import httpx
@@ -16,6 +17,21 @@ log = logging.getLogger(__name__)
 
 class ChannelUnavailable(Exception):
     """Канал нельзя прочитать через веб-превью (приватный, нет превью, 404 и т.п.)."""
+
+
+_BG_URL = re.compile(r"background-image:\s*url\(['\"]?([^'\")]+)['\"]?\)")
+
+
+def _first_image(msg) -> str | None:
+    """Первое фото/превью видео поста (CSS background-image) — только https-адрес."""
+    for sel in ("a.tgme_widget_message_photo_wrap", "i.tgme_widget_message_video_thumb",
+                "a.tgme_widget_message_link_preview i.link_preview_image"):
+        node = msg.css_first(sel)
+        if node and (m := _BG_URL.search(node.attributes.get("style") or "")):
+            url = m.group(1)
+            if url.startswith("https://"):
+                return url
+    return None
 
 
 def parse_channel_html(html: str, channel: str) -> list[Post]:
@@ -40,7 +56,7 @@ def parse_channel_html(html: str, channel: str) -> list[Post]:
         if published.tzinfo is None:
             published = published.replace(tzinfo=timezone.utc)
         posts.append(Post(channel=channel, post_id=post_id, url=f"https://t.me/{channel}/{post_id}",
-                          text=text, published_at=published.astimezone(timezone.utc)))
+                          text=text, published_at=published.astimezone(timezone.utc), image_url=_first_image(msg)))
     return posts
 
 

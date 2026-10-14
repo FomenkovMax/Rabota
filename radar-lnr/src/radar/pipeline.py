@@ -10,6 +10,7 @@ from .db import DB
 from .dedup import group_similar
 from .finance import effect_text, estimate
 from .report.export import export_files
+from .report.pdf import make_onepager
 from .enrichment.service import Enricher, build_adapters
 from .llm.classifier import Classifier
 from .llm.client import LLMAuthError, make_client
@@ -101,8 +102,14 @@ async def run_once(db: DB, hours: float | None = None, dry_run: bool = False, li
         res.digest = build_digest(res.events, since, until, len(res.channel_errors), d["timezone"],
                                   d["max_events"], d["min_score"], d.get("dashboard_min_score", 2))
         dash_events = [e for e in res.events if e["relevance_score"] >= d.get("dashboard_min_score", 2)]
+        exports = get_env().data_path / "exports"
         if dash_events:   # в дашборд и Excel — события от 2 звёзд
-            res.files = export_files(dash_events, since, until, get_env().data_path / "exports")
+            res.files = export_files(dash_events, since, until, exports)
+        try:              # одностраничный PDF с главными новостями (от 3 звёзд) — первым файлом; сбой не критичен
+            if (pdf := await make_onepager(res.events, since, until, exports, d["min_score"], d["timezone"])):
+                res.files.insert(0, pdf)
+        except Exception as e:
+            log.warning("PDF «Главное» не создан: %s: %s", type(e).__name__, e)
         log.info(res.cost.summary())
         if not dry_run:
             db.finish_run(run_id, "ok", posts_new=res.posts_new, events_n=len(res.events),

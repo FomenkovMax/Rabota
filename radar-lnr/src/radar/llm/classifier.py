@@ -76,6 +76,7 @@ class Classifier:
         d = ev.model_dump()
         d["source_urls"] = g.urls          # ссылки подставляем сами — LLM их не придумает
         d["channels"] = sorted({p.channel for p in g.posts})
+        d["image_url"] = next((p.image_url for p in sorted(g.posts, key=lambda p: p is not g.main) if p.image_url), None)
         d["published_at"] = g.main.published_at.isoformat()
         return d
 

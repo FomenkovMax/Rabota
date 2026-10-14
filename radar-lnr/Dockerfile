@@ -1,6 +1,11 @@
 # Радар ЛНР — образ бота. Сборка: docker compose build
 FROM python:3.13-slim
 
+# Системные библиотеки для генерации PDF (WeasyPrint) и шрифты с кириллицей
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz-subset0 fonts-liberation fonts-dejavu-core \
+    && rm -rf /var/lib/apt/lists/*
+
 # uv — быстрый установщик зависимостей (тот же, что и при разработке)
 RUN pip install --no-cache-dir uv==0.11.32
 
