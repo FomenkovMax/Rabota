@@ -92,11 +92,11 @@ async def do_digest(hours: float | None = None, to_admin_only: bool = False) -> 
 
 
 # ---------------- команды ----------------
-@router.message(Command("start"))
+@router.message(Command("start", "help", "menu"))
 async def cmd_start(m: Message):
     await m.answer("📡 <b>Радар ЛНР</b>\nРаз в 4 часа присылаю дайджест новостей региона.\n\n"
                    "/myid — твой user_id\n/chatid — ID чата (для группы)\n/inn — карточка по ИНН (или пришли файл)\n/channels — каналы\n/stats — статистика\n"
-                   "/mute, /unmute — отключить/включить дайджест в личку\n/digest — запустить сейчас (админ)")
+                   "/mute, /unmute — отключить/включить дайджест в личку\n/digest — запустить сейчас (админ); в группе: /digest@Radar_Bank_Bot [часы]")
 
 
 @router.message(Command("myid"))
