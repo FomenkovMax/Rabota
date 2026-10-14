@@ -102,3 +102,13 @@ def test_digest_shows_candidate_inns_for_needs_review():
                      "candidates": [{"name_full": "ООО Ромашка-1", "inn": "7707083893", "address": "Луганская Народная Респ, г Луганск"}]}
     txt = build_digest([e], now - timedelta(hours=4), now, 0)
     assert "требует проверки" in txt and "7707083893" in txt and "Варианты" in txt
+
+
+def test_digest_hours_argument_parsing():
+    """Окно в часах берётся из первого слова; «@Radar_Bank_Bot» после числа не мешает."""
+    def parse(args):
+        first = (args or "").split()[:1]
+        return min(float(first[0].replace(",", ".")), 168.0) if first and first[0].replace(",", ".").replace(".", "", 1).isdigit() else None
+    assert parse("24 @Radar_Bank_Bot") == 24.0 and parse("6") == 6.0 and parse("1,5") == 1.5
+    assert parse(None) is None and parse("@Radar_Bank_Bot") is None and parse("abc") is None
+    assert parse("9999") == 168.0                         # не больше недели

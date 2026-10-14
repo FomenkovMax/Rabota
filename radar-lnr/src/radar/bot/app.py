@@ -115,7 +115,9 @@ async def cmd_digest(m: Message, command: CommandObject):
     if m.from_user.id != get_env().admin_user_id:
         await m.answer("Эта команда только для администратора.")
         return
-    hours = float(command.args) if command.args and command.args.replace(".", "", 1).isdigit() else None
+    # окно в часах — первое слово аргументов; всё остальное (например, «@Radar_Bank_Bot» после числа) игнорируем
+    first = (command.args or "").split()[:1]
+    hours = min(float(first[0].replace(",", ".")), 168.0) if first and first[0].replace(",", ".").replace(".", "", 1).isdigit() else None
     await m.answer("Запускаю… это займёт несколько минут ⏳")
     await m.answer(escape(await do_digest(hours)))
 
