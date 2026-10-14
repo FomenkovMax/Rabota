@@ -6,7 +6,7 @@ import os
 import time
 from dataclasses import dataclass, field
 
-from aiogram import Bot, Dispatcher, F
+from aiogram import BaseMiddleware, Bot, Dispatcher, F
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.filters import Command, CommandObject
@@ -30,6 +30,29 @@ if cfg.anthropic_key:
 
 bot = Bot(cfg.bot_token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 dp = Dispatcher()
+
+# Закрытый доступ: ALLOWED_IDS="123,456" — только эти пользователи (и админ). Пусто — бот открыт всем.
+ALLOWED = {int(x) for x in os.getenv("ALLOWED_IDS", "").replace(" ", "").split(",") if x.isdigit()}
+
+
+def is_allowed(user_id: int) -> bool:
+    return not ALLOWED or user_id in ALLOWED or user_id == cfg.admin_id
+
+
+class Guard(BaseMiddleware):
+    async def __call__(self, handler, event, data):
+        user = getattr(event, "from_user", None)
+        if user and not is_allowed(user.id):
+            if isinstance(event, Message):
+                await event.answer("Бот приватный: доступ только для команды.")
+            elif isinstance(event, CallbackQuery):
+                await event.answer("Бот приватный", show_alert=True)
+            return None
+        return await handler(event, data)
+
+
+dp.message.outer_middleware(Guard())
+dp.callback_query.outer_middleware(Guard())
 
 
 @dataclass
@@ -277,6 +300,9 @@ async def finish(chat_id: int, user_id: int, s: Session, answer: str | None) -> 
     if q.get("accepted"):
         parts.append(f"Зачёт: {html.escape(', '.join(q['accepted']))}")
     parts.append(f"\n<b>Разбор:</b>\n<blockquote expandable>{html.escape(q['explanation'])}</blockquote>")
+    if q.get("author"):  # вопросы чужие — всегда показываем автора и источник
+        where = f" · {html.escape(q['pack_title'])}" if q.get("pack_title") else ""
+        parts.append(f"<i>Автор вопроса: {html.escape(q['author'])}{where}</i>")
     text = "\n".join(parts)
     # у подписи к фото лимит 1024 символа — длинный разбор отправляем отдельным сообщением
     if len(text) <= 1000:

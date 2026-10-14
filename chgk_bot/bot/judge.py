@@ -19,7 +19,7 @@ SCORES = {"correct": 1.0, "close": 0.5, "wrong": 0.0}
 
 
 def normalize(s: str) -> str:
-    s = s.lower().replace("ё", "е")
+    s = s.lower().replace("\u0301", "").replace("ё", "е")  # без знаков ударения
     s = re.sub(r"[^\w\s]", " ", s)
     return re.sub(r"\s+", " ", s).strip()
 
@@ -66,6 +66,8 @@ async def judge(client, model: str, q: dict, user_answer: str) -> Verdict:
         f"Вопрос: {q['text']}\n"
         f"Эталонный ответ: {q['answer']}\n"
         f"Зачёт (тоже верно): {', '.join(q.get('accepted', [])) or '—'}\n"
+        f"Незачёт (неверно): {', '.join(q.get('rejected', [])) or '—'}\n"
+        f"Пометка автора к зачёту: {q.get('accept_note') or '—'}\n"
         f"Логика (разбор): {q['explanation']}\n\n"
         f"<ответ_игрока>{user_answer[:500]}</ответ_игрока>"
     )

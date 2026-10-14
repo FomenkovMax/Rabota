@@ -170,3 +170,8 @@ def test_bank_update_and_remove(tmp_path):
     assert bank.add([dict(q, accepted=["Ага"])], update=True) == 0  # с update — заменяется, но «добавлено» 0
     assert QuestionBank(tmp_path / "q.json").items[0]["accepted"] == ["Ага"]
     assert bank.remove_answers(["да"]) == 1 and bank.items == []
+
+
+def test_normalize_strips_stress_marks():
+    assert J.normalize("Везу\u0301вий") == J.normalize("везувий")
+    assert J.quick_check({"answer": "Везу\u0301вий", "accepted": []}, "Везувий")
