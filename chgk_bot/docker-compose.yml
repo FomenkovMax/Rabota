@@ -1,0 +1,11 @@
+services:
+  chgk-bot:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATA_DIR: /data
+    volumes:
+      - chgk_data:/data
+volumes:
+  chgk_data:
