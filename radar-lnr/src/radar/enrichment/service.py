@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import re
 
 from rapidfuzz import fuzz
 
@@ -13,12 +14,49 @@ from .base import Adapter, AdapterError, LookupResult, OrgCard
 log = logging.getLogger(__name__)
 NAME_MATCH = 90   # порог похожести названия для автоматического принятия
 NAME_GAP = 15     # и отрыв от второго кандидата (если их несколько), иначе — «требует проверки»
+NAME_MATCH_SINGLE = 85   # если после склейки филиалов остался ОДИН ИНН — порог мягче
+_NOT_EMPLOYER = re.compile(r"профсоюз|\b(о?ппо|цпо)\b|целевого капитала")
+
+
+def _non_employer(card: OrgCard) -> bool:
+    return bool(_NOT_EMPLOYER.search(f"{_clean_name(card.name_short or '')} {_clean_name(card.name_full or '')}"))
+
+
+def search_query(name: str) -> str:
+    """«Луганскгаз (филиал ООО «ЧМНГ»)» -> «Луганскгаз»: пояснения в скобках сбивают поиск DaData
+    (с ними находились только профсоюзные организации, а сама компания пропадала)."""
+    q = re.sub(r"\([^)]*\)", " ", name)
+    q = re.sub(r"[«»\"]", " ", q)
+    return re.sub(r"\s+", " ", q).strip() or name
+
+
 def name_score(query: str, card: OrgCard) -> float:
     """Похожесть названия из новости и названия в реестре, 0..100.
-    Сравниваем целиком (ratio / token_sort), а НЕ token_set: тот даёт 100, когда одно название — подмножество
-    другого («ПГ Родина» ⊂ «Промышленная группа Родина»), и это приводило к ложным совпадениям."""
-    a, b = _clean_name(query), _clean_name(card.name_short or card.name_full or "")
-    return max(fuzz.ratio(a, b), fuzz.token_sort_ratio(a, b))
+    - Сравниваем целиком (ratio / token_sort), а НЕ token_set: тот даёт 100, когда одно название — подмножество
+      другого («ПГ Родина» ⊂ «Промышленная группа Родина») — это давало ложные совпадения.
+    - Если все значимые слова запроса входят в полное название (длинное «ФИЛИАЛ ОБЩЕСТВА С ОГРАНИЧЕННОЙ …»),
+      поднимаем оценку, но максимум до 88: это ранжирование, автоматически такое НЕ принимается (порог 90).
+    - Профсоюзные организации и фонды — не работодатели: опускаем в конец списка."""
+    a = _clean_name(search_query(query))
+    short, full = _clean_name(card.name_short or ""), _clean_name(card.name_full or "")
+    best = max(fuzz.ratio(a, short or full), fuzz.token_sort_ratio(a, short or full), fuzz.ratio(a, full))
+    q_tokens = [t for t in a.split() if len(t) >= 3]
+    if q_tokens and any(len(t) >= 7 for t in q_tokens) and set(q_tokens) <= set(full.split()):
+        best = max(best, 88.0)
+    if _non_employer(card):
+        best = max(0.0, best - 40)
+    return best
+
+
+def _unique_by_inn(ranked: list[OrgCard]) -> list[OrgCard]:
+    """Головная организация и её филиалы приходят с одним ИНН (разные КПП) — оставляем лучший вариант по каждому ИНН."""
+    seen, out = set(), []
+    for c in ranked:
+        if c.inn and c.inn in seen:
+            continue
+        seen.add(c.inn)
+        out.append(c)
+    return out
 
 
 class Enricher:
@@ -54,17 +92,19 @@ class Enricher:
         1) Ищем в ЛНР. Один явный победитель по названию -> found; иначе -> «требует проверки» + топ-3.
         2) Если в ЛНР пусто — ищем по России и показываем варианты ТОЛЬКО как подсказку (needs_review),
            автоматически такие совпадения не принимаются."""
-        key = f"name:v3:{_clean_name(name)}"   # v3: ранжирование по полному совпадению + подсказки вне ЛНР
+        key = f"name:v4:{_clean_name(search_query(name))}"   # v3: ранжирование по полному совпадению + подсказки вне ЛНР
         if (cached := self.db.cache_get(key, self.ttl)):
             return LookupResult.from_dict(cached)
         if not self.adapters:
             return LookupResult("disabled", message="Обогащение выключено (нет ключа DaData)")
 
         async def search(anywhere: bool) -> list[OrgCard]:
-            for ad in self.adapters:
-                found = await ad.by_name(name, self.region, anywhere=anywhere)
-                if found:
-                    return found
+            queries = list(dict.fromkeys([search_query(name), name]))     # сначала без скобок, потом как есть
+            for q in queries:
+                for ad in self.adapters:
+                    found = await ad.by_name(q, self.region, anywhere=anywhere)
+                    if found:
+                        return found
             return []
 
         try:
@@ -74,16 +114,18 @@ class Enricher:
             return LookupResult("error", message=str(e))   # ошибки не кэшируем
 
         if lnr:
-            ranked = sorted(lnr, key=lambda c: name_score(name, c), reverse=True)
-            top = name_score(name, ranked[0])
-            gap_ok = len(ranked) == 1 or top - name_score(name, ranked[1]) >= NAME_GAP
-            if top >= NAME_MATCH and gap_ok:
-                res = LookupResult("found", card=ranked[0])
+            ranked = _unique_by_inn(sorted(lnr, key=lambda c: name_score(name, c), reverse=True))
+            core = [c for c in ranked if not _non_employer(c)] or ranked   # решение — только по работодателям
+            top = name_score(name, core[0])
+            gap_ok = len(core) == 1 or top - name_score(name, core[1]) >= NAME_GAP
+            threshold = NAME_MATCH_SINGLE if len(core) == 1 else NAME_MATCH   # один ИНН (головная + филиалы)
+            if top >= threshold and gap_ok:
+                res = LookupResult("found", card=core[0])
             else:
                 res = LookupResult("needs_review", candidates=ranked[:3],
                                    message="Требует проверки: несколько вариантов в ЛНР")
         elif wide:
-            ranked = sorted(wide, key=lambda c: name_score(name, c), reverse=True)
+            ranked = _unique_by_inn(sorted(wide, key=lambda c: name_score(name, c), reverse=True))
             res = LookupResult("needs_review", candidates=ranked[:3],
                                message="В ЛНР не найдено. Варианты вне ЛНР — только подсказка, проверь вручную")
         else:

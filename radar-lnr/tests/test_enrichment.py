@@ -61,7 +61,7 @@ async def test_not_found_and_api_errors(tmp_path):
 
 
 async def test_name_multiple_candidates_needs_review_top3(tmp_path):
-    items = [{"value": f"ООО Ромашка {i}", "data": {"inn": SBER, "name": {"full_with_opf": f"ООО Ромашка {i}"}}} for i in range(5)]
+    items = [{"value": f"ООО Ромашка {i}", "data": {"inn": f"77070838{i}0", "name": {"full_with_opf": f"ООО Ромашка {i}"}}} for i in range(5)]
     enr = Enricher(DB(tmp_path / "t.db"), [adapter(lambda r: httpx.Response(200, json={"suggestions": items}))])
     res = await enr.lookup_name("Ромашка")
     assert res.status == "needs_review" and len(res.candidates) == 3 and res.card is None   # не угадываем
@@ -190,3 +190,49 @@ async def test_enrich_event_prefers_found_org_among_first_three(tmp_path):
     ev = {"organizations": [{"name": "Неизвестная контора"}, {"name": 'ООО "Ромашка"'}]}
     await enr.enrich_event(ev)
     assert ev["enriched"]["status"] == "found" and ev["enriched"]["matched_org"] == 'ООО "Ромашка"'
+
+
+# ---------------- v4: скобки в названии, профсоюзы и головная организация ----------------
+async def test_brackets_are_stripped_from_search_query(tmp_path):
+    queries = []
+
+    def handler(req):
+        import json as j
+        queries.append(j.loads(req.content)["query"])
+        return httpx.Response(200, json={"suggestions": [_party('ООО "Луганскгаз"', "9704210635")]})
+
+    await Enricher(DB(tmp_path / "t.db"), [adapter(handler)]).lookup_name("Луганскгаз (филиал ООО «ЧМНГ»)")
+    assert queries[0] == "Луганскгаз"                  # без скобок; исходный запрос — только если пусто
+
+
+async def test_union_orgs_go_last_and_head_org_goes_first(tmp_path):
+    cands = [_party('ППО "ЛУГАНСКГАЗ" ФИЛИАЛ ООО "ЧМНГ"', "9402003047"),
+             _party('ЦПО УМГ "ЛУГАНСКГАЗ" ФИЛИАЛ ООО "ЧМНГ"', "9403005713"),
+             _party('"ЛУГАНСКГАЗ" ФИЛИАЛ ОБЩЕСТВА С ОГРАНИЧЕННОЙ ОТВЕТСТВЕННОСТЬЮ "ЧЕРНОМОРНЕФТЕГАЗ"', "9704210635")]
+    cands[0]["data"]["name"] = {"full_with_opf": "ПЕРВИЧНАЯ ПРОФСОЮЗНАЯ ОРГАНИЗАЦИЯ ЛУГАНСКГАЗ", "short_with_opf": 'ППО "ЛУГАНСКГАЗ"'}
+    cands[1]["data"]["name"] = {"full_with_opf": "ЦЕХОВАЯ ПРОФСОЮЗНАЯ ОРГАНИЗАЦИЯ ЛУГАНСКГАЗ", "short_with_opf": 'ЦПО УМГ "ЛУГАНСКГАЗ"'}
+    cands[2]["data"]["name"] = {"full_with_opf": 'ФИЛИАЛ ОБЩЕСТВА С ОГРАНИЧЕННОЙ ОТВЕТСТВЕННОСТЬЮ "ЧЕРНОМОРНЕФТЕГАЗ" "ЛУГАНСКГАЗ"'}
+    res = await Enricher(DB(tmp_path / "t.db"), [adapter(_by_scope(cands, []))]).lookup_name("Луганскгаз")
+    # единственный работодатель (профсоюзные ППО/ЦПО не считаются) -> принимаем головную организацию
+    assert res.status == "found" and res.card.inn == "9704210635"
+
+
+async def test_head_org_and_branches_with_same_inn_count_as_one(tmp_path):
+    head = _party('ГУП ЛНР "ЛУГАНСКВОДА"', "9403001349")
+    head["data"]["name"] = {"full_with_opf": 'ГОСУДАРСТВЕННОЕ УНИТАРНОЕ ПРЕДПРИЯТИЕ ЛНР "ЛУГАНСКВОДА"', "short_with_opf": 'ГУП ЛНР "ЛУГАНСКВОДА"'}
+    branches = []
+    for city in ("АЛЧЕВСКОЕ УПРАВЛЕНИЕ", "АНТРАЦИТОВСКИЙ ДЕПАРТАМЕНТ"):
+        b = _party(f"{city} ГУП", "9403001349")
+        b["data"]["name"] = {"full_with_opf": f'{city} ГУП ЛНР "ЛУГАНСКВОДА"'}
+        branches.append(b)
+    res = await Enricher(DB(tmp_path / "t.db"), [adapter(_by_scope([head, *branches], []))]).lookup_name("Лугансквода")
+    assert res.status == "found" and res.card.inn == "9403001349"        # один ИНН — это одна организация
+
+
+async def test_union_org_does_not_block_single_employer(tmp_path):
+    head = _party('ГУП ЛНР "ЛУГАНСКВОДА"', "9403001349")
+    head["data"]["name"] = {"full_with_opf": 'ГОСУДАРСТВЕННОЕ УНИТАРНОЕ ПРЕДПРИЯТИЕ ЛНР "ЛУГАНСКВОДА"', "short_with_opf": 'ГУП ЛНР "ЛУГАНСКВОДА"'}
+    union = _party('ОППО "ЛУГАНСКВОДА"', "9403015140")
+    union["data"]["name"] = {"full_with_opf": 'ОБЪЕДИНЕННАЯ ПЕРВИЧНАЯ ПРОФСОЮЗНАЯ ОРГАНИЗАЦИЯ "ЛУГАНСКВОДА"', "short_with_opf": 'ОППО "ЛУГАНСКВОДА"'}
+    res = await Enricher(DB(tmp_path / "t.db"), [adapter(_by_scope([union, head], []))]).lookup_name("Лугансквода")
+    assert res.status == "found" and res.card.inn == "9403001349"
