@@ -305,7 +305,7 @@ async def cb_steps(c: CallbackQuery):
     data = q.get("steps")
     if not data and llm is not None:
         await bot.send_chat_action(c.message.chat.id, "typing")
-        data = await make_steps(llm, os.getenv("GEN_MODEL") or cfg.model, q)
+        data = await make_steps(llm, os.getenv("STEPS_MODEL") or cfg.model, q)
         if data:
             bank.set_steps(q["id"], data)
     await bot.send_message(c.message.chat.id, render_steps(q, data))
