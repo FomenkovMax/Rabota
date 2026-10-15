@@ -180,3 +180,17 @@ def test_normalize_strips_stress_marks():
 def test_extract_json_object_with_inner_array():
     assert extract_json('Вот: {"steps": [1, 2], "lesson": "x"} готово') == {"steps": [1, 2], "lesson": "x"}
     assert extract_json('[{"a": [1]}, {"b": 2}]') == [{"a": [1]}, {"b": 2}]
+
+
+def test_judge_sources_rejected_typo_and_disputed():
+    q = {"text": "?", "answer": "Пенициллин", "accepted": [], "rejected": ["антибиотик"], "explanation": "e"}
+    v = asyncio.run(J.judge(FakeLLM("не вызывается"), "m", q, "антибиотик"))
+    assert (v.level, v.source) == ("wrong", "rejected")                 # незачёт автора — без обращения к ИИ
+    v = asyncio.run(J.judge(FakeLLM("не вызывается"), "m", q, "пенициллин!"))
+    assert (v.level, v.source) == ("correct", "exact")
+    v = asyncio.run(J.judge(FakeLLM("не вызывается"), "m", q, "пенициллинн"))   # опечатка (>=0.9) — без ИИ
+    assert (v.level, v.source) == ("correct", "fuzzy")
+    v = asyncio.run(J.judge(FakeLLM("не json"), "m", q, "хлеб"))
+    assert v.level == "wrong" and v.source == "fallback" and v.disputed   # ИИ недоступен -> капитану
+    v = asyncio.run(J.judge(FakeLLM(json.dumps({"level": "close", "comment": "ок"})), "m", q, "плесень"))
+    assert (v.level, v.source, v.disputed) == ("close", "llm", False)

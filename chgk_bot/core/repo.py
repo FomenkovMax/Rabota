@@ -82,12 +82,14 @@ class QuestionRepo:
                 fields = _fields(d)
                 row = s.get(Question, qid)
                 if row is None:
-                    s.add(Question(id=qid, created_at=time.time(), **fields))
+                    s.add(Question(id=qid, created_at=time.time(), steps=d.get("steps"), **fields))
                     s.flush()
                     added += 1
                 elif update:
                     for k, v in fields.items():
                         setattr(row, k, v)
+                    if d.get("steps"):
+                        row.steps = d["steps"]
             s.commit()
         return added
 

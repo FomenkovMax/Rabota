@@ -10,9 +10,11 @@ from core.llm import ask, extract_json
 
 @dataclass
 class Verdict:
-    level: str      # correct | close | wrong
-    score: float    # 1 / 0.5 / 0
+    level: str                # correct | close | wrong
+    score: float              # 1 / 0.5 / 0
     comment: str
+    source: str = "llm"       # exact | rejected | fuzzy | llm | fallback — чем принято решение
+    disputed: bool = False    # True: ИИ-судья не ответил, спорный случай отдаём капитану
 
 
 JUDGE_TIMEOUT = float(os.getenv("JUDGE_TIMEOUT", "35"))  # сек: если ИИ-судья молчит, оцениваем по запасному режиму, а не заставляем игрока ждать
@@ -33,16 +35,20 @@ def quick_check(q: dict, user_answer: str) -> bool:
     return ua in {normalize(a) for a in [q["answer"], *q.get("accepted", [])]}
 
 
-def fuzzy_fallback(q: dict, user_answer: str) -> Verdict:
-    """Запасной вариант, если Claude недоступен: только очень близкое совпадение."""
+def best_ratio(q: dict, user_answer: str) -> float:
+    """Насколько ответ похож на эталон или зачёт (0..1), с учётом опечаток."""
     ua = normalize(user_answer)
-    best = max(
+    return max(
         (difflib.SequenceMatcher(None, ua, normalize(a)).ratio() for a in [q["answer"], *q.get("accepted", [])]),
         default=0,
     )
-    if best >= 0.82:
-        return Verdict("correct", 1.0, "Засчитано (совпадает с эталоном с учётом опечаток).")
-    return Verdict("wrong", 0.0, "Не совпадает с эталонным ответом.")
+
+
+def fuzzy_fallback(q: dict, user_answer: str) -> Verdict:
+    """Запасной вариант, если ИИ-судья недоступен: только очень близкое совпадение; остальное — спорное."""
+    if best_ratio(q, user_answer) >= 0.82:
+        return Verdict("correct", 1.0, "Засчитано (совпадает с эталоном с учётом опечаток).", source="fallback")
+    return Verdict("wrong", 0.0, "Не совпадает с эталонным ответом.", source="fallback", disputed=True)
 
 
 SYSTEM = """Ты — судья в тренировочной игре по правилам «Что? Где? Когда?».
@@ -58,9 +64,14 @@ SYSTEM = """Ты — судья в тренировочной игре по пр
 Верни только JSON: {"level": "correct|close|wrong", "comment": "1–2 предложения: почему так, и что в рассуждении игрока было верным или чего не хватило. Не раскрывай разбор целиком."}"""
 
 
-async def judge(client, model: str, q: dict, user_answer: str) -> Verdict:
+async def judge(client, model: str, q: dict, user_answer: str, timeout: float | None = None) -> Verdict:
+    """Порядок: точное совпадение -> незачёт автора -> опечатка (≥0.9) -> ИИ-судья (с таймаутом) -> запасной режим."""
     if quick_check(q, user_answer):
-        return Verdict("correct", 1.0, "Ответ совпадает с эталоном.")
+        return Verdict("correct", 1.0, "Ответ совпадает с эталоном.", source="exact")
+    if normalize(user_answer) in {normalize(a) for a in q.get("rejected", [])}:
+        return Verdict("wrong", 0.0, "Этот ответ автор вопроса не засчитывает.", source="rejected")
+    if best_ratio(q, user_answer) >= 0.9:
+        return Verdict("correct", 1.0, "Засчитано: совпадает с эталоном с учётом опечатки.", source="fuzzy")
     if client is None:
         return fuzzy_fallback(q, user_answer)
     prompt = (
@@ -73,10 +84,10 @@ async def judge(client, model: str, q: dict, user_answer: str) -> Verdict:
         f"<ответ_игрока>{user_answer[:500]}</ответ_игрока>"
     )
     try:
-        data = extract_json(await asyncio.wait_for(ask(client, model, SYSTEM, prompt, max_tokens=400), JUDGE_TIMEOUT))
+        data = extract_json(await asyncio.wait_for(ask(client, model, SYSTEM, prompt, max_tokens=400), timeout or JUDGE_TIMEOUT))
         level = data["level"]
         if level not in SCORES:
             raise ValueError(level)
-        return Verdict(level, SCORES[level], str(data.get("comment", "")).strip())
+        return Verdict(level, SCORES[level], str(data.get("comment", "")).strip(), source="llm")
     except Exception:
         return fuzzy_fallback(q, user_answer)

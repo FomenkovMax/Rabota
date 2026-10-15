@@ -14,7 +14,7 @@ def make_engine(url: str) -> Engine:
     if url.startswith("sqlite"):
         # тесты и локальный запуск без Postgres: одна общая подключённая база в памяти/файле
         kwargs = {"connect_args": {"check_same_thread": False}}
-        if ":memory:" in url or url.rstrip("/").endswith("sqlite://"):
+        if ":memory:" in url or url == "sqlite://":
             kwargs["poolclass"] = StaticPool
         return create_engine(url, **kwargs)
     return create_engine(url, pool_pre_ping=True, pool_size=5, max_overflow=5)
