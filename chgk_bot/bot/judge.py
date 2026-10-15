@@ -1,6 +1,7 @@
 """Оценка ответа игрока: быстрая проверка по эталону, затем Claude."""
 import asyncio
 import difflib
+import os
 import re
 from dataclasses import dataclass
 
@@ -14,7 +15,7 @@ class Verdict:
     comment: str
 
 
-JUDGE_TIMEOUT = 20  # сек: если ИИ-судья молчит, оцениваем по запасному режиму, а не заставляем игрока ждать
+JUDGE_TIMEOUT = float(os.getenv("JUDGE_TIMEOUT", "35"))  # сек: если ИИ-судья молчит, оцениваем по запасному режиму, а не заставляем игрока ждать
 SCORES = {"correct": 1.0, "close": 0.5, "wrong": 0.0}
 
 
