@@ -7,7 +7,9 @@ def extract_json(text: str):
     """Достаёт первый JSON-объект/массив из ответа модели (она может обернуть его в ```)."""
     text = text.strip()
     text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text)
-    for opener, closer in (("[", "]"), ("{", "}")):
+    # берём ту скобку, с которой JSON начинается раньше: объект {"steps":[...]} не должен превращаться в вложенный массив
+    pairs = sorted((("[", "]"), ("{", "}")), key=lambda p: (text.find(p[0]) if p[0] in text else len(text)))
+    for opener, closer in pairs:
         start, end = text.find(opener), text.rfind(closer)
         if start != -1 and end > start:
             try:

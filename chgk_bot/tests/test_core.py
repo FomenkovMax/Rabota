@@ -175,3 +175,8 @@ def test_bank_update_and_remove(tmp_path):
 def test_normalize_strips_stress_marks():
     assert J.normalize("Везу\u0301вий") == J.normalize("везувий")
     assert J.quick_check({"answer": "Везу\u0301вий", "accepted": []}, "Везувий")
+
+
+def test_extract_json_object_with_inner_array():
+    assert extract_json('Вот: {"steps": [1, 2], "lesson": "x"} готово') == {"steps": [1, 2], "lesson": "x"}
+    assert extract_json('[{"a": [1]}, {"b": 2}]') == [{"a": [1]}, {"b": 2}]
