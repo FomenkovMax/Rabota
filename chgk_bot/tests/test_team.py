@@ -256,3 +256,29 @@ def test_guard_silent_in_foreign_group_and_myid_always_works(monkeypatch):
     priv = event("/start", "private")
     run(g(handler, priv, {}))
     assert priv.out == ["Бот приватный: доступ только для команды."]
+
+
+def test_plain_message_accepted_only_from_captain_in_answer_phase(env, monkeypatch):
+    async def play():
+        await M.cmd_game(msg(), NS(args="1x1"))
+        g = M.games[CHAT]
+        await M.cb_tnext(cb("tnext"))
+        ans = g.current["answer"]
+        await M.on_team_plain(msg(text=ans))                  # во время обсуждения — просто разговор команды
+        assert g.phase == "think" and g.results[0] is None
+        await M.cb_tready(cb("tready"))                       # «Готовы отвечать» -> фаза ответа
+        await asyncio.sleep(0.2)
+        assert g.phase == "answer"
+        await M.on_team_plain(msg(user=OTHER, text=ans))      # не капитан — игнор, без шума
+        assert g.phase == "answer"
+        await M.on_team_plain(msg(text=ans))                  # капитан — ответ принят
+        return g
+    g = run(play())
+    assert g.results == [True] and M.games == {}
+
+
+def test_answer_hint_depends_on_privacy_mode(monkeypatch):
+    monkeypatch.setattr(M, "reads_all", False)
+    assert "любым сообщением" not in M.answer_hint() and "/o" in M.answer_hint()
+    monkeypatch.setattr(M, "reads_all", True)
+    assert "любым сообщением" in M.answer_hint()

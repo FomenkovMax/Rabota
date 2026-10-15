@@ -35,6 +35,14 @@ bot = Bot(cfg.bot_token, default=DefaultBotProperties(parse_mode=ParseMode.HTML)
 dp = Dispatcher()
 
 GROUPS = {"group", "supergroup"}
+reads_all = False   # видит ли бот все сообщения группы (выключен Privacy mode в BotFather); определяется при старте
+
+
+def answer_hint() -> str:
+    """Как капитану сдать ответ: обычным сообщением можно, только если у бота выключен Privacy mode."""
+    if reads_all:
+        return "любым сообщением, реплаем на это сообщение или <code>/o ответ</code>"
+    return "реплаем на это сообщение или <code>/o ваш ответ</code>"
 
 
 # ---------- доступ ----------
@@ -463,8 +471,8 @@ async def cmd_game(m: Message, command: CommandObject):
         f"🎩 <b>Командная игра!</b> {g.tours} тура(ов) по {per} вопросов, всего {g.total}.\n"
         f"Капитан: <b>{html.escape(g.captain_name)}</b> (передать: /captain ответом на сообщение игрока).\n\n"
         f"<b>Правила как в спортивном ЧГК:</b>\n"
-        f"• {cfg.think_seconds} секунд на обсуждение, потом ответ сдаёт только капитан: реплаем на сообщение бота "
-        f"или командой <code>/o ответ</code> ({cfg.team_answer_seconds} сек)\n"
+        f"• {cfg.think_seconds} секунд на обсуждение, потом ответ сдаёт только капитан: {answer_hint()} "
+        f"({cfg.team_answer_seconds} сек после «Время!»)\n"
         f"• очко даётся только за верный ответ, «почти» не считается\n"
         f"• после каждого тура — итог тура{note}{short}",
         reply_markup=kb(("▶️ Начать игру", "tnext")),
@@ -532,7 +540,7 @@ async def team_answer_phase(g: TeamGame, early: bool) -> None:
     msg = await bot.send_message(
         g.chat_id,
         f"⏰ <b>{'Время!' if not early else 'Принято.'}</b> Капитан <b>{html.escape(g.captain_name)}</b>, сдайте ответ: "
-        f"реплаем на это сообщение или <code>/o ваш ответ</code> (у вас {cfg.team_answer_seconds} сек).",
+        f"{answer_hint()} (у вас {cfg.team_answer_seconds} сек).",
         reply_markup=kb(("🏳 Пас", "tskip")),
     )
     g.answer_msg_id = msg.message_id
@@ -598,6 +606,14 @@ async def cmd_o(m: Message, command: CommandObject):
 async def on_team_reply(m: Message):
     g = games.get(m.chat.id)
     if g and m.reply_to_message.message_id in (g.answer_msg_id, g.timer_msg_id):
+        await accept_team_answer(m, m.text)
+
+
+@dp.message(F.text, ~F.text.startswith("/"), F.chat.type.in_(GROUPS))
+async def on_team_plain(m: Message):
+    """Обычное сообщение капитана после «Время!» — это ответ (работает, если у бота выключен Privacy mode)."""
+    g = games.get(m.chat.id)
+    if g and g.phase == "answer" and m.from_user.id == g.captain_id:
         await accept_team_answer(m, m.text)
 
 
@@ -696,7 +712,13 @@ async def main() -> None:
     logging.basicConfig(level=logging.INFO)
     if llm is None:
         log.warning("ANTHROPIC_API_KEY не задан: оценка только по точному совпадению, /gen и разбор по шагам недоступны")
+    global reads_all
+    try:
+        reads_all = bool((await bot.get_me()).can_read_all_group_messages)
+    except Exception:
+        log.exception("get_me не удался")
     log.info("Вопросов в базе: %d", len(bank.items))
+    log.info("Бот читает все сообщения групп: %s", "да (Privacy mode выключен)" if reads_all else "нет (только команды и reply)")
     restricted = ALLOWED or ALLOWED_CHATS
     log.info("Доступ: %s", f"только люди {sorted(ALLOWED)} и группы {sorted(ALLOWED_CHATS)} (+админ)" if restricted
              else "ОТКРЫТ ВСЕМ (ALLOWED_IDS и ALLOWED_CHATS не заданы)")
