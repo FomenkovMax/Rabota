@@ -17,9 +17,9 @@ from .cards import ASSETS
 from .config import PKG_DIR, load_settings
 from .game import TeamGame, final_summary, tour_line
 from .generator import generate
-from .judge import judge
-from .llm import make_client
-from .steps import make_steps, render_steps
+from core.answers import judge
+from core.llm import make_client
+from core.steps import make_steps, render_steps
 from .storage import QuestionBank, Stats
 
 log = logging.getLogger("chgk")

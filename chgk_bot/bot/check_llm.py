@@ -9,8 +9,8 @@ import time
 from dotenv import load_dotenv
 
 from .config import PKG_DIR
-from .judge import judge
-from .llm import ask, make_client
+from core.answers import judge
+from core.llm import ask, make_client
 
 load_dotenv()
 

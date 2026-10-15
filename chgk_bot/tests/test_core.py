@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from bot import judge as J
-from bot.llm import extract_json
+from core import answers as J
+from core.llm import extract_json
 from bot.storage import QuestionBank, Stats
 
 SEED = Path(__file__).resolve().parent.parent / "bot" / "seed_questions.json"

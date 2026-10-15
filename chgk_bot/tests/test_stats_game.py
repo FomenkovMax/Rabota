@@ -2,7 +2,8 @@ import asyncio
 import json
 import sqlite3
 
-from bot import game as G, steps as S
+from bot import game as G
+from core import steps as S
 from bot.storage import QuestionBank, Stats
 
 

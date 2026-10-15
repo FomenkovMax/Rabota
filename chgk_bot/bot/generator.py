@@ -2,7 +2,7 @@
 import random
 import re
 
-from .llm import ask, extract_json
+from core.llm import ask, extract_json
 
 TOPICS = [
     "история", "литература", "кино и музыка", "наука и техника", "география и путешествия",
