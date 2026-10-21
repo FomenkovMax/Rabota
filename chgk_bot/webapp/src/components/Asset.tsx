@@ -4,5 +4,5 @@ import { useState } from "react";
 export function Asset({ id, fallback, size = 96 }: { id: string; fallback: string; size?: number }) {
   const [broken, setBroken] = useState(false);
   if (broken) return <span style={{ fontSize: size * 0.7, lineHeight: 1 }}>{fallback}</span>;
-  return <img src={`/assets/${id}.webp`} width={size} height={size} alt="" onError={() => setBroken(true)} />;
+  return <img src={`/assets/${id}.webp`} alt="" onError={() => setBroken(true)} style={{ width: size, height: size, objectFit: "contain" }} />;
 }

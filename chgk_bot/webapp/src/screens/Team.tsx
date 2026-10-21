@@ -8,6 +8,7 @@ import { Wheel } from "../components/Wheel";
 import { useApp } from "../store";
 import { sound } from "../sound";
 import { tg } from "../tg";
+import { Asset } from "../components/Asset";
 import { Confetti } from "../components/Confetti";
 import { Envelope } from "../components/Envelope";
 import s from "./Screen.module.css";
@@ -67,6 +68,7 @@ export function Team() {
           {g?.status === "finished" && (
             <Card accent="ok">
               {g.score > g.total / 2 || g.experts > g.viewers ? <Confetti /> : null}
+              <div className={s.center}><Asset id={g.score > g.total / 2 || g.experts > g.viewers ? "result.win" : "result.lose"} fallback="🏁" size={140} /></div>
               <h2>Игра окончена 🏁</h2>
               <p className={s.dim}>{g.mode === "wheel" ? `Знатоки ${g.experts} : ${g.viewers} телезрители` : `Очков: ${g.score} из ${g.total}`}</p>
               {g.log?.map((r, i) => <p key={i} className={s.step}>{i + 1}. {r.level === "correct" ? "✅" : r.level === "close" ? "🟡" : "❌"} {r.answer ?? "— нет ответа"}</p>)}

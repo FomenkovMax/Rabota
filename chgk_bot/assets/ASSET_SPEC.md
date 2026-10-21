@@ -26,3 +26,9 @@
 - Картинки оптимизируем в WebP; видео — H.264 mp4, до ~3 МБ.
 - Прозрачность для слоёв — через `remove_background`.
 - Новый ассет = новая строка в таблице + одноимённый файл.
+
+
+## Статус (набор 1 готов)
+Сделаны (Nano Banana 2 / Pro + вырезание фона, стиль-референс — `art_src/welcome.png`): `home.logo`, `bg.studio`, `wheel.table`, `wheel.arrow`, `wheel.envelope.closed`, `wheel.envelope.open`, `award.owl`, `award.owl.diamond`, `result.win`, `result.lose`, `loader`.
+Осталось: `ach.*` (набор 2), `award.ceremony.mp4` (набор 3), звуки `sfx.*` (Higgsfield не делает отдельные SFX — берём CC0).
+Примечания: у стола `wheel.table` секторов нарисовано не 13, поэтому сектора и цифры рисует код внутри золотого кольца, а картинка даёт только раму.
