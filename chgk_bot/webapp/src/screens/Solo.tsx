@@ -1,6 +1,7 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useRef, useState } from "react";
 import { api, type AnswerResult, type Round, type Steps } from "../api";
+import { Asset } from "../components/Asset";
 import { Button } from "../components/Button";
 import { Card } from "../components/Card";
 import { TimerRing } from "../components/TimerRing";
@@ -99,7 +100,7 @@ export function Solo() {
               {res.verdict.level === "correct" && <Confetti />}
               {res.new_achievements?.map((a) => (
                 <motion.div key={a.code} initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}>
-                  <Card accent="ok"><b>{a.icon} Ачивка: {a.name}</b><p className={s.dim}>{a.desc}</p></Card>
+                  <Card accent="ok"><div className={s.row}><Asset id={`ach.${a.code}`} fallback={a.icon} size={52} /><div><b>Ачивка: {a.name}</b><p className={s.dim}>{a.desc}</p></div></div></Card>
                 </motion.div>
               ))}
               <Card accent={ACCENT[res.verdict.level]}>

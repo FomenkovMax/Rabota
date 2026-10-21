@@ -63,7 +63,7 @@ export function Season() {
             <p className={s.dim}>Ачивки</p>
             {d.achievements.map((a) => (
               <p key={a.code} className={s.step} style={{ opacity: a.earned ? 1 : 0.45 }}>
-                {a.earned ? a.icon : "🔒"} <b>{a.name}</b> — {a.desc}
+                <span style={{ display: "inline-flex", verticalAlign: "middle", marginRight: 6, filter: a.earned ? "none" : "grayscale(1) brightness(.5)" }}><Asset id={`ach.${a.code}`} fallback={a.earned ? a.icon : "🔒"} size={36} /></span><b>{a.name}</b> — {a.desc}
               </p>
             ))}
           </Card>
