@@ -4,7 +4,7 @@ import { api, type Me } from "./api";
 interface State {
   me: Me | null;
   error: string;
-  screen: "home" | "solo";
+  screen: "home" | "solo" | "team";
   boot(): Promise<void>;
   go(s: State["screen"]): void;
   refresh(): Promise<void>;

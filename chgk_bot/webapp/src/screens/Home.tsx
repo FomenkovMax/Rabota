@@ -23,7 +23,7 @@ export function Home() {
         </div>
       </Card>
       <Button onClick={() => go("solo")}>Играть соло</Button>
-      <Button variant="ghost" disabled>Командная игра — скоро</Button>
+      <Button variant="ghost" onClick={() => go("team")}>Командная игра</Button>
     </div>
   );
 }
