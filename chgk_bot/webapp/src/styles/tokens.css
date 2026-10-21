@@ -1,0 +1,29 @@
+/* Дизайн-токены: тёмная студия, золото, красный/зелёный для результата. Меняются здесь, не в компонентах. */
+:root {
+  --bg: #0b1226;
+  --bg-2: #121b3a;
+  --surface: #17224a;
+  --surface-2: #1f2d5e;
+  --text: #f1f4ff;
+  --text-dim: #9aa6d1;
+  --gold: #f2b84b;
+  --gold-2: #ffd982;
+  --ok: #3ecf8e;
+  --bad: #ff5d6c;
+  --half: #ffb347;
+  --radius: 18px;
+  --radius-s: 12px;
+  --gap: 16px;
+  --shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  --font: -apple-system, "SF Pro Text", "Segoe UI", Roboto, system-ui, sans-serif;
+}
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body, #root { margin: 0; min-height: 100%; }
+body {
+  background: radial-gradient(120% 80% at 50% 0%, var(--bg-2), var(--bg));
+  color: var(--text);
+  font-family: var(--font);
+  -webkit-font-smoothing: antialiased;
+  overscroll-behavior: none;
+}
+h1, h2, h3, p { margin: 0; }

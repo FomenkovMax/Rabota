@@ -1,0 +1,4 @@
+.btn { width: 100%; border: 0; border-radius: var(--radius-s); padding: 15px 18px; font: 600 17px var(--font); cursor: pointer; transition: opacity .15s; }
+.btn:disabled { opacity: .45; }
+.primary { background: linear-gradient(180deg, var(--gold-2), var(--gold)); color: #2a1d00; box-shadow: var(--shadow); }
+.ghost { background: var(--surface); color: var(--text); }

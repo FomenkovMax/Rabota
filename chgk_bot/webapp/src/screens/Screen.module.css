@@ -1,0 +1,13 @@
+.wrap { max-width: 520px; margin: 0 auto; padding: 20px 16px calc(24px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: var(--gap); }
+.col { display: flex; flex-direction: column; gap: var(--gap); }
+.center { display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; }
+.dim { color: var(--text-dim); font-size: 15px; line-height: 1.4; }
+.question { font-size: 18px; line-height: 1.5; white-space: pre-wrap; }
+.explain { margin-top: 10px; font-size: 15px; line-height: 1.5; white-space: pre-wrap; }
+.step { margin-top: 8px; font-size: 15px; line-height: 1.45; }
+.input { width: 100%; padding: 15px; border-radius: var(--radius-s); border: 1px solid rgba(255,255,255,.12); background: var(--bg-2); color: var(--text); font: 17px var(--font); outline: none; }
+.input:focus { border-color: var(--gold); }
+.stats { display: flex; justify-content: space-around; text-align: center; }
+.stats div { display: flex; flex-direction: column; gap: 2px; }
+.stats b { font-size: 26px; color: var(--gold-2); }
+.stats span { font-size: 13px; color: var(--text-dim); }
