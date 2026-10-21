@@ -262,3 +262,15 @@ def test_admin_import_json_csv_and_errors(tmp_path):
     assert QuestionRepo(f).get_full(next(i["id"] for i in c.get("/api/admin/questions?q=Вопрос 3", headers=adm).json()["items"]))["accepted"] == ["вар1", "вар2"]
     bad = c.post("/api/admin/import", headers=adm, json={"format": "json", "content": "{не json"}).json()
     assert bad["added"] == 0 and "JSON" in bad["errors"][0]["reason"]
+
+
+def test_ws_start_clamps_bad_params(tmp_path):
+    _, _, c = make(tmp_path)
+    tok = ws_token(c, 7)
+    with c.websocket_connect(f"/api/ws?token={tok}") as a:
+        recv_state(a)
+        a.send_json({"type": "start", "mode": "sport", "tours": 0, "per_tour": 0})
+        st = recv_state(a)
+        while not st["game"]:
+            st = recv_state(a)
+        assert st["game"]["tour"] == [1, 1] and st["game"]["total"] >= 1

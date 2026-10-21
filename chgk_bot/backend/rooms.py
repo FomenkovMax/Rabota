@@ -144,13 +144,14 @@ class Room:
                     if g and g["status"] == "active":
                         raise T.GameError("Игра уже идёт")
                     mode = msg.get("mode", T.SPORT)
-                    n = T.wheel.N_SECTORS if mode == T.WHEEL else int(msg.get("tours", 3)) * int(msg.get("per_tour", 12))
+                    tours = max(1, min(int(msg.get("tours", 3)), 5))        # границы: иначе per_tour=0 ломает нумерацию туров
+                    per_tour = max(1, min(int(msg.get("per_tour", 12)), 20))
+                    n = T.wheel.N_SECTORS if mode == T.WHEEL else tours * per_tour
                     seen = self.stats.seen(self.team_id)
                     hidden = self.stats.hidden_ids(self.s.hide_min_answers, self.s.hide_lo, self.s.hide_hi)
                     qs = self.questions.choose(max(1, min(n, 60)), seen, hidden)
                     self.game = T.new_game(mode, [q["id"] for q in qs], uid, time.time(), think=self.s.think_seconds,
-                                           answer=self.s.team_answer_seconds, tours=int(msg.get("tours", 3)),
-                                           per_tour=int(msg.get("per_tour", 12)))
+                                           answer=self.s.team_answer_seconds, tours=tours, per_tour=per_tour)
                     self.game_id = secrets.token_hex(8)
                     T.start_round(self.game, time.time())
                 elif g is None:
