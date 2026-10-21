@@ -31,5 +31,6 @@
 ## Статус (набор 1 готов)
 Сделаны (Nano Banana 2 / Pro + вырезание фона, стиль-референс — `art_src/welcome.png`): `home.logo`, `bg.studio`, `wheel.table`, `wheel.arrow`, `wheel.envelope.closed`, `wheel.envelope.open`, `award.owl`, `award.owl.diamond`, `result.win`, `result.lose`, `loader`.
 Набор 2 готов: `ach.first`, `ach.streak5`, `ach.streak10`, `ach.century`, `ach.sharp`, `ach.captain_win`.
-Осталось: `award.ceremony.mp4` (набор 3), звуки `sfx.*` (Higgsfield не делает отдельные SFX — берём CC0).
+Набор 3 готов: `award.ceremony.mp4` (6 с, 540×960, ~0,5 МБ, без звука) + `award.ceremony.poster.webp` (Seedance 2.0 Mini по стартовому кадру).
+Осталось только:, звуки `sfx.*` (Higgsfield не делает отдельные SFX — берём CC0).
 Примечания: у стола `wheel.table` секторов нарисовано не 13, поэтому сектора и цифры рисует код внутри золотого кольца, а картинка даёт только раму.

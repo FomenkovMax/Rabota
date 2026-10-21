@@ -3,6 +3,7 @@ import { api, type Season as SeasonT } from "../api";
 import { Asset } from "../components/Asset";
 import { Button } from "../components/Button";
 import { Card } from "../components/Card";
+import { Ceremony } from "../components/Ceremony";
 import { useApp } from "../store";
 import s from "./Screen.module.css";
 
@@ -14,10 +15,25 @@ export function Season() {
   const [d, setD] = useState<SeasonT | null>(null);
   const [err, setErr] = useState("");
   useEffect(() => { api.season().then(setD).catch((e) => setErr(e.message)); }, []);
+  const [show, setShow] = useState<{ title: string; sub: string } | null>(null);
+  // вручение: каждую свою награду показываем один раз (запоминаем в браузере), потом — по кнопке «🎬»
+  useEffect(() => {
+    if (!d || !me) return;
+    const mine = d.awards.find((a) => {
+      if (a.user_id !== me.user.id) return false;
+      try { return !localStorage.getItem(`chgk.award.${a.season}.${a.kind}`); } catch { return false; }
+    });
+    if (mine) {
+      const info = (me.brand as unknown as { awards: Record<string, { name: string }> }).awards?.[mine.kind];
+      setShow({ title: info?.name ?? mine.kind, sub: `Победитель сезона ${pretty(mine.season)} — ${mine.points} очков` });
+      try { localStorage.setItem(`chgk.award.${mine.season}.${mine.kind}`, "1"); } catch { /* ignore */ }
+    }
+  }, [d, me]);
   const brand = me?.brand as unknown as { awards: Record<string, { name: string; icon: string; desc: string }> } | undefined;
 
   return (
     <div className={s.wrap}>
+      {show && <Ceremony title={show.title} subtitle={show.sub} onClose={() => setShow(null)} />}
       {err && <Card accent="bad">{err}</Card>}
       {!d && !err && <p className={s.dim}>Загружаю сезон…</p>}
       {d && (
@@ -53,7 +69,7 @@ export function Season() {
               return (
                 <p key={i} className={s.step} style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <Asset id={`award.${a.kind === "owl" ? "owl" : "owl.diamond"}`} fallback={info?.icon ?? "🏅"} size={28} />
-                  <span><b>{info?.name ?? a.kind}</b> — {a.name}, {pretty(a.season)}</span>
+                  <span><b>{info?.name ?? a.kind}</b> — {a.name}, {pretty(a.season)}{a.user_id === me?.user.id && <button onClick={() => setShow({ title: info?.name ?? a.kind, sub: `Победитель сезона ${pretty(a.season)} — ${a.points} очков` })} style={{ marginLeft: 8, background: "none", border: 0, color: "var(--gold-2)", fontSize: 16 }} aria-label="Показать церемонию">🎬</button>}</span>
                 </p>
               );
             })}
