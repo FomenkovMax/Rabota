@@ -134,3 +134,59 @@ def test_legacy_import_idempotent(tmp_path):
     with f() as s:
         assert s.scalar(select(func.count()).select_from(Attempt)) == 1
         assert s.scalar(select(func.count()).select_from(Question)) == 3
+
+
+def ws_token(c, uid):
+    return login(c, uid)["Authorization"].split()[1]
+
+
+def recv_state(ws):
+    while True:
+        m = ws.receive_json()
+        if m["type"] == "state":
+            return m
+
+
+def test_ws_team_game_flow(tmp_path):
+    s, f, c = make(tmp_path)
+    t1, t2 = ws_token(c, 7), ws_token(c, 8)
+    with c.websocket_connect(f"/api/ws?token={t1}") as a, c.websocket_connect(f"/api/ws?token={t2}") as b:
+        recv_state(a)
+        a.send_json({"type": "start", "mode": "sport", "tours": 1, "per_tour": 2})
+        st = recv_state(a)
+        while not st["game"]:
+            st = recv_state(a)
+        g = st["game"]
+        assert g["phase"] == "think" and g["captain_id"] == 7 and g["total"] == 2
+        assert "reveal" in g and g["reveal"] is None and "answer" not in json.dumps(g["question"])
+        # не капитан не может отвечать
+        b.send_json({"type": "answer", "text": "x"})
+        while True:
+            m = b.receive_json()
+            if m["type"] == "error":
+                assert "капитан" in m["message"]
+                break
+        qid = g["question"]["id"]
+        right = QuestionRepo(f).get(qid)["answer"]
+        a.send_json({"type": "answer", "text": right})
+        st = recv_state(a)
+        while st["game"]["phase"] != "review":
+            st = recv_state(a)
+        assert st["game"]["verdict"]["level"] == "correct" and st["game"]["reveal"]["answer"] == right
+        a.send_json({"type": "next"})
+        st = recv_state(a)
+        while st["game"]["idx"] != 1:
+            st = recv_state(a)
+        assert st["game"]["score"] == 1.0
+        a.send_json({"type": "stop"})
+        st = recv_state(a)
+        while st["game"]["status"] != "finished":
+            st = recv_state(a)
+        assert st["game"]["log"]
+
+
+def test_ws_rejects_bad_token(tmp_path):
+    _, _, c = make(tmp_path)
+    with pytest.raises(Exception):
+        with c.websocket_connect("/api/ws?token=bad"):
+            pass

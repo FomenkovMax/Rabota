@@ -89,3 +89,15 @@ class SoloRound(Base):
     started_at: Mapped[float] = mapped_column(Float)
     deadline_at: Mapped[float] = mapped_column(Float)
     finished_at: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+
+class Game(Base):
+    """Командная игра: состояние целиком в JSON (снимок на каждом переходе — после рестарта сервера игра продолжается)."""
+    __tablename__ = "games"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    team_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    mode: Mapped[str] = mapped_column(String(10))
+    status: Mapped[str] = mapped_column(String(10), default="active")   # active | finished
+    state: Mapped[dict] = mapped_column(JsonType, default=dict)
+    created_at: Mapped[float] = mapped_column(Float, default=time.time)
+    updated_at: Mapped[float] = mapped_column(Float, default=time.time)

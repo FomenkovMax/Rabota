@@ -1,10 +1,11 @@
 """FastAPI-приложение Mini App. Э1: авторизация и соло-режим с серверным таймером."""
+import logging
 import secrets
 import time
 from pathlib import Path
 
 import httpx
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 
 from core import answers as judge_mod
@@ -16,8 +17,12 @@ from core.repo import QuestionRepo, StatsRepo, UserRepo
 from core.steps import make_steps
 
 from .access import AccessChecker
+from .rooms import Room
 from .auth import AuthError, create_token, decode_token, validate_init_data
 from .settings import Settings
+
+
+log = logging.getLogger("backend.app")
 
 
 class InitIn(BaseModel):
@@ -178,6 +183,37 @@ def create_app(settings: Settings, factory=None, llm_client=None, http: httpx.As
             if data:
                 questions.set_steps(qid, data)
         return {"steps": data}
+
+    # ---------- командная игра (WebSocket) ----------
+    # одна команда: id чата первой разрешённой группы (отрицательный, как в статистике бота) или -1
+    team_id = next(iter(sorted(settings.allowed_chats)), -1)
+    room = Room(team_id, settings, factory, questions, stats, llm_client)
+    app.state.room = room
+
+    @app.websocket("/api/ws")
+    async def ws_team(ws: WebSocket, token: str = ""):
+        try:
+            user = decode_token(token, settings.jwt_secret)
+        except AuthError:
+            await ws.close(code=4401)
+            return
+        if not await access.allowed(user["id"]):
+            await ws.close(code=4403)
+            return
+        await ws.accept()
+        await room.connect(user["id"], user["name"], ws)
+        try:
+            while True:
+                msg = await ws.receive_json()
+                err = await room.handle(user["id"], msg)
+                if err:
+                    await ws.send_json({"type": "error", "message": err})
+        except WebSocketDisconnect:
+            pass
+        except Exception:
+            log.exception("ws error")
+        finally:
+            await room.disconnect(user["id"], ws)
 
     dist = Path(__file__).resolve().parent.parent / "webapp" / "dist"
     if dist.exists() and not settings.public_host:   # без Caddy (локальная разработка) отдаём фронт сами

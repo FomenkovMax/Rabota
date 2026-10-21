@@ -20,6 +20,7 @@ class Settings:
     allowed_chats: frozenset[int] = frozenset()
     public_host: str = ""
     think_seconds: int = 60
+    team_answer_seconds: int = 20      # окно ответа капитана после минуты
     answer_grace_seconds: int = 30      # после минуты ещё столько секунд можно сдать ответ (как в чат-игре)
     init_data_max_age: int = 86400      # initData старше суток не принимаем
     token_ttl: int = 12 * 3600
@@ -52,6 +53,7 @@ def load_settings() -> Settings:
         allowed_chats=_ids("ALLOWED_CHATS"),
         public_host=os.getenv("PUBLIC_HOST", "").strip(),
         think_seconds=int(os.getenv("THINK_SECONDS", "60")),
+        team_answer_seconds=int(os.getenv("TEAM_ANSWER_SECONDS", "20")),
         judge_model=os.getenv("CLAUDE_MODEL", "claude-haiku-4-5").strip(),
         judge_timeout=float(os.getenv("MINIAPP_JUDGE_TIMEOUT", "10")),
         steps_model=os.getenv("STEPS_MODEL", "").strip(),
