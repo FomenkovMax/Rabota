@@ -29,6 +29,7 @@ export function Home() {
       <Button variant="ghost" onClick={() => go("team")}>Командная игра</Button>
       <Button variant="ghost" onClick={() => go("season")}>🏆 Сезон и награды</Button>
       <Button variant="ghost" onClick={() => go("stats")}>📊 Статистика</Button>
+      {me.is_admin && <Button variant="ghost" onClick={() => go("admin")}>🛠 Вопросы (админ)</Button>}
       <Button variant="ghost" onClick={() => setMuted(sound.toggle())}>{muted ? "🔇 Звук выключен" : "🔊 Звук включён"}</Button>
     </div>
   );

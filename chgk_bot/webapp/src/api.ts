@@ -22,6 +22,7 @@ async function call<T>(path: string, body?: unknown): Promise<T> {
 export interface Stats { played: number; points: number; correct: number; close: number }
 export interface Me {
   user: { id: number; name: string };
+  is_admin: boolean;
   stats: Stats;
   brand: { game_name: string };
   think_seconds: number;
@@ -61,6 +62,14 @@ export interface Season {
   achievements: Ach[];
 }
 
+export interface AdminItem { id: string; text: string; answer: string; hidden: boolean; answered: number; taken: number }
+export interface ImportReport { valid: number; added: number; duplicates: number; errors: { row: number; reason: string }[]; dry_run: boolean; total_in_db: number }
+
+async function del(path: string) {
+  const r = await fetch(path, { method: "DELETE", headers: { Authorization: `Bearer ${token}` } });
+  if (!r.ok) throw new ApiError(r.status, (await r.json().catch(() => ({}))).detail || "Ошибка");
+}
+
 export const api = {
   async login() {
     const res = tg.inTelegram()
@@ -72,6 +81,11 @@ export const api = {
   next: () => call<Round>("/api/solo/next", {}),
   answer: (round_id: string, answer: string) => call<AnswerResult>("/api/solo/answer", { round_id, answer }),
   skip: (round_id: string) => call<{ reveal: Reveal; stats: Stats }>("/api/solo/skip", { round_id }),
+  adminList: (q: string, offset = 0) => call<{ total: number; items: AdminItem[] }>(`/api/admin/questions?q=${encodeURIComponent(q)}&offset=${offset}`),
+  adminAdd: (b: Record<string, unknown>) => call<{ ok: boolean }>("/api/admin/questions", b),
+  adminHide: (id: string, hidden: boolean) => call<{ ok: boolean }>(`/api/admin/questions/${id}/hidden`, { hidden }),
+  adminDelete: (id: string) => del(`/api/admin/questions/${id}`),
+  adminImport: (format: string, content: string, dry_run: boolean) => call<ImportReport>("/api/admin/import", { format, content, dry_run }),
   season: () => call<Season>("/api/season"),
   statsMe: () => call<ActorStats>("/api/stats/me"),
   statsTeam: () => call<TeamStats>("/api/stats/team"),

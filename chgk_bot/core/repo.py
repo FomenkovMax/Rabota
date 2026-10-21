@@ -93,6 +93,57 @@ class QuestionRepo:
             s.commit()
         return added
 
+    # --- админка ---
+    def search(self, query: str = "", hidden: bool | None = None, limit: int = 30, offset: int = 0) -> tuple[int, list[dict]]:
+        """Список для админки: (всего найдено, страница). Поиск по тексту/ответу делаем в Python (в SQLite lower() не знает кириллицу)."""
+        q = query.strip().lower()
+        with self.f() as s:
+            stmt = select(Question).order_by(Question.created_at.desc(), Question.id)
+            if hidden is not None:
+                stmt = stmt.where(Question.hidden.is_(hidden))
+            rows = [r for r in s.scalars(stmt) if not q or q in r.text.lower() or q in str(r.answer).lower()]
+            page = rows[offset: offset + limit]
+            return len(rows), [{"id": r.id, "text": r.text[:140], "answer": r.answer, "hidden": r.hidden,
+                                "source": r.source, "pack": r.pack} for r in page]
+
+    def get_full(self, qid: str) -> dict | None:
+        with self.f() as s:
+            q = s.get(Question, qid)
+            if not q:
+                return None
+            d = question_to_dict(q)
+            d["hidden"] = q.hidden
+            return d
+
+    def edit(self, qid: str, d: dict) -> bool:
+        """Правка вопроса по id (id не меняется, чтобы не потерять статистику, даже если текст изменён)."""
+        if not all(str(d.get(k, "")).strip() for k in REQUIRED):
+            return False
+        with self.f() as s:
+            row = s.get(Question, qid)
+            if row is None:
+                return False
+            for k, v in _fields(d).items():
+                setattr(row, k, v)
+            row.steps = None            # текст изменился — прежний разбор по шагам устарел
+            s.commit()
+            return True
+
+    def set_hidden(self, qid: str, hidden: bool) -> bool:
+        with self.f() as s:
+            row = s.get(Question, qid)
+            if row is None:
+                return False
+            row.hidden = hidden
+            s.commit()
+            return True
+
+    def delete(self, qid: str) -> bool:
+        with self.f() as s:
+            n = s.execute(delete(Question).where(Question.id == qid)).rowcount
+            s.commit()
+            return bool(n)
+
     def set_steps(self, qid: str, steps: dict) -> None:
         with self.f() as s:
             q = s.get(Question, qid)

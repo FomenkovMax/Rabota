@@ -11,3 +11,6 @@
 .stats div { display: flex; flex-direction: column; gap: 2px; }
 .stats b { font-size: 26px; color: var(--gold-2); }
 .stats span { font-size: 13px; color: var(--text-dim); }
+.textarea { width: 100%; min-height: 120px; padding: 12px; border-radius: var(--radius-s); border: 1px solid rgba(255,255,255,.12); background: var(--bg-2); color: var(--text); font: 14px/1.4 ui-monospace, monospace; outline: none; resize: vertical; }
+.row { display: flex; gap: 8px; align-items: center; }
+.small { font-size: 13px; color: var(--text-dim); }

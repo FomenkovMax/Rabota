@@ -13,6 +13,7 @@ from core.brand import load_brand
 from core.db import make_session_factory
 from core.llm import make_client
 from core.models import SoloRound
+from core.qimport import parse as parse_import
 from core.repo import QuestionRepo, StatsRepo, UserRepo
 from core.card import render_card
 from core.statsq import actor_stats, team_extra
@@ -40,6 +41,29 @@ class DevIn(BaseModel):
 class AnswerIn(BaseModel):
     round_id: str
     answer: str
+
+
+class QuestionIn(BaseModel):
+    text: str
+    answer: str
+    explanation: str
+    accepted: list[str] = []
+    rejected: list[str] = []
+    accept_note: str = ""
+    source: str = ""
+    author: str = ""
+    tags: list[str] = []
+    difficulty: int = 3
+
+
+class ImportIn(BaseModel):
+    format: str
+    content: str
+    dry_run: bool = False
+
+
+class HiddenIn(BaseModel):
+    hidden: bool
 
 
 class RoundIn(BaseModel):
@@ -109,7 +133,7 @@ def create_app(settings: Settings, factory=None, llm_client=None, http: httpx.As
 
     @app.get("/api/me")
     def me(user: dict = Depends(current_user)):
-        return {"user": user, "stats": stats.summary(user["id"]), "brand": brand,
+        return {"user": user, "is_admin": user["id"] == settings.admin_id, "stats": stats.summary(user["id"]), "brand": brand,
                 "think_seconds": settings.think_seconds}
 
     def _hidden() -> set[str]:
@@ -194,6 +218,65 @@ def create_app(settings: Settings, factory=None, llm_client=None, http: httpx.As
     def season(user: dict = Depends(current_user)):
         _new_ach(user["id"])     # ачивки за командные игры выдаём при просмотре сезона
         return season_overview(factory, brand, user["id"])
+
+    # ---------- админка вопросов (только ADMIN_ID) ----------
+    async def admin_user(user: dict = Depends(current_user)) -> dict:
+        if not settings.admin_id or user["id"] != settings.admin_id:
+            raise HTTPException(403, "Только для администратора")
+        return user
+
+    @app.get("/api/admin/questions")
+    def admin_list(q: str = "", hidden: bool | None = None, offset: int = 0, limit: int = 30, _: dict = Depends(admin_user)):
+        total, items = questions.search(q, hidden, min(limit, 100), max(0, offset))
+        rates = stats.question_rates()
+        for it in items:
+            n, k = rates.get(it["id"], (0, 0))
+            it["answered"], it["taken"] = n, k
+        return {"total": total, "items": items}
+
+    @app.get("/api/admin/questions/{qid}")
+    def admin_get(qid: str, _: dict = Depends(admin_user)):
+        d = questions.get_full(qid)
+        if d is None:
+            raise HTTPException(404, "Нет такого вопроса")
+        return d
+
+    @app.post("/api/admin/questions")
+    def admin_add(body: QuestionIn, _: dict = Depends(admin_user)):
+        if not all(x.strip() for x in (body.text, body.answer, body.explanation)):
+            raise HTTPException(422, "Нужны текст, ответ и разбор")
+        d = body.model_dump()
+        d["origin"] = "admin"
+        if not questions.add([d]):
+            raise HTTPException(409, "Такой вопрос уже есть")
+        return {"ok": True}
+
+    @app.put("/api/admin/questions/{qid}")
+    def admin_edit(qid: str, body: QuestionIn, _: dict = Depends(admin_user)):
+        if not questions.edit(qid, body.model_dump()):
+            raise HTTPException(404, "Вопрос не найден или не заполнены обязательные поля")
+        return {"ok": True}
+
+    @app.post("/api/admin/questions/{qid}/hidden")
+    def admin_hidden(qid: str, body: HiddenIn, _: dict = Depends(admin_user)):
+        if not questions.set_hidden(qid, body.hidden):
+            raise HTTPException(404, "Вопрос не найден")
+        return {"ok": True}
+
+    @app.delete("/api/admin/questions/{qid}")
+    def admin_delete(qid: str, _: dict = Depends(admin_user)):
+        if not questions.delete(qid):
+            raise HTTPException(404, "Вопрос не найден")
+        return {"ok": True}
+
+    @app.post("/api/admin/import")
+    def admin_import(body: ImportIn, _: dict = Depends(admin_user)):
+        items, errors = parse_import(body.format, body.content)
+        for it in items:
+            it.setdefault("origin", "import")
+        added = 0 if body.dry_run else questions.add(items)
+        return {"valid": len(items), "added": added, "duplicates": 0 if body.dry_run else len(items) - added,
+                "errors": errors[:50], "dry_run": body.dry_run, "total_in_db": questions.count()}
 
     # одна команда: id чата первой разрешённой группы (отрицательный, как в статистике бота) или -1
     team_id = next(iter(sorted(settings.allowed_chats)), -1)

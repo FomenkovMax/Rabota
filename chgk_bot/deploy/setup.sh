@@ -81,6 +81,11 @@ if grep -q '^ANTHROPIC_API_KEY=.\+' .env; then
   docker compose exec -T backend python -m bot.check_llm || echo "(проверка не прошла — см. сообщение выше)"
 fi
 
+# Ежедневный бэкап базы в 04:15 (хранится 7 последних копий)
+CRON="15 4 * * * bash $DIR/chgk_bot/deploy/backup.sh >> /var/log/chgk-backup.log 2>&1"
+( crontab -l 2>/dev/null | grep -v 'deploy/backup.sh'; echo "$CRON" ) | crontab -
+echo "==> Ежедневный бэкап включён (04:15), копии: /opt/rabota/backups"
+
 echo
 echo "Порты 80 и 443 должны быть открыты у хостера. Проверка: curl https://$(grep '^PUBLIC_HOST=' .env | cut -d= -f2)/api/health"
 echo "Готово. Логи:      cd $DIR/chgk_bot && docker compose logs -f"

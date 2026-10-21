@@ -215,3 +215,50 @@ def test_streak_logic():
     assert _streaks([1, 1, 0, 1, 1, 1]) == (3, 3)
     assert _streaks([1, 0.5, 1]) == (1, 1)
     assert _streaks([]) == (0, 0)
+
+
+def admin_client(tmp_path):
+    s, f, c = make(tmp_path, admin_id=7)
+    return f, c, login(c, 7), login(c, 8)
+
+
+def test_admin_requires_admin(tmp_path):
+    f, c, adm, usr = admin_client(tmp_path)
+    assert c.get("/api/admin/questions", headers=usr).status_code == 403
+    assert c.get("/api/admin/questions", headers=adm).json()["total"] == 3
+    assert c.get("/api/me", headers=adm).json()["is_admin"] is True
+    assert c.get("/api/me", headers=usr).json()["is_admin"] is False
+
+
+def test_admin_crud_hide_and_search(tmp_path):
+    f, c, adm, _ = admin_client(tmp_path)
+    body = {"text": "Новый вопрос про кота?", "answer": "Кот", "explanation": "Потому что кот", "tags": ["тест"]}
+    assert c.post("/api/admin/questions", headers=adm, json=body).status_code == 200
+    assert c.post("/api/admin/questions", headers=adm, json=body).status_code == 409      # дубль
+    found = c.get("/api/admin/questions?q=КОТ", headers=adm).json()
+    assert found["total"] == 1
+    qid = found["items"][0]["id"]
+    assert c.put(f"/api/admin/questions/{qid}", headers=adm, json={**body, "answer": "Кошка"}).status_code == 200
+    assert c.get(f"/api/admin/questions/{qid}", headers=adm).json()["answer"] == "Кошка"
+    assert c.post(f"/api/admin/questions/{qid}/hidden", headers=adm, json={"hidden": True}).status_code == 200
+    assert c.get("/api/admin/questions?hidden=true", headers=adm).json()["total"] == 1
+    # скрытый вопрос не выдаётся игрокам
+    usr = login(c, 9)
+    seen = {c.post("/api/solo/next", headers=usr).json()["question"]["id"] for _ in range(15)}
+    assert qid not in seen
+    assert c.delete(f"/api/admin/questions/{qid}", headers=adm).status_code == 200
+    assert c.delete(f"/api/admin/questions/{qid}", headers=adm).status_code == 404
+
+
+def test_admin_import_json_csv_and_errors(tmp_path):
+    f, c, adm, _ = admin_client(tmp_path)
+    js = json.dumps([{"text": "Q1?", "answer": "A1", "explanation": "E1"}, {"text": "Q2?", "answer": "A2"}], ensure_ascii=False)
+    r = c.post("/api/admin/import", headers=adm, json={"format": "json", "content": js, "dry_run": True}).json()
+    assert r["valid"] == 1 and r["added"] == 0 and r["errors"][0]["row"] == 2 and "explanation" in r["errors"][0]["reason"]
+    assert c.post("/api/admin/import", headers=adm, json={"format": "json", "content": js}).json()["added"] == 1
+    csv_text = "text,answer,explanation,accepted,difficulty\nВопрос 3?,А3,Е3,вар1|вар2,4\nВопрос 4?,А4,Е4,,9\n"
+    r = c.post("/api/admin/import", headers=adm, json={"format": "csv", "content": csv_text}).json()
+    assert r["added"] == 2
+    assert QuestionRepo(f).get_full(next(i["id"] for i in c.get("/api/admin/questions?q=Вопрос 3", headers=adm).json()["items"]))["accepted"] == ["вар1", "вар2"]
+    bad = c.post("/api/admin/import", headers=adm, json={"format": "json", "content": "{не json"}).json()
+    assert bad["added"] == 0 and "JSON" in bad["errors"][0]["reason"]

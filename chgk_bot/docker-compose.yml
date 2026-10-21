@@ -1,6 +1,11 @@
+x-log: &log          # ротация логов контейнеров: не больше 3 файлов по 10 МБ на сервис
+  driver: json-file
+  options: {max-size: "10m", max-file: "3"}
+
 x-app: &app
   build: .
   restart: unless-stopped
+  logging: *log
   env_file: .env
   environment: &appenv
     DATA_DIR: /data
@@ -12,6 +17,7 @@ services:
   postgres:
     image: postgres:16-alpine
     restart: unless-stopped
+    logging: *log
     environment:
       POSTGRES_USER: chgk
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -48,6 +54,7 @@ services:
       context: .
       dockerfile: deploy/Dockerfile.web
     restart: unless-stopped
+    logging: *log
     environment:
       PUBLIC_HOST: ${PUBLIC_HOST}
     ports:
