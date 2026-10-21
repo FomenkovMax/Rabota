@@ -37,7 +37,7 @@ export function TimerRing({ deadlineMs, offsetMs, totalSec, onEnd }: Props) {
   const sec = Math.ceil(ms / 1000);
   const hot = sec <= 10;
   useEffect(() => {
-    if (hot && sec > 0 && sec !== lastTick.current) { lastTick.current = sec; sound.play("tick"); if (sec <= 3) tg.haptic("medium"); }
+    if (hot && sec > 0 && sec !== lastTick.current) { lastTick.current = sec; sound.play(sec === 10 ? "timer10" : "tick"); if (sec <= 3) tg.haptic("medium"); }
   }, [sec, hot]);
   return (
     <svg width="132" height="132" viewBox="0 0 132 132" aria-label={`Осталось ${sec} с`}>
