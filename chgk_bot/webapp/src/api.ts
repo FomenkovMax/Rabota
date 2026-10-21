@@ -39,6 +39,18 @@ export interface Verdict { level: "correct" | "close" | "wrong"; score: number; 
 export interface AnswerResult { timeout: boolean; verdict: Verdict; reveal: Reveal; stats?: Stats }
 export interface Steps { steps: { clue: string; inference: string; how: string }[]; lesson: string }
 
+export interface ActorStats {
+  played: number; correct: number; close: number; points: number; accuracy: number; avg_time_ms: number | null;
+  best_streak: number; streak: number;
+  daily: { date: string; played: number; correct: number }[];
+  packs: { name: string; played: number; correct: number }[];
+  recent: { text: string; score: number; ts: number }[];
+}
+export interface TeamStats extends ActorStats {
+  games: { date: string; mode: string; score: number | null; total: number; experts: number | null; viewers: number | null }[];
+  players: { id: number; name: string; solo_played: number; solo_correct: number; as_captain: number; captain_correct: number }[];
+}
+
 export const api = {
   async login() {
     const res = tg.inTelegram()
@@ -50,6 +62,14 @@ export const api = {
   next: () => call<Round>("/api/solo/next", {}),
   answer: (round_id: string, answer: string) => call<AnswerResult>("/api/solo/answer", { round_id, answer }),
   skip: (round_id: string) => call<{ reveal: Reveal; stats: Stats }>("/api/solo/skip", { round_id }),
+  statsMe: () => call<ActorStats>("/api/stats/me"),
+  statsTeam: () => call<TeamStats>("/api/stats/team"),
+  async cardBlob(scope: string) {
+    const r = await fetch(`/api/stats/card.png?scope=${scope}`, { headers: { Authorization: `Bearer ${token}` } });
+    if (!r.ok) throw new ApiError(r.status, "Не удалось получить карточку");
+    return URL.createObjectURL(await r.blob());
+  },
+  sendCard: (scope: string) => call<{ ok: boolean }>(`/api/stats/card/send?scope=${scope}`, {}),
   steps: (qid: string) => call<{ steps: Steps | null }>(`/api/questions/${qid}/steps`, {}),
 };
 

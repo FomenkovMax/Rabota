@@ -3,6 +3,7 @@ import { Card } from "./components/Card";
 import { Studio } from "./components/Studio";
 import { Home } from "./screens/Home";
 import { Solo } from "./screens/Solo";
+import { Stats } from "./screens/Stats";
 import { Team } from "./screens/Team";
 import { useApp } from "./store";
 import { tg } from "./tg";
@@ -14,6 +15,6 @@ export function App() {
   let body;
   if (error) body = <div style={{ padding: 16 }}><Card accent="bad">{error}</Card></div>;
   else if (!me) body = <div style={{ padding: 24, textAlign: "center", color: "var(--text-dim)" }}>Загрузка…</div>;
-  else body = screen === "solo" ? <Solo /> : screen === "team" ? <Team /> : <Home />;
+  else body = screen === "solo" ? <Solo /> : screen === "team" ? <Team /> : screen === "stats" ? <Stats /> : <Home />;
   return <><Studio />{body}</>;
 }

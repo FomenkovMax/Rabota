@@ -190,3 +190,28 @@ def test_ws_rejects_bad_token(tmp_path):
     with pytest.raises(Exception):
         with c.websocket_connect("/api/ws?token=bad"):
             pass
+
+
+def test_stats_endpoints_and_card(tmp_path):
+    from core.repo import StatsRepo
+    s, f, c = make(tmp_path)
+    h = login(c, 7)
+    st = StatsRepo(f)
+    ids = list(QuestionRepo(f).choose(3, set()))
+    for i, q in enumerate(ids):
+        st.record(7, q["id"], 1.0 if i != 1 else 0.0, "x", "solo", 4000)
+    d = c.get("/api/stats/me", headers=h).json()
+    assert d["played"] == 3 and d["correct"] == 2 and d["best_streak"] == 1 and d["streak"] == 1
+    assert d["accuracy"] == 0.667 and sum(x["played"] for x in d["daily"]) == 3 and d["avg_time_ms"] == 4000
+    assert c.get("/api/stats/team", headers=h).json()["played"] == 0
+    r = c.get("/api/stats/card.png", headers=h)
+    assert r.status_code == 200 and r.content[:4] == b"\x89PNG"
+    assert c.get("/api/stats/card.png?scope=team", headers=h).status_code == 200
+    assert c.get("/api/stats/me").status_code == 401
+
+
+def test_streak_logic():
+    from core.statsq import _streaks
+    assert _streaks([1, 1, 0, 1, 1, 1]) == (3, 3)
+    assert _streaks([1, 0.5, 1]) == (1, 1)
+    assert _streaks([]) == (0, 0)

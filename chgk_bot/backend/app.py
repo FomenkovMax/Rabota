@@ -5,7 +5,7 @@ import time
 from pathlib import Path
 
 import httpx
-from fastapi import Depends, FastAPI, Header, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, Header, HTTPException, Response, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 
 from core import answers as judge_mod
@@ -14,6 +14,8 @@ from core.db import make_session_factory
 from core.llm import make_client
 from core.models import SoloRound
 from core.repo import QuestionRepo, StatsRepo, UserRepo
+from core.card import render_card
+from core.statsq import actor_stats, team_extra
 from core.steps import make_steps
 
 from .access import AccessChecker
@@ -184,9 +186,38 @@ def create_app(settings: Settings, factory=None, llm_client=None, http: httpx.As
                 questions.set_steps(qid, data)
         return {"steps": data}
 
-    # ---------- командная игра (WebSocket) ----------
     # одна команда: id чата первой разрешённой группы (отрицательный, как в статистике бота) или -1
     team_id = next(iter(sorted(settings.allowed_chats)), -1)
+
+    # ---------- статистика ----------
+    @app.get("/api/stats/me")
+    def stats_me(user: dict = Depends(current_user)):
+        return actor_stats(factory, user["id"])
+
+    @app.get("/api/stats/team")
+    def stats_team(user: dict = Depends(current_user)):
+        return {**actor_stats(factory, team_id), **team_extra(factory, team_id)}
+
+    def _card(scope: str, user: dict) -> bytes:
+        if scope == "team":
+            return render_card("Команда", "тренировка знатоков", actor_stats(factory, team_id))
+        return render_card(user["name"], "личная статистика", actor_stats(factory, user["id"]))
+
+    @app.get("/api/stats/card.png")
+    def stats_card(scope: str = "me", user: dict = Depends(current_user)):
+        return Response(_card(scope, user), media_type="image/png")
+
+    @app.post("/api/stats/card/send")
+    async def stats_card_send(scope: str = "me", user: dict = Depends(current_user)):
+        """Отправляет карточку в личку игрока ботом — оттуда её можно переслать в чат команды."""
+        png = _card(scope, user)
+        r = await access.http.post(f"https://api.telegram.org/bot{settings.bot_token}/sendPhoto",
+                                   data={"chat_id": user["id"]}, files={"photo": ("card.png", png, "image/png")})
+        if r.status_code != 200:
+            raise HTTPException(502, "Не удалось отправить карточку: сначала напиши боту /start")
+        return {"ok": True}
+
+    # ---------- командная игра (WebSocket) ----------
     room = Room(team_id, settings, factory, questions, stats, llm_client)
     app.state.room = room
 

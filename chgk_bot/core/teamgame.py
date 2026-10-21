@@ -116,7 +116,7 @@ def commit_round(g: dict) -> None:
         return
     _apply(g, v, +1)
     v["committed"] = True
-    g["log"].append({"qid": g["current"]["qid"], "sector": g["current"]["sector"], "answer": g["answer"],
+    g["log"].append({"qid": g["current"]["qid"], "sector": g["current"]["sector"], "answer": g["answer"], "by": g["answered_by"],
                      "level": v["level"], "score": v["score"], "time_ms": int((g.get("answered_at", g["round_started"]) - g["round_started"]) * 1000)})
 
 
