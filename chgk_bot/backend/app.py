@@ -16,6 +16,7 @@ from core.models import SoloRound
 from core.repo import QuestionRepo, StatsRepo, UserRepo
 from core.card import render_card
 from core.statsq import actor_stats, team_extra
+from core.seasons import check_achievements, season_overview
 from core.steps import make_steps
 
 from .access import AccessChecker
@@ -163,7 +164,7 @@ def create_app(settings: Settings, factory=None, llm_client=None, http: httpx.As
         stats.record(user["id"], q["id"], v.score, text, "solo", int((now - r.started_at) * 1000))
         return {"timeout": False, "verdict": {"level": v.level, "score": v.score, "comment": v.comment,
                                                "source": v.source, "disputed": v.disputed},
-                "reveal": reveal(q), "stats": stats.summary(user["id"])}
+                "reveal": reveal(q), "stats": stats.summary(user["id"]), "new_achievements": _new_ach(user["id"])}
 
     @app.post("/api/solo/skip")
     def solo_skip(body: RoundIn, user: dict = Depends(current_user)):
@@ -185,6 +186,14 @@ def create_app(settings: Settings, factory=None, llm_client=None, http: httpx.As
             if data:
                 questions.set_steps(qid, data)
         return {"steps": data}
+
+    def _new_ach(uid: int) -> list[dict]:
+        return [{"code": c, **brand["achievements"][c]} for c in check_achievements(factory, uid, brand)]
+
+    @app.get("/api/season")
+    def season(user: dict = Depends(current_user)):
+        _new_ach(user["id"])     # ачивки за командные игры выдаём при просмотре сезона
+        return season_overview(factory, brand, user["id"])
 
     # одна команда: id чата первой разрешённой группы (отрицательный, как в статистике бота) или -1
     team_id = next(iter(sorted(settings.allowed_chats)), -1)

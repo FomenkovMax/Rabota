@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { Card } from "./components/Card";
 import { Studio } from "./components/Studio";
 import { Home } from "./screens/Home";
+import { Season } from "./screens/Season";
 import { Solo } from "./screens/Solo";
 import { Stats } from "./screens/Stats";
 import { Team } from "./screens/Team";
@@ -15,6 +16,6 @@ export function App() {
   let body;
   if (error) body = <div style={{ padding: 16 }}><Card accent="bad">{error}</Card></div>;
   else if (!me) body = <div style={{ padding: 24, textAlign: "center", color: "var(--text-dim)" }}>Загрузка…</div>;
-  else body = screen === "solo" ? <Solo /> : screen === "team" ? <Team /> : screen === "stats" ? <Stats /> : <Home />;
+  else body = screen === "solo" ? <Solo /> : screen === "team" ? <Team /> : screen === "stats" ? <Stats /> : screen === "season" ? <Season /> : <Home />;
   return <><Studio />{body}</>;
 }

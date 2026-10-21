@@ -6,7 +6,9 @@ DEFAULT = {
     "game_name": "ЧГК-тренажёр",
     "short_name": "ЧГК",
     "teams": {"experts": "Знатоки", "viewers": "Телезрители"},
-    "awards": {"owl": "Сова", "diamond_owl": "Бриллиантовая сова"},
+    "awards": {"owl": {"name": "Сова", "desc": "", "icon": "🦉"}, "diamond_owl": {"name": "Бриллиантовая сова", "desc": "", "icon": "💎"}},
+    "leagues": [{"id": "bronze", "name": "Бронза", "min_points": 0, "icon": "🥉"}],
+    "achievements": {},
 }
 
 

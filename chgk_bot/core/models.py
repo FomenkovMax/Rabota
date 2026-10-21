@@ -1,7 +1,7 @@
 """Таблицы базы данных (PostgreSQL; в тестах SQLite). Схема меняется только через Alembic (папка migrations/)."""
 import time
 
-from sqlalchemy import JSON, BigInteger, Boolean, Float, ForeignKey, Index, Integer, SmallInteger, String, Text
+from sqlalchemy import JSON, BigInteger, Boolean, Float, ForeignKey, Index, Integer, SmallInteger, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -101,3 +101,22 @@ class Game(Base):
     state: Mapped[dict] = mapped_column(JsonType, default=dict)
     created_at: Mapped[float] = mapped_column(Float, default=time.time)
     updated_at: Mapped[float] = mapped_column(Float, default=time.time)
+
+
+class Award(Base):
+    """Награда сезона (сова и т. п.): выдаётся один раз за закрытый месяц."""
+    __tablename__ = "awards"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    season: Mapped[str] = mapped_column(String(7))          # YYYY-MM
+    kind: Mapped[str] = mapped_column(String(30))           # ключ из brand.awards
+    points: Mapped[float] = mapped_column(Float, default=0)
+    created_at: Mapped[float] = mapped_column(Float, default=time.time)
+    __table_args__ = (UniqueConstraint("user_id", "season", "kind", name="uq_award"),)
+
+
+class UserAchievement(Base):
+    __tablename__ = "user_achievements"
+    user_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=False)
+    code: Mapped[str] = mapped_column(String(30), primary_key=True)
+    earned_at: Mapped[float] = mapped_column(Float, default=time.time)

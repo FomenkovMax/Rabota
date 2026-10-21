@@ -97,6 +97,11 @@ export function Solo() {
           {phase === "result" && res && (
             <>
               {res.verdict.level === "correct" && <Confetti />}
+              {res.new_achievements?.map((a) => (
+                <motion.div key={a.code} initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}>
+                  <Card accent="ok"><b>{a.icon} Ачивка: {a.name}</b><p className={s.dim}>{a.desc}</p></Card>
+                </motion.div>
+              ))}
               <Card accent={ACCENT[res.verdict.level]}>
                 <h2>{res.timeout ? "Время вышло ⏰" : LABEL[res.verdict.level]}</h2>
                 <p className={s.dim}>{res.verdict.comment}</p>

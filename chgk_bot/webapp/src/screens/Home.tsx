@@ -27,6 +27,7 @@ export function Home() {
       </Card>
       <Button onClick={() => go("solo")}>Играть соло</Button>
       <Button variant="ghost" onClick={() => go("team")}>Командная игра</Button>
+      <Button variant="ghost" onClick={() => go("season")}>🏆 Сезон и награды</Button>
       <Button variant="ghost" onClick={() => go("stats")}>📊 Статистика</Button>
       <Button variant="ghost" onClick={() => setMuted(sound.toggle())}>{muted ? "🔇 Звук выключен" : "🔊 Звук включён"}</Button>
     </div>

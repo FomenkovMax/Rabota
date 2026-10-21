@@ -36,7 +36,8 @@ export interface Reveal {
   author: string; source: string; url: string;
 }
 export interface Verdict { level: "correct" | "close" | "wrong"; score: number; comment: string; source: string; disputed: boolean }
-export interface AnswerResult { timeout: boolean; verdict: Verdict; reveal: Reveal; stats?: Stats }
+export interface Ach { code: string; name: string; desc: string; icon: string; earned?: boolean }
+export interface AnswerResult { timeout: boolean; verdict: Verdict; reveal: Reveal; stats?: Stats; new_achievements?: Ach[] }
 export interface Steps { steps: { clue: string; inference: string; how: string }[]; lesson: string }
 
 export interface ActorStats {
@@ -51,6 +52,15 @@ export interface TeamStats extends ActorStats {
   players: { id: number; name: string; solo_played: number; solo_correct: number; as_captain: number; captain_correct: number }[];
 }
 
+export interface League { id: string; name: string; min_points: number; icon: string }
+export interface Season {
+  season: string; days_left: number;
+  standings: { user_id: number; name: string; rank: number; points: number; played: number; accuracy: number }[];
+  me: { points: number; rank: number | null; league: League; next_league: League | null; to_next: number };
+  awards: { user_id: number; name: string; season: string; kind: string; points: number }[];
+  achievements: Ach[];
+}
+
 export const api = {
   async login() {
     const res = tg.inTelegram()
@@ -62,6 +72,7 @@ export const api = {
   next: () => call<Round>("/api/solo/next", {}),
   answer: (round_id: string, answer: string) => call<AnswerResult>("/api/solo/answer", { round_id, answer }),
   skip: (round_id: string) => call<{ reveal: Reveal; stats: Stats }>("/api/solo/skip", { round_id }),
+  season: () => call<Season>("/api/season"),
   statsMe: () => call<ActorStats>("/api/stats/me"),
   statsTeam: () => call<TeamStats>("/api/stats/team"),
   async cardBlob(scope: string) {
