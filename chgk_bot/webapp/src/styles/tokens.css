@@ -15,15 +15,32 @@
   --radius-s: 12px;
   --gap: 16px;
   --shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  --glow-gold: 0 0 28px rgba(242, 184, 75, 0.35);
   --font: -apple-system, "SF Pro Text", "Segoe UI", Roboto, system-ui, sans-serif;
+  /* шкала типографики */
+  --fs-xs: 13px; --fs-s: 15px; --fs-m: 17px; --fs-l: 22px; --fs-xl: 30px;
+  /* длительности анимаций */
+  --t-fast: 0.15s; --t-mid: 0.35s; --t-slow: 0.7s;
 }
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html, body, #root { margin: 0; min-height: 100%; }
 body {
-  background: radial-gradient(120% 80% at 50% 0%, var(--bg-2), var(--bg));
+  background: var(--bg);
   color: var(--text);
   font-family: var(--font);
   -webkit-font-smoothing: antialiased;
   overscroll-behavior: none;
 }
 h1, h2, h3, p { margin: 0; }
+h1 { font-size: var(--fs-xl); } h2 { font-size: var(--fs-l); }
+
+/* Студийный фон: слой со своей картинкой bg.studio (если есть) + мягкий «прожектор». Анимируем только opacity/transform. */
+.studio { position: fixed; inset: 0; z-index: -1; background: radial-gradient(120% 80% at 50% 0%, var(--bg-2), var(--bg)); overflow: hidden; }
+.studio img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: .55; }
+.studio::after {
+  content: ""; position: absolute; left: 50%; top: -30%; width: 140%; height: 70%; margin-left: -70%;
+  background: radial-gradient(closest-side, rgba(242, 184, 75, .22), transparent);
+  animation: sway 9s ease-in-out infinite alternate; will-change: transform, opacity;
+}
+@keyframes sway { from { transform: translateX(-6%); opacity: .6; } to { transform: translateX(6%); opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .studio::after { animation: none; } * { scroll-behavior: auto; } }

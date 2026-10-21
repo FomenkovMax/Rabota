@@ -1,4 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { sound } from "../sound";
+import { tg } from "../tg";
 
 interface Props {
   deadlineMs: number;      // серверный дедлайн
@@ -11,6 +13,7 @@ interface Props {
 export function TimerRing({ deadlineMs, offsetMs, totalSec, onEnd }: Props) {
   const left = () => Math.max(0, deadlineMs - (Date.now() + offsetMs));
   const [ms, setMs] = useState(left);
+  const lastTick = useRef(-1);
 
   useEffect(() => {
     let raf = 0;
@@ -33,6 +36,9 @@ export function TimerRing({ deadlineMs, offsetMs, totalSec, onEnd }: Props) {
   const frac = Math.min(1, ms / (totalSec * 1000));
   const sec = Math.ceil(ms / 1000);
   const hot = sec <= 10;
+  useEffect(() => {
+    if (hot && sec > 0 && sec !== lastTick.current) { lastTick.current = sec; sound.play("tick"); if (sec <= 3) tg.haptic("medium"); }
+  }, [sec, hot]);
   return (
     <svg width="132" height="132" viewBox="0 0 132 132" aria-label={`Осталось ${sec} с`}>
       <circle cx="66" cy="66" r={R} fill="none" stroke="rgba(255,255,255,.1)" strokeWidth="10" />

@@ -5,7 +5,9 @@ import { Button } from "../components/Button";
 import { Card } from "../components/Card";
 import { TimerRing } from "../components/TimerRing";
 import { useApp } from "../store";
+import { sound } from "../sound";
 import { tg } from "../tg";
+import { Confetti } from "../components/Confetti";
 import s from "./Screen.module.css";
 
 type Phase = "loading" | "think" | "judging" | "result" | "error";
@@ -42,6 +44,7 @@ export function Solo() {
       const r = await api.answer(round.round_id, answer);
       setRes(r);
       tg.haptic(r.verdict.level === "correct" ? "success" : r.verdict.level === "wrong" ? "error" : "medium");
+      sound.play(r.verdict.level === "wrong" ? "fail" : "ok");
       setPhase("result");
       void refresh();
     } catch (e) { setErr((e as Error).message); setPhase("error"); }
@@ -93,6 +96,7 @@ export function Solo() {
 
           {phase === "result" && res && (
             <>
+              {res.verdict.level === "correct" && <Confetti />}
               <Card accent={ACCENT[res.verdict.level]}>
                 <h2>{res.timeout ? "Время вышло ⏰" : LABEL[res.verdict.level]}</h2>
                 <p className={s.dim}>{res.verdict.comment}</p>

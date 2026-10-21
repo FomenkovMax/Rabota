@@ -6,7 +6,10 @@ import { Card } from "../components/Card";
 import { TimerRing } from "../components/TimerRing";
 import { Wheel } from "../components/Wheel";
 import { useApp } from "../store";
+import { sound } from "../sound";
 import { tg } from "../tg";
+import { Confetti } from "../components/Confetti";
+import { Envelope } from "../components/Envelope";
 import s from "./Screen.module.css";
 
 const ACCENT = { correct: "ok", close: "half", wrong: "bad" } as const;
@@ -19,6 +22,8 @@ export function Team() {
   const [text, setText] = useState("");
   const conn = useRef<ReturnType<typeof openRoom> | null>(null);
   const lastIdx = useRef(-2);
+  const [opened, setOpened] = useState(false);     // волчок остановился и конверт открыт
+  const lastVerdict = useRef("");
 
   useEffect(() => {
     conn.current = openRoom(
@@ -33,7 +38,13 @@ export function Team() {
   const isCaptain = !!g && g.captain_id === me?.user.id;
   const nameOf = (id: number) => room?.players.find((p) => p.id === id)?.name ?? "—";
 
-  useEffect(() => { if (g && g.idx !== lastIdx.current) { lastIdx.current = g.idx; setText(""); } }, [g]);
+  useEffect(() => { if (g && g.idx !== lastIdx.current) { lastIdx.current = g.idx; setText(""); setOpened(false); } }, [g]);
+  useEffect(() => {
+    const key = g?.phase === "review" && g.verdict ? `${g.idx}:${g.verdict.level}` : "";
+    if (key && key !== lastVerdict.current) { sound.play(g!.verdict!.level === "wrong" ? "fail" : "ok"); tg.haptic(g!.verdict!.level === "wrong" ? "error" : "success"); }
+    lastVerdict.current = key;
+  }, [g]);
+  const wheelWait = g?.mode === "wheel" && !opened && (g.phase === "think");
 
   const header = (
     <Card>
@@ -55,6 +66,7 @@ export function Team() {
         <>
           {g?.status === "finished" && (
             <Card accent="ok">
+              {g.score > g.total / 2 || g.experts > g.viewers ? <Confetti /> : null}
               <h2>Игра окончена 🏁</h2>
               <p className={s.dim}>{g.mode === "wheel" ? `Знатоки ${g.experts} : ${g.viewers} телезрители` : `Очков: ${g.score} из ${g.total}`}</p>
               {g.log?.map((r, i) => <p key={i} className={s.step}>{i + 1}. {r.level === "correct" ? "✅" : r.level === "close" ? "🟡" : "❌"} {r.answer ?? "— нет ответа"}</p>)}
@@ -71,20 +83,21 @@ export function Team() {
           {header}
           {g.mode === "wheel" && (
             <div className={s.center}>
-              <Wheel n={g.total} played={g.played} spin={g.spin} spinKey={g.idx} />
+              <Wheel n={g.total} played={g.played} spin={g.spin} spinKey={g.idx} onSettled={() => setOpened(true)} />
             </div>
           )}
+          {wheelWait && g.spin && <div className={s.center}><Envelope sector={g.spin.sector} open={false} /></div>}
           <AnimatePresence mode="wait">
             <motion.div key={g.phase + g.idx} className={s.col} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
-              {(g.phase === "think" || g.phase === "answer") && (
+              {!wheelWait && (g.phase === "think" || g.phase === "answer") && (
                 <div className={s.center}>
                   <TimerRing deadlineMs={g.deadline_ms} offsetMs={offset} totalSec={g.phase === "think" ? g.think : 20} />
                   <p className={s.dim}>{g.phase === "think" ? "Обсуждаем" : "Время сдавать ответ!"}</p>
                 </div>
               )}
-              {g.question && <Card><p className={s.question}>{g.question.text}</p></Card>}
+              {g.question && !wheelWait && <Card><p className={s.question}>{g.question.text}</p></Card>}
 
-              {(g.phase === "think" || g.phase === "answer") && (isCaptain ? (
+              {!wheelWait && (g.phase === "think" || g.phase === "answer") && (isCaptain ? (
                 <>
                   <input className={s.input} value={text} placeholder="Ответ команды" onChange={(e) => setText(e.target.value)} />
                   <Button disabled={!text.trim()} onClick={() => send({ type: "answer", text })}>Сдать ответ</Button>
@@ -114,6 +127,13 @@ export function Team() {
               )}
             </motion.div>
           </AnimatePresence>
+          {isCaptain && room && room.players.length > 1 && (
+            <Button variant="ghost" onClick={() => {
+              const others = room.players.filter((p) => p.id !== me?.user.id);
+              const i = others.findIndex((p) => p.id === g.captain_id);
+              send({ type: "captain", user_id: others[(i + 1) % others.length].id });
+            }}>Передать капитанство →</Button>
+          )}
           {isCaptain && <Button variant="ghost" onClick={() => send({ type: "stop" })}>Закончить игру</Button>}
         </>
       )}

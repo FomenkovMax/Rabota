@@ -1,5 +1,6 @@
 import { animate } from "framer-motion";
 import { useEffect, useRef, useState } from "react";
+import { sound } from "../sound";
 
 interface Props {
   n: number;
@@ -13,12 +14,14 @@ interface Props {
 export function Wheel({ n, played, spin, spinKey, onSettled }: Props) {
   const [angle, setAngle] = useState(0);
   const [settled, setSettled] = useState(true);
+  const [skin, setSkin] = useState(true);   // есть ли картинка wheel.table.webp
   const base = useRef(0);
   const step = 360 / n;
 
   useEffect(() => {
     if (!spin) return;
     setSettled(false);
+    sound.play("spin");
     const target = spin.turns * 360 + (spin.sector + 0.5 + spin.offset) * step;
     const from = base.current % 360;
     const ctl = animate(from, from + target, {
@@ -38,7 +41,9 @@ export function Wheel({ n, played, spin, spinKey, onSettled }: Props) {
     return [C + r * Math.cos(a), C + r * Math.sin(a)];
   };
   return (
-    <svg viewBox="0 0 320 320" width="100%" style={{ maxWidth: 320 }}>
+    <div style={{ position: "relative", width: "100%", maxWidth: 320 }}>
+    {skin && <img src="/assets/wheel.table.webp" alt="" onError={() => setSkin(false)} style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }} />}
+    <svg viewBox="0 0 320 320" width="100%" style={{ position: "relative", opacity: skin ? 0.85 : 1 }}>
       {Array.from({ length: n }, (_, i) => {
         const [x1, y1] = pt(i * step, R), [x2, y2] = pt((i + 1) * step, R), [tx, ty] = pt((i + 0.5) * step, R * 0.72);
         const done = played.includes(i) && !(i === current && !settled);
@@ -58,5 +63,6 @@ export function Wheel({ n, played, spin, spinKey, onSettled }: Props) {
         <polygon points={`${C},${C - R + 6} ${C - 9},${C - 24} ${C + 9},${C - 24}`} fill="var(--bad)" stroke="#fff" strokeWidth="1.5" />
       </g>
     </svg>
+    </div>
   );
 }

@@ -1,3 +1,5 @@
+import { useState } from "react";
+import { sound } from "../sound";
 import { useApp } from "../store";
 import { Asset } from "../components/Asset";
 import { Button } from "../components/Button";
@@ -6,6 +8,7 @@ import s from "./Screen.module.css";
 
 export function Home() {
   const { me, go } = useApp();
+  const [muted, setMuted] = useState(sound.isMuted());
   if (!me) return null;
   const st = me.stats;
   return (
@@ -24,6 +27,7 @@ export function Home() {
       </Card>
       <Button onClick={() => go("solo")}>Играть соло</Button>
       <Button variant="ghost" onClick={() => go("team")}>Командная игра</Button>
+      <Button variant="ghost" onClick={() => setMuted(sound.toggle())}>{muted ? "🔇 Звук выключен" : "🔊 Звук включён"}</Button>
     </div>
   );
 }
