@@ -13,7 +13,7 @@ from pathlib import Path
 
 from . import iqga
 from .config import PKG_DIR
-from .storage import QuestionBank
+from .store import open_storage
 
 NOTE_WORDS = ("ответ", "числе", "падеж", "роде", "порядк", "уточнен", "упомин", "отклонен", "написани", "смыслу", "синоним", "искажен")
 
@@ -44,7 +44,7 @@ def convert(q: dict) -> dict:
     }
 
 
-def run(bank: QuestionBank, selected: dict, fetch=iqga.fetch) -> tuple[int, int]:
+def run(bank, selected: dict, fetch=iqga.fetch) -> tuple[int, int]:
     """Возвращает (добавлено, найдено). fetch подменяется в тестах."""
     found = added = 0
     for pack, ids in selected["packs"].items():
@@ -62,10 +62,10 @@ def main() -> None:
 
     data_dir = Path(os.getenv("DATA_DIR", "./data"))
     data_dir.mkdir(parents=True, exist_ok=True)
-    bank = QuestionBank(data_dir / "questions.json", seed=PKG_DIR / "seed_questions.json")
+    bank, _ = open_storage(data_dir)
     selected = json.loads((PKG_DIR / "iqga_selected.json").read_text(encoding="utf-8"))
     added, found = run(bank, selected)
-    print(f"Готово: добавлено {added}, найдено {found}, всего в базе {len(bank.items)}")
+    print(f"Готово: добавлено {added}, найдено {found}, всего в базе {bank.count()}")
     if found == 0:
         sys.exit("Ничего не нашлось: возможно, сайт изменил разметку.")
 

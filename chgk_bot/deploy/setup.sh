@@ -13,7 +13,7 @@ DIR=/opt/rabota
 echo "==> Ставлю Docker и git"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
-apt-get install -y -qq docker.io docker-compose-v2 git ca-certificates >/dev/null
+apt-get install -y -qq docker.io docker-compose-v2 git ca-certificates curl openssl >/dev/null
 systemctl enable --now docker >/dev/null
 
 echo "==> Скачиваю проект ($BRANCH)"
@@ -55,15 +55,34 @@ else
   echo "==> .env уже есть — оставляю как есть"
 fi
 
+# Секреты и адрес Mini App: добавляем в .env только то, чего там ещё нет
+add_env() { grep -q "^$1=.\+" .env || { sed -i "/^$1=/d" .env; echo "$1=$2" >> .env; }; }
+add_env POSTGRES_PASSWORD "$(openssl rand -hex 16)"
+add_env JWT_SECRET "$(openssl rand -hex 32)"
+if ! grep -q '^PUBLIC_HOST=.\+' .env; then
+  IP=$(curl -4fsS --max-time 10 https://api.ipify.org || true)
+  [ -n "$IP" ] || read -rp "Не смог узнать IP. Введи адрес игры (например 1-2-3-4.sslip.io): " HOST
+  add_env PUBLIC_HOST "${HOST:-${IP//./-}.sslip.io}"
+fi
+echo "==> Адрес игры: https://$(grep '^PUBLIC_HOST=' .env | cut -d= -f2)/"
+
+# Сборка фронта на 2 ГБ памяти без swap падает — заводим файл подкачки
+if [ "$(swapon --show | wc -l)" -eq 0 ]; then
+  echo "==> Создаю swap 2 ГБ"
+  fallocate -l 2G /swapfile && chmod 600 /swapfile && mkswap /swapfile >/dev/null && swapon /swapfile
+  grep -q '^/swapfile' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab
+fi
+
 echo "==> Собираю и запускаю"
 docker compose up -d --build
 
 if grep -q '^ANTHROPIC_API_KEY=.\+' .env; then
   echo "==> Проверяю ключ и модель"
-  docker compose run --rm chgk-bot python -m bot.check_llm || echo "(проверка не прошла — см. сообщение выше)"
+  docker compose exec -T backend python -m bot.check_llm || echo "(проверка не прошла — см. сообщение выше)"
 fi
 
 echo
+echo "Порты 80 и 443 должны быть открыты у хостера. Проверка: curl https://$(grep '^PUBLIC_HOST=' .env | cut -d= -f2)/api/health"
 echo "Готово. Логи:      cd $DIR/chgk_bot && docker compose logs -f"
 echo "Обновить бота:     bash $DIR/chgk_bot/deploy/setup.sh"
 echo "Остановить:        cd $DIR/chgk_bot && docker compose down"

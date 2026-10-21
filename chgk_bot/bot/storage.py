@@ -72,6 +72,9 @@ class QuestionBank:
             self._save()
         return added
 
+    def count(self) -> int:
+        return len(self.items)
+
     def get(self, qid: str) -> dict | None:
         return next((q for q in self.items if q["id"] == qid), None)
 

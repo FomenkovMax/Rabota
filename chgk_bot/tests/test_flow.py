@@ -1,4 +1,5 @@
 """Прогон игрового цикла с подменённым Telegram-ботом и коротким таймером."""
+from bot.storage import Stats
 import asyncio
 import dataclasses
 import shutil
@@ -40,7 +41,7 @@ def game(tmp_path, monkeypatch):
     fake = FakeBot()
     monkeypatch.setattr(M, "bot", fake)
     monkeypatch.setattr(M, "cfg", dataclasses.replace(M.cfg, think_seconds=2, answer_seconds=1))
-    monkeypatch.setattr(M, "stats", M.Stats(tmp_path / "s.sqlite"))
+    monkeypatch.setattr(M, "stats", Stats(tmp_path / "s.sqlite"))
     monkeypatch.setattr(M, "llm", None)
     M.sessions.clear()
     return fake

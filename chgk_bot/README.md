@@ -68,3 +68,9 @@ docker compose restart
 - Свои картинки (Higgsfield) вместо Pillow-карточек: положить PNG в `assets/` с теми же именами.
 - Режим «Команда» в групповом чате, рейтинг, фильтр по темам и сложности.
 - Работа над ошибками: повторять вопросы, где было ❌.
+
+
+## Mini App и платформа (Э1)
+Структура: `core/` (общие модули), `backend/` (FastAPI), `bot/` (aiogram), `webapp/` (React Mini App), `deploy/`, `assets/ASSET_SPEC.md`.
+Локально: `DATABASE_URL=sqlite:///dev.db JWT_SECRET=<32+ символа> BOT_TOKEN=x DEV_AUTH=1 alembic upgrade head && uvicorn backend.main:app`, затем `cd webapp && npm i && npm run dev`.
+На сервере всё ставит `deploy/setup.sh` (Postgres, бэкенд, бот, Caddy с HTTPS на sslip.io).

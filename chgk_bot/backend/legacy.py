@@ -26,6 +26,10 @@ def import_legacy(factory, data_dir: Path) -> dict:
         added = QuestionRepo(factory).add(items)
         report["questions_added"], report["questions_skipped"] = added, len(items) - added
 
+    seed = Path(__file__).resolve().parent.parent / "bot" / "seed_questions.json"
+    if no_questions and report["questions_added"] == 0 and seed.exists():   # чистая установка: стартовые вопросы
+        report["questions_added"] = QuestionRepo(factory).add(json.loads(seed.read_text(encoding="utf-8")))
+
     if no_attempts and sfile.exists():
         db = sqlite3.connect(sfile)
         try:

@@ -11,7 +11,7 @@ from aiogram import BaseMiddleware, Bot, Dispatcher, F
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.filters import Command, CommandObject
-from aiogram.types import CallbackQuery, FSInputFile, InlineKeyboardButton, InlineKeyboardMarkup, Message
+from aiogram.types import CallbackQuery, FSInputFile, InlineKeyboardButton, InlineKeyboardMarkup, MenuButtonWebApp, Message, WebAppInfo
 
 from .cards import ASSETS
 from .config import PKG_DIR, load_settings
@@ -20,12 +20,11 @@ from .generator import generate
 from core.answers import judge
 from core.llm import make_client
 from core.steps import make_steps, render_steps
-from .storage import QuestionBank, Stats
+from .store import open_storage
 
 log = logging.getLogger("chgk")
 cfg = load_settings()
-bank = QuestionBank(cfg.data_dir / "questions.json", seed=PKG_DIR / "seed_questions.json")
-stats = Stats(cfg.data_dir / "stats.sqlite")
+bank, stats = open_storage(cfg.data_dir)
 
 llm = None
 if cfg.anthropic_key:
@@ -113,7 +112,13 @@ def kb(*rows: tuple[str, str]) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=t, callback_data=d)] for t, d in rows])
 
 
+PUBLIC_HOST = os.getenv("PUBLIC_HOST", "").strip()
+WEBAPP_URL = f"https://{PUBLIC_HOST}/" if PUBLIC_HOST else ""
+
 MENU = kb(("🎲 Новый вопрос", "new"), ("📊 Моя статистика", "stats"))
+if WEBAPP_URL:   # кнопка Mini App работает только в личке (в группах Telegram её не поддерживает)
+    MENU = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🎮 Открыть игру", web_app=WebAppInfo(url=WEBAPP_URL))], *MENU.inline_keyboard])
 
 
 def after_kb(qid: str, solo: bool = True) -> InlineKeyboardMarkup:
@@ -275,7 +280,7 @@ async def cmd_gen(m: Message, command: CommandObject):
         return
     added = bank.add(good)
     rej = "\n".join(html.escape(r) for r in rejected) or "—"
-    await m.answer(f"✅ Добавлено: {added} (всего в базе: {len(bank.items)})\n\nОтбраковано критиком:\n{rej}")
+    await m.answer(f"✅ Добавлено: {added} (всего в базе: {bank.count()})\n\nОтбраковано критиком:\n{rej}")
 
 
 async def send_stats(chat_id: int, user_id: int, title: str = "Твоя статистика", with_menu: bool = True) -> None:
@@ -717,11 +722,16 @@ async def main() -> None:
         reads_all = bool((await bot.get_me()).can_read_all_group_messages)
     except Exception:
         log.exception("get_me не удался")
-    log.info("Вопросов в базе: %d", len(bank.items))
+    log.info("Вопросов в базе: %d", bank.count())
     log.info("Бот читает все сообщения групп: %s", "да (Privacy mode выключен)" if reads_all else "нет (только команды и reply)")
     restricted = ALLOWED or ALLOWED_CHATS
     log.info("Доступ: %s", f"только люди {sorted(ALLOWED)} и группы {sorted(ALLOWED_CHATS)} (+админ)" if restricted
              else "ОТКРЫТ ВСЕМ (ALLOWED_IDS и ALLOWED_CHATS не заданы)")
+    if WEBAPP_URL:
+        try:
+            await bot.set_chat_menu_button(menu_button=MenuButtonWebApp(text="Играть", web_app=WebAppInfo(url=WEBAPP_URL)))
+        except Exception:
+            log.exception("Не удалось поставить кнопку Mini App")
     await dp.start_polling(bot)
 
 

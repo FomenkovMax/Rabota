@@ -1,11 +1,64 @@
+x-app: &app
+  build: .
+  restart: unless-stopped
+  env_file: .env
+  environment: &appenv
+    DATA_DIR: /data
+    DATABASE_URL: postgresql+psycopg://chgk:${POSTGRES_PASSWORD}@postgres:5432/chgk
+  volumes:
+    - chgk_data:/data     # старые questions.json и stats.sqlite: из них бэкенд один раз переносит данные в PostgreSQL
+
 services:
-  chgk-bot:
-    build: .
+  postgres:
+    image: postgres:16-alpine
     restart: unless-stopped
-    env_file: .env
     environment:
-      DATA_DIR: /data
+      POSTGRES_USER: chgk
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: chgk
+    command: ["postgres", "-c", "shared_buffers=128MB", "-c", "max_connections=40"]
     volumes:
-      - chgk_data:/data
+      - pg_data:/var/lib/postgresql/data
+    mem_limit: 400m
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U chgk -d chgk"]
+      interval: 5s
+      retries: 20
+
+  backend:
+    <<: *app
+    command: sh -c "alembic upgrade head && uvicorn backend.main:app --host 0.0.0.0 --port 8000 --workers 1"
+    depends_on:
+      postgres: {condition: service_healthy}
+    mem_limit: 400m
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://localhost:8000/api/health', timeout=3)"]
+      interval: 10s
+      retries: 20
+      start_period: 20s
+
+  chgk-bot:
+    <<: *app
+    depends_on:
+      backend: {condition: service_healthy}
+    mem_limit: 300m
+
+  caddy:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.web
+    restart: unless-stopped
+    environment:
+      PUBLIC_HOST: ${PUBLIC_HOST}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - caddy_data:/data
+    depends_on:
+      - backend
+
 volumes:
   chgk_data:
+  pg_data:
+  caddy_data:
