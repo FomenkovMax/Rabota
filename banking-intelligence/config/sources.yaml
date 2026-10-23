@@ -1,0 +1,31 @@
+# Источники данных. Правила:
+#  - только официальные домены банка (проверяется валидатором при загрузке);
+#  - URL продуктовых страниц добавляются ТОЛЬКО после ручной проверки или
+#    автоматического обнаружения на официальном сайте (этап 2);
+#  - status: todo = URL ещё не подтверждён, сбор по нему не выполняется.
+sources:
+  - bank: sber
+    key: site_root
+    url: https://www.sberbank.ru
+    category: discovery
+    status: todo
+  - bank: psb
+    key: site_root
+    url: https://www.psbank.ru
+    category: discovery
+    status: todo
+  - bank: vtb
+    key: site_root
+    url: https://www.vtb.ru
+    category: discovery
+    status: todo
+  - bank: genbank
+    key: site_root
+    url: https://www.genbank.ru
+    category: discovery
+    status: todo
+  - bank: cmr
+    key: site_root
+    url: https://www.cmrbank.ru
+    category: discovery
+    status: todo

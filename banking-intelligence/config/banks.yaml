@@ -1,0 +1,28 @@
+# Реестр банков. Данные здесь — КАНДИДАТЫ: домены и присутствие в ЛНР
+# должен подтвердить человек (поля *_verified). Пока false — бот показывает предупреждение.
+# Ничего о ставках и продуктах в этом файле не хранится.
+banks:
+  - slug: sber
+    name: Сбербанк
+    website: https://www.sberbank.ru
+    adapter: generic
+    is_benchmark: true
+    notes: Эталон сравнения.
+  - slug: psb
+    name: ПСБ
+    website: https://www.psbank.ru
+    adapter: generic
+  - slug: vtb
+    name: ВТБ
+    website: https://www.vtb.ru
+    adapter: generic
+  - slug: genbank
+    name: Генбанк
+    website: https://www.genbank.ru
+    adapter: generic
+    notes: Домен предварительный, обязательно сверить.
+  - slug: cmr
+    name: ЦМР банк
+    website: https://www.cmrbank.ru
+    adapter: generic
+    notes: Домен предварительный, обязательно сверить.
