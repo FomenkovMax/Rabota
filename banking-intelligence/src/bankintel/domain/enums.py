@@ -27,6 +27,8 @@ class FetchOutcome(StrEnum):
     OK = "ok"
     HTTP_ERROR = "http_error"
     NETWORK_ERROR = "network_error"
+    TLS_ERROR = "tls_error"          # сертификат не прошёл проверку: НЕ отключаем verify
+    TOO_LARGE = "too_large"
     ROBOTS_DISALLOWED = "robots_disallowed"
     BLOCKED = "blocked"              # капча/антибот: фиксируем и НЕ обходим
 

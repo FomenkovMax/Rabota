@@ -5,7 +5,7 @@ from html import escape
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from bankintel.db.models import Bank, CollectionRun, Document, Product, Source
+from bankintel.db.models import Bank, CollectionRun, Document, FetchAttempt, Product, Source
 
 DEMO_NOTICE = "⚠️ Демо-прототип. Данные ещё не собирались — цифр здесь нет намеренно."
 
@@ -17,7 +17,6 @@ PLANNED = {
     "promo": ("Акции", 2),
     "changes": ("История изменений", 6),
     "report": ("Отчёты PDF/HTML/PPTX/XLSX", 5),
-    "refresh": ("Обновление данных", 2),
 }
 
 
@@ -71,5 +70,20 @@ async def status_text(session: AsyncSession) -> str:
         else:
             when = run.started_at.strftime("%d.%m.%Y %H:%M")
             state = f"последний сбор {when}: {run.status}"
-        lines.append(f"<b>{escape(b.name)}</b>: {state}; документов {docs}, продуктов {products}")
+        last = await session.scalar(
+            select(FetchAttempt).join(Source, Source.id == FetchAttempt.source_id)
+            .where(Source.bank_id == b.id).order_by(FetchAttempt.id.desc()).limit(1)
+        )
+        diag = f"\n   последняя загрузка: {last.outcome}" + (f" ({escape(last.error[:120])})" if last and last.error else "") if last else ""
+        lines.append(f"<b>{escape(b.name)}</b>: {state}; документов {docs}, продуктов {products}{diag}")
+    return "\n".join(lines)
+
+
+def refresh_text(results) -> str:
+    lines = ["<b>Результат обновления</b>"]
+    for bank, run in results:
+        note = f" — {escape(run.message)}" if run.message else ""
+        lines.append(f"{escape(bank.name)}: <b>{run.status}</b>{note}")
+    if all(r.status == "failed" and "Нет активных" in (r.message or "") for _, r in results):
+        lines.append("\nАктивных источников нет: URL продуктовых страниц ещё не подтверждены вручную (PLANS.md, этап 2).")
     return "\n".join(lines)
