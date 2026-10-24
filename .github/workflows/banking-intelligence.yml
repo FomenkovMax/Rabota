@@ -64,7 +64,7 @@ jobs:
         run: |
           docker run --rm bankintel:ci bankintel --help
           test "$(docker run --rm bankintel:ci id -u)" != "0"
-      - name: Конфигурация compose валидна (как у пользователя: .env копируется из примера)
+      - name: Конфигурация compose валидна (.env копируется из примера, как у пользователя)
         run: |
           cp .env.example .env
           POSTGRES_PASSWORD=ci docker compose config -q
