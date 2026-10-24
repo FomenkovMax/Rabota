@@ -6,11 +6,11 @@ from decimal import Decimal
 from pptx import Presentation
 from pptx.chart.data import CategoryChartData
 from pptx.dml.color import RGBColor
-from pptx.enum.chart import XL_CHART_TYPE, XL_LEGEND_POSITION
+from pptx.enum.chart import XL_CHART_TYPE
 from pptx.enum.dml import MSO_PATTERN
 from pptx.util import Emu, Inches, Pt
 
-from bankintel.formatting import money, pct
+from bankintel.formatting import money
 from bankintel.reports import charts
 from bankintel.reports.dataset import fmt_date, fmt_dt
 
@@ -84,9 +84,11 @@ def _scenario_chart(slide, rows, x, y, w, h):
     for r in reversed(rows):  # бары рисуются снизу вверх
         cats.append(f"{r['label']}  ({charts.value_label(r)})")
         if r["lo"] is not None and r["hi"] > r["lo"]:
-            base.append(float(r["lo"])); span.append(float(r["hi"] - r["lo"]))
+            base.append(float(r["lo"]))
+            span.append(float(r["hi"] - r["lo"]))
         else:  # нижняя граница не указана / нулевой интервал: тонкая отметка у верхней границы
-            base.append(float(r["hi"] - eps)); span.append(float(eps))
+            base.append(float(r["hi"] - eps))
+            span.append(float(eps))
     data = CategoryChartData()
     data.categories = cats
     data.add_series("Нижняя граница (скрыта)", base)
@@ -138,9 +140,9 @@ def render_pptx(ds: dict) -> bytes:
           (f"{len(ds['catalog']['deposit'])} + {len(ds['catalog']['savings'])}", "вкладов + счетов"),
           (f"{m['lnr_confirmed']} из {m['products_total']}", "доступность в ЛНР подтверждена"),
           (str(len(ds["sources"])), "документов-источников")]
-    for i, (v, l) in enumerate(kp):
-        _text(s, Inches(0.5 + i * 3.1), Inches(1.5), Inches(3), Inches(0.7), v, 30, True)
-        _text(s, Inches(0.5 + i * 3.1), Inches(2.2), Inches(3), Inches(0.4), l, 11, False, INK2)
+    for i, (value, caption) in enumerate(kp):
+        _text(s, Inches(0.5 + i * 3.1), Inches(1.5), Inches(3), Inches(0.7), value, 30, True)
+        _text(s, Inches(0.5 + i * 3.1), Inches(2.2), Inches(3), Inches(0.4), caption, 11, False, INK2)
     _text(s, Inches(0.5), Inches(3.0), Inches(12.3), Inches(3.8), ["• " + t for t in ds["insights"]], 14)
 
     s = _slide(prs, ds, "Охват данных")

@@ -32,12 +32,12 @@ async def generate_reports(session: AsyncSession, out_dir: Path, now: datetime |
     now = now or datetime.now(UTC)
     ds = await build_dataset(session, now)
     rendered = await asyncio.to_thread(_render_all, ds)  # WeasyPrint и Plotly синхронные
-    out_dir.mkdir(parents=True, exist_ok=True)
+    await asyncio.to_thread(out_dir.mkdir, parents=True, exist_ok=True)
     stem = f"bankintel_{now:%Y%m%d}_{ds['meta']['dataset_id']}"
     paths = {}
     for fmt in FORMATS:
         data = rendered[fmt]
         path = out_dir / f"{stem}.{fmt}"
-        path.write_bytes(data.encode("utf-8") if isinstance(data, str) else data)
+        await asyncio.to_thread(path.write_bytes, data.encode("utf-8") if isinstance(data, str) else data)
         paths[fmt] = path
     return ReportBundle(ds["meta"]["dataset_id"], ds, paths)
