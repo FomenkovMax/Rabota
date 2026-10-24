@@ -1,20 +1,19 @@
 from decimal import Decimal as D
+from pathlib import Path
 from unittest.mock import AsyncMock
 
 import pytest
 from aiogram.filters import CommandObject
 from sqlalchemy import select
+from test_analytics import NOW, _psb_facts, _vtb_facts
 
-from bankintel.bot import compare_views, handlers
-from bankintel.bot.compare_views import compare_text, deposits_text, money, parse_scenario, pct, savings_text
 from bankintel.analytics.compare import Scenario, compare
+from bankintel.bot import handlers
+from bankintel.bot.compare_views import compare_text, deposits_text, money, parse_scenario, pct, savings_text
 from bankintel.collector import collect_bank
-from bankintel.db.models import Bank, Source
+from bankintel.db.models import Bank
 from bankintel.domain.enums import FetchOutcome
 from bankintel.sources.base import FetchDiagnostic, FetchedDocument
-from pathlib import Path
-
-from test_analytics import NOW, _psb_facts, _vtb_facts
 
 FIX = Path(__file__).parent / "fixtures"
 

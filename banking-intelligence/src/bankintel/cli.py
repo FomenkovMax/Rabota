@@ -55,7 +55,7 @@ async def _report(out: str) -> None:
             try:
                 bundle = await generate_reports(session, Path(out))
             except DatasetError as exc:
-                raise SystemExit(str(exc))
+                raise SystemExit(str(exc)) from None
         print(f"Набор данных {bundle.dataset_id}")
         for fmt, path in bundle.paths.items():
             print(f"  {fmt:5} {path} ({path.stat().st_size // 1024} КБ)")
@@ -92,11 +92,25 @@ async def _changes(days: int) -> None:
         await engine.dispose()
 
 
-async def _discover(slug: str) -> None:
-    from sqlalchemy import select
+async def _prune(args) -> None:
+    from bankintel.retention import apply_prune, plan_prune
 
-    from bankintel.db.models import Bank
-    from bankintel.registry.schemas import BankConfig
+    settings = get_settings()
+    engine = make_engine(settings.database_url)
+    try:
+        async with make_session_factory(engine)() as session:
+            plan = await plan_prune(session, keep_snapshots=args.keep_snapshots, attempts_days=args.attempts_days, documents_days=args.documents_days)
+            print("План очистки:", plan.summary())
+            if args.apply:
+                print("Удалено:", await apply_prune(session, plan, settings.raw_storage_dir))
+            else:
+                print("Это пробный запуск, ничего не удалено. Для удаления добавьте --apply.")
+    finally:
+        await engine.dispose()
+
+
+async def _discover(slug: str) -> None:
+
     from bankintel.sources.base import SourceRef
     from bankintel.sources.discovery import discover_links
     from bankintel.sources.fetcher import build_fetcher
@@ -143,7 +157,7 @@ async def _import_doc(args) -> None:
                     official_hosts=cfg.official_hosts, raw_root=settings.raw_storage_dir, note=args.note,
                 )
             except ManualImportError as exc:
-                raise SystemExit(f"Импорт отклонён: {exc}")
+                raise SystemExit(f"Импорт отклонён: {exc}") from None
             print(f"Импортировано: document_id={doc.id} sha256={doc.sha256[:12]} {doc.size_bytes} байт")
             print("Добавьте источник в config/sources.yaml (mode: manual, status: active), чтобы он не потерялся при seed:")
             print(f"  - bank: {args.bank}\n    key: {args.source_key}\n    url: {args.url}\n    category: {args.category}\n    status: active\n    mode: manual")
@@ -173,8 +187,17 @@ def main() -> None:
     sub.add_parser("monitor", help="один цикл мониторинга: сбор, страницы продуктов, поиск изменений, уведомления")
     ch = sub.add_parser("changes", help="показать изменения за период")
     ch.add_argument("--days", type=int, default=7)
+    pr = sub.add_parser("prune", help="очистка старых снимков/документов (по умолчанию только план)")
+    pr.add_argument("--apply", action="store_true", help="выполнить удаление")
+    pr.add_argument("--keep-snapshots", type=int, default=20, help="сколько последних снимков хранить на продукт и источник (≥3)")
+    pr.add_argument("--attempts-days", type=int, default=90, help="хранить попытки загрузки столько дней")
+    pr.add_argument("--documents-days", type=int, default=180, help="не удалять документы моложе стольких дней")
     sub.add_parser("bot", help="запустить Telegram-бота")
     args = parser.parse_args()
+    from bankintel.logging_setup import configure_logging
+
+    _s = get_settings()
+    configure_logging(_s.log_level, _s.log_json)
     if args.cmd == "seed":
         asyncio.run(_seed())
     elif args.cmd == "probe":
@@ -191,6 +214,8 @@ def main() -> None:
         _monitor_once()
     elif args.cmd == "changes":
         asyncio.run(_changes(args.days))
+    elif args.cmd == "prune":
+        asyncio.run(_prune(args))
     elif args.cmd == "bot":
         from bankintel.bot.app import main as bot_main
 

@@ -23,9 +23,15 @@ from bankintel.sources.base import (
 from bankintel.sources.common import (
     ParseError,
     canonical_name,
-    clean_text as _clean,
-    detect_currency as _currency,
     parse_rate_range,
+)
+from bankintel.sources.common import (
+    clean_text as _clean,
+)
+from bankintel.sources.common import (
+    detect_currency as _currency,
+)
+from bankintel.sources.common import (
     rate_json as _rate_json,
 )
 

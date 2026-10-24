@@ -111,7 +111,10 @@ class BankAdapter(ABC):
 
         failed = 0
         for src in sources:
-            doc, diag = await self.fetcher.fetch(src)
+            try:
+                doc, diag = await self.fetcher.fetch(src)
+            except Exception as exc:  # загрузчик не должен ронять сбор по остальным источникам
+                doc, diag = None, FetchDiagnostic(src.key, src.url, FetchOutcome.INTERNAL_ERROR, None, f"{type(exc).__name__}: {exc}"[:500])
             result.diagnostics.append(diag)
             if doc is None or diag.outcome != FetchOutcome.OK:
                 failed += 1

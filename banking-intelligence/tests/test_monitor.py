@@ -4,7 +4,6 @@ import re
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-import pytest
 from sqlalchemy import select
 
 from bankintel.analytics.facts import load_facts

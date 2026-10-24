@@ -1,6 +1,6 @@
 from functools import lru_cache
-from typing import Annotated
 from pathlib import Path
+from typing import Annotated
 
 from pydantic import SecretStr, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
@@ -9,7 +9,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore", env_ignore_empty=True)  # пустое значение = не задано
 
     bot_token: SecretStr | None = None
     # Пустой список = бот не отвечает никому (безопасное значение по умолчанию).
@@ -21,6 +21,8 @@ class Settings(BaseSettings):
     # Дополнительный файл корневых сертификатов (PEM) для сайтов, чей CA отсутствует
     # в стандартном наборе. Проверка сертификатов никогда не отключается.
     extra_ca_bundle: Path | None = None
+    log_level: str = "INFO"
+    log_json: bool = False
     redis_url: str = "redis://localhost:6379/0"
     monitor_interval_hours: float = 6.0
     # Рассылка изменений пользователям из ALLOWED_TELEGRAM_IDS; по умолчанию выключена.

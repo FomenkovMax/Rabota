@@ -1,6 +1,7 @@
+import re
 from urllib.parse import urlparse
 
-from pydantic import BaseModel, HttpUrl, model_validator
+from pydantic import BaseModel, HttpUrl, field_validator, model_validator
 
 
 def _host(url: str) -> str:
@@ -9,6 +10,15 @@ def _host(url: str) -> str:
 
 class BankConfig(BaseModel):
     slug: str
+
+    @field_validator("slug")
+    @classmethod
+    def _safe_slug(cls, v: str) -> str:
+        # slug участвует в пути хранилища сырых документов: исключаем «..», «/» и т.п.
+        if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,48}", v):
+            raise ValueError("slug банка: только a-z, 0-9, «_», «-», до 49 символов")
+        return v
+
     name: str
     website: HttpUrl
     adapter: str = "generic"

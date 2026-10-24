@@ -1,19 +1,15 @@
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
 
 import pytest
 from aiogram.filters import CommandObject
-from sqlalchemy import select
+from test_monitor import DEPOSITS, Pages, mutate
 
 from bankintel.bot import handlers
 from bankintel.bot.changes_views import changes_text, parse_days
 from bankintel.config import Settings
 from bankintel.cycle import format_events, redis_lock, run_cycle, telegram_notifier
-from bankintel.db.models import Bank
-from bankintel.monitor import monitoring_status
 from bankintel.reports.dataset import build_dataset
-
-from test_monitor import DEPOSITS, Pages, mutate
 
 
 def settings(tmp_path, **kw):
@@ -72,7 +68,9 @@ def test_telegram_notifier_requires_explicit_opt_in(tmp_path):
     assert telegram_notifier(settings(tmp_path, notify_changes=True, bot_token="1:x", allowed_telegram_ids="5")) is not None
 
 
-REDIS = "redis://localhost:56379/0"
+import os
+
+REDIS = os.getenv("REDIS_TEST_URL", "redis://localhost:56379/0")
 
 
 def _redis_up() -> bool:
@@ -84,7 +82,7 @@ def _redis_up() -> bool:
         return False
 
 
-@pytest.mark.skipif(not _redis_up(), reason="нет Redis на localhost:56379")
+@pytest.mark.skipif(not _redis_up(), reason="нет Redis (REDIS_TEST_URL, по умолчанию localhost:56379)")
 def test_redis_lock_blocks_concurrent_cycle_and_releases():
     with redis_lock(REDIS) as first:
         assert first is True
@@ -158,10 +156,12 @@ async def test_report_contains_changes_section(seeded, tmp_path):
         ds = await build_dataset(s, datetime.now(UTC))
     items = ds["changes"]["items"]
     assert items and any("Мой доход" in c["text"] for c in items)
+    import io
+
+    from openpyxl import load_workbook
+
     from bankintel.reports.render_html import render_html
     from bankintel.reports.render_xlsx import render_xlsx
-    from openpyxl import load_workbook
-    import io
 
     assert "Изменения за 30 дней" in render_html(ds) and "«От 11,00% до 13,50%»" in render_html(ds)
     ws = load_workbook(io.BytesIO(render_xlsx(ds)))["Изменения"]

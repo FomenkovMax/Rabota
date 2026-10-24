@@ -1,12 +1,11 @@
 """Данные синтетические (тестовые)."""
 
 from datetime import UTC, datetime
-from pathlib import Path
 
 import pytest
 from sqlalchemy import select
 
-from bankintel.collector import collect_all, collect_bank
+from bankintel.collector import collect_bank
 from bankintel.db.models import Bank, Document, FetchAttempt, Product, ProductSnapshot, Source
 from bankintel.sources.manual import ManualImportError, import_document
 

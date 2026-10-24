@@ -34,5 +34,8 @@ async def run() -> None:
 
 
 def main() -> None:
-    logging.basicConfig(level=logging.INFO)
+    from bankintel.logging_setup import configure_logging
+
+    s = get_settings()
+    configure_logging(s.log_level, s.log_json)
     asyncio.run(run())

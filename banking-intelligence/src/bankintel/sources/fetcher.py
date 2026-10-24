@@ -1,10 +1,13 @@
 """Загрузчик официальных страниц: robots.txt, rate limit, диагностика, без обхода защиты."""
 
 import asyncio
+import logging
+import random
 import ssl
 import time
+from dataclasses import dataclass
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 from urllib.robotparser import RobotFileParser
 
 import httpx
@@ -20,8 +23,38 @@ BLOCK_MARKERS = (
 )
 
 
+log = logging.getLogger("bankintel.fetcher")
+MAX_REDIRECTS = 5
+MAX_ATTEMPTS = 3  # попыток при сетевых сбоях (TLS и блокировки не повторяются)
+REDIRECT_CODES = (301, 302, 303, 307, 308)
+
+
 class BlockedError(Exception):
     """Антибот отдал страницу блокировки вместо ожидаемого содержимого."""
+
+
+class ResponseTooLarge(Exception):
+    pass
+
+
+class RedirectRejected(Exception):
+    pass
+
+
+@dataclass
+class _Response:
+    status_code: int
+    headers: httpx.Headers
+    content: bytes
+    url: str
+
+    @property
+    def text(self) -> str:
+        return self.content.decode("utf-8", errors="replace")
+
+
+def _site(url: str) -> str:
+    return (urlparse(url).hostname or "").lower().removeprefix("www.")
 
 
 def _ms(start: float) -> int:
@@ -64,7 +97,7 @@ class HttpFetcher:
         self._client = httpx.AsyncClient(
             headers={"User-Agent": user_agent},
             timeout=timeout_s,
-            follow_redirects=True,
+            follow_redirects=False,  # редиректы обрабатываем сами: только в пределах сайта
             verify=verify,
             transport=transport,
         )
@@ -78,7 +111,8 @@ class HttpFetcher:
     async def aclose(self) -> None:
         await self._client.aclose()
 
-    async def _throttled_get(self, url: str) -> httpx.Response:
+    async def _stream_once(self, url: str) -> _Response:
+        """Один запрос с паузой между обращениями к хосту и жёстким лимитом размера (читаем потоком)."""
         host = urlparse(url).netloc
         lock = self._locks.setdefault(host, asyncio.Lock())
         async with lock:
@@ -86,9 +120,35 @@ class HttpFetcher:
             if wait > 0:
                 await asyncio.sleep(wait)
             try:
-                return await self._client.get(url)
+                async with self._client.stream("GET", url) as r:
+                    declared = r.headers.get("content-length")
+                    if declared and declared.isdigit() and int(declared) > self._max_bytes:
+                        raise ResponseTooLarge(f"Content-Length {declared} байт")
+                    chunks, total = [], 0
+                    async for chunk in r.aiter_bytes():
+                        total += len(chunk)
+                        if total > self._max_bytes:
+                            raise ResponseTooLarge(f"больше {self._max_bytes} байт")
+                        chunks.append(chunk)
+                    return _Response(r.status_code, r.headers, b"".join(chunks), str(r.url))
             finally:
                 self._last_hit[host] = time.monotonic()
+
+    async def _get(self, url: str) -> _Response:
+        """GET с ручной обработкой редиректов: только тот же сайт (с/без www), без понижения https->http."""
+        current = url
+        for _ in range(MAX_REDIRECTS + 1):
+            resp = await self._stream_once(current)
+            location = resp.headers.get("location")
+            if resp.status_code not in REDIRECT_CODES or not location:
+                return resp
+            nxt = urljoin(current, location)
+            if urlparse(nxt).scheme not in ("http", "https") or _site(nxt) != _site(url):
+                raise RedirectRejected(f"редирект за пределы сайта: {nxt[:200]}")
+            if urlparse(current).scheme == "https" and urlparse(nxt).scheme != "https":
+                raise RedirectRejected("редирект с https на http")
+            current = nxt
+        raise RedirectRejected(f"больше {MAX_REDIRECTS} перенаправлений подряд")
 
     async def _robots_for(self, url: str) -> RobotFileParser | None:
         """None = robots.txt недоступен (401/403/5xx) -> консервативно запрещаем."""
@@ -97,7 +157,7 @@ class HttpFetcher:
         if origin in self._robots:
             return self._robots[origin]
         rp = RobotFileParser()
-        resp = await self._throttled_get(origin + "/robots.txt")
+        resp = await self._get(origin + "/robots.txt")
         if looks_blocked(resp.status_code, resp.content):
             raise BlockedError("robots.txt подменён страницей блокировки (WAF/антибот)")
         if resp.status_code in (404, 410):
@@ -116,31 +176,37 @@ class HttpFetcher:
             return FetchDiagnostic(source.key, source.url, outcome, status, error, _ms(start))
 
         resp = None
-        for attempt in (1, 2):  # одна повторная попытка только для сетевых сбоев
+        for attempt in range(1, MAX_ATTEMPTS + 1):
             try:
                 rp = await self._robots_for(source.url)
                 if rp is None or not rp.can_fetch(self._ua, source.url):
                     return None, diag(FetchOutcome.ROBOTS_DISALLOWED, error="robots.txt запрещает или недоступен (401/403/5xx)")
-                resp = await self._throttled_get(source.url)
+                resp = await self._get(source.url)
                 break
             except BlockedError as exc:
                 return None, diag(FetchOutcome.BLOCKED, error=str(exc))
+            except ResponseTooLarge as exc:
+                return None, diag(FetchOutcome.TOO_LARGE, error=str(exc))
+            except RedirectRejected as exc:
+                return None, diag(FetchOutcome.REDIRECT_REJECTED, error=str(exc))
             except httpx.HTTPError as exc:
                 if _is_tls_error(exc):
                     return None, diag(FetchOutcome.TLS_ERROR, error=f"{type(exc).__name__}: {exc!r}"[:500])
-                if attempt == 2:
-                    return None, diag(FetchOutcome.NETWORK_ERROR, error=f"{type(exc).__name__}: {exc!r} (попыток: 2)"[:500])
-                await asyncio.sleep(self._min_interval)
+                if attempt == MAX_ATTEMPTS:
+                    return None, diag(FetchOutcome.NETWORK_ERROR, error=f"{type(exc).__name__}: {exc!r} (попыток: {attempt})"[:500])
+                # экспоненциальная пауза с небольшим разбросом
+                await asyncio.sleep(self._min_interval * 2 ** (attempt - 1) * (1 + random.random() * 0.25))  # noqa: S311 — разброс паузы, не криптография
+            except Exception as exc:  # непредвиденное: фиксируем как сбой источника, а не роняем весь сбор
+                log.exception("Непредвиденная ошибка загрузки %s", source.url)
+                return None, diag(FetchOutcome.INTERNAL_ERROR, error=f"{type(exc).__name__}: {exc}"[:500])
 
         body = resp.content
-        if len(body) > self._max_bytes:
-            return None, diag(FetchOutcome.TOO_LARGE, resp.status_code, f"{len(body)} байт")
         if looks_blocked(resp.status_code, body):
             return None, diag(FetchOutcome.BLOCKED, resp.status_code, "антибот/капча/403 — не обходим")
         if resp.status_code >= 400:
             return None, diag(FetchOutcome.HTTP_ERROR, resp.status_code)
         doc = FetchedDocument(
-            url=str(resp.url), content=body, content_type=resp.headers.get("content-type"), http_status=resp.status_code
+            url=resp.url, content=body, content_type=resp.headers.get("content-type"), http_status=resp.status_code
         )
         return doc, diag(FetchOutcome.OK, resp.status_code)
 

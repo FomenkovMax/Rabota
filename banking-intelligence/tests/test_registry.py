@@ -82,3 +82,13 @@ async def test_sync_keeps_manual_verification(session_factory):
         await sync_registry(s, cfg)  # в конфиге по-прежнему false
         bank = await s.scalar(select(Bank).where(Bank.slug == "psb"))
         assert bank.domain_verified is True
+
+
+@pytest.mark.parametrize("slug", ["../etc", "a/b", "A", "bank name", "", "-x", "a" * 60, "x\n"])
+def test_unsafe_bank_slug_rejected(slug):
+    with pytest.raises(ValidationError):
+        RegistryConfig(banks=[_bank(slug)])
+
+
+def test_safe_slugs_accepted():
+    RegistryConfig(banks=[_bank("psb"), _bank("bank-2"), _bank("cmr_1")])

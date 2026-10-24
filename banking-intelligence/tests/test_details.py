@@ -5,8 +5,8 @@ from pathlib import Path
 import pytest
 from sqlalchemy import select
 
-from bankintel.details import collect_details
 from bankintel.db.models import Bank, Document, FetchAttempt, Product, ProductSnapshot, Source
+from bankintel.details import collect_details
 from bankintel.domain.enums import FetchOutcome
 from bankintel.sources import get_adapter
 from bankintel.sources.base import ConditionRow, FetchDiagnostic, FetchedDocument, SourceRef

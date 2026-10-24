@@ -4,7 +4,7 @@ x-app: &app
   build: .
   env_file: .env
   environment:
-    DATABASE_URL: postgresql+asyncpg://bankintel:bankintel@db:5432/bankintel
+    DATABASE_URL: postgresql+asyncpg://bankintel:${POSTGRES_PASSWORD:?задайте POSTGRES_PASSWORD в .env}@db:5432/bankintel
     RAW_STORAGE_DIR: /data/raw
     REDIS_URL: redis://redis:6379/0
   volumes:
@@ -20,7 +20,7 @@ services:
     image: postgres:16
     environment:
       POSTGRES_USER: bankintel
-      POSTGRES_PASSWORD: bankintel
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?задайте POSTGRES_PASSWORD в .env}
       POSTGRES_DB: bankintel
     volumes:
       - pg_data:/var/lib/postgresql/data
@@ -40,7 +40,7 @@ services:
     build: .
     env_file: .env
     environment:
-      DATABASE_URL: postgresql+asyncpg://bankintel:bankintel@db:5432/bankintel
+      DATABASE_URL: postgresql+asyncpg://bankintel:${POSTGRES_PASSWORD:?задайте POSTGRES_PASSWORD в .env}@db:5432/bankintel
     command: sh -c "alembic upgrade head && bankintel seed"
     depends_on:
       db:

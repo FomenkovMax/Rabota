@@ -1,0 +1,68 @@
+name: banking-intelligence
+
+on:
+  push:
+    paths: ["banking-intelligence/**", ".github/workflows/banking-intelligence.yml"]
+  pull_request:
+    paths: ["banking-intelligence/**", ".github/workflows/banking-intelligence.yml"]
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: banking-intelligence
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci-only-password
+          POSTGRES_DB: ci
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U ci" --health-interval 5s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      TEST_POSTGRES_URL: postgresql://ci:ci-only-password@localhost:5432/ci
+      REDIS_TEST_URL: redis://localhost:6379/0
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: banking-intelligence/requirements.lock
+      - name: Системные библиотеки для PDF (WeasyPrint)
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libpango-1.0-0 libpangoft2-1.0-0 fonts-dejavu-core fonts-liberation
+      - name: Установка (из lock-файла, затем пакет)
+        run: |
+          pip install -r requirements.lock
+          pip install -e ".[dev]"
+      - name: Линтер
+        run: ruff check .
+      - name: Тесты
+        run: pytest -q
+      - name: Аудит зависимостей на известные уязвимости
+        run: pip-audit -r requirements.lock --no-deps --disable-pip
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Сборка образа
+        run: docker build -t bankintel:ci .
+      - name: Образ запускается и не от root
+        run: |
+          docker run --rm bankintel:ci bankintel --help
+          test "$(docker run --rm bankintel:ci id -u)" != "0"
+      - name: Конфигурация compose валидна
+        run: POSTGRES_PASSWORD=ci docker compose config -q

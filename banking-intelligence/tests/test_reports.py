@@ -1,6 +1,5 @@
 """Продукты — из фрагментов реальных страниц ПСБ/ВТБ (24.10.2026), собранных штатным коллектором."""
 
-import io
 import json
 from datetime import UTC, datetime
 from decimal import Decimal as D
@@ -12,7 +11,7 @@ from sqlalchemy import select
 
 from bankintel.bot import handlers
 from bankintel.collector import collect_bank
-from bankintel.db.models import Bank, Product
+from bankintel.db.models import Bank
 from bankintel.domain.enums import FetchOutcome
 from bankintel.formatting import money
 from bankintel.reports.dataset import DatasetError, build_dataset, dataset_id, validate_dataset

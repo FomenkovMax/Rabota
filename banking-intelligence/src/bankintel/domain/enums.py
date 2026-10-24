@@ -29,6 +29,8 @@ class FetchOutcome(StrEnum):
     NETWORK_ERROR = "network_error"
     TLS_ERROR = "tls_error"          # сертификат не прошёл проверку: НЕ отключаем verify
     TOO_LARGE = "too_large"
+    REDIRECT_REJECTED = "redirect_rejected"  # редирект за пределы сайта/на http/слишком длинная цепочка
+    INTERNAL_ERROR = "internal_error"        # непредвиденный сбой нашего кода или загрузчика
     ROBOTS_DISALLOWED = "robots_disallowed"
     BLOCKED = "blocked"              # капча/антибот: фиксируем и НЕ обходим
 

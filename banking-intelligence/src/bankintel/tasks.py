@@ -8,11 +8,21 @@
 import asyncio
 
 from celery import Celery
+from celery.signals import setup_logging
 
 from bankintel.config import get_settings
 from bankintel.cycle import redis_lock, run_cycle, telegram_notifier
 
 settings = get_settings()
+
+
+@setup_logging.connect  # собственный формат Celery заменяем на общий (с маскировкой секретов)
+def _configure_logging(**_):
+    from bankintel.logging_setup import configure_logging
+
+    configure_logging(settings.log_level, settings.log_json)
+
+
 app = Celery("bankintel", broker=settings.redis_url)
 app.conf.update(
     timezone="UTC", task_acks_late=True, worker_prefetch_multiplier=1, broker_connection_retry_on_startup=True,
@@ -34,7 +44,8 @@ async def _cycle() -> dict:
         await engine.dispose()
 
 
-@app.task(name="bankintel.monitor_cycle")
+# лимиты работают в prefork-пуле (docker); защита от зависшего цикла, держащего замок
+@app.task(name="bankintel.monitor_cycle", soft_time_limit=1500, time_limit=1800)
 def monitor_cycle() -> dict:
     with redis_lock(get_settings().redis_url) as got:
         if not got:

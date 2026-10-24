@@ -119,3 +119,25 @@ async def test_refresh_handler_collects_active_sources(seeded, tmp_path, monkeyp
     assert "Активных источников нет" not in text
     # подменный документ не похож на страницы ПСБ и ВТБ -> честный failed, а не «ok без продуктов»
     assert "ПСБ: <b>failed</b>" in text and "ВТБ: <b>failed</b>" in text and "parse_error" in text
+
+
+@register_adapter("badjson")
+class BadJsonAdapter(BankAdapter):
+    def parse(self, source, doc):
+        return [ExtractedProduct("X", ProductCategory.DEPOSIT, {"x": object()}, {}, AvailabilityStatus.UNKNOWN)]  # не сериализуется в JSON
+
+
+async def test_one_bank_crash_does_not_stop_others_and_is_recorded(seeded, tmp_path):
+    async with seeded() as s:
+        sber = await s.scalar(select(Bank).where(Bank.slug == "sber"))
+        sber.adapter = "badjson"
+        for src in (await s.scalars(select(Source).where(Source.bank_id == sber.id))).all():
+            src.status = "active"
+        psb = await s.scalar(select(Bank).where(Bank.slug == "psb"))
+        psb.adapter = "synthetic"
+        await s.commit()
+        results = await collect_all(s, FakeFetcher(), tmp_path)
+        by = {b.slug: r for b, r in results}
+        assert by["sber"].status == "failed" and "internal_error" in by["sber"].message
+        assert by["psb"].status == "ok"                      # следующий банк собран
+        assert (await s.scalars(select(Product).join(Bank).where(Bank.slug == "sber"))).all() == []  # частичная запись откатена

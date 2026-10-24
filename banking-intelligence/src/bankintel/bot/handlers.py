@@ -1,10 +1,10 @@
+import asyncio
+from html import escape
+
 from aiogram import Router
 from aiogram.filters import Command, CommandObject, CommandStart
 from aiogram.types import FSInputFile, Message
 from sqlalchemy.ext.asyncio import async_sessionmaker
-
-import asyncio
-from html import escape
 
 from bankintel.bot import compare_views, views
 from bankintel.collector import collect_all

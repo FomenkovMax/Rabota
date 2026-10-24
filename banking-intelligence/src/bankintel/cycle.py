@@ -1,6 +1,7 @@
 """Цикл мониторинга: сбор -> страницы продуктов -> обнаружение изменений -> уведомления."""
 
 import logging
+import time
 import uuid
 from collections.abc import Awaitable, Callable
 from contextlib import contextmanager
@@ -48,16 +49,24 @@ async def run_cycle(
     settings, session_factory, fetcher, *, notifier: Callable[[list[dict]], Awaitable[None]] | None = None, with_details: bool = True
 ) -> dict:
     started = datetime.now(UTC)
+    t0 = time.monotonic()
+    log.info("цикл мониторинга: старт")
     summary: dict = {"banks": {}, "events": 0, "notified": False}
     async with session_factory() as session:
         for bank, run in await collect_all(session, fetcher, settings.raw_storage_dir):
             prev = summary["banks"].get(bank.slug)
             summary["banks"][bank.slug] = run.status if prev in (None, "failed") else prev
         if with_details:
-            for bank in (await session.scalars(select(Bank).order_by(Bank.id))).all():
-                if bank.adapter != "generic":
-                    run = await collect_details(session, bank, fetcher, settings.raw_storage_dir)
-                    summary["banks"][f"{bank.slug}:details"] = run.status
+            for bank_id, slug, adapter in [(b.id, b.slug, b.adapter) for b in (await session.scalars(select(Bank).order_by(Bank.id))).all()]:
+                if adapter == "generic":
+                    continue
+                try:
+                    run = await collect_details(session, await session.get(Bank, bank_id), fetcher, settings.raw_storage_dir)
+                    summary["banks"][f"{slug}:details"] = run.status
+                except Exception:
+                    log.exception("Сбой сбора страниц продуктов: %s", slug)
+                    await session.rollback()
+                    summary["banks"][f"{slug}:details"] = "failed"
         events = await recent_changes(session, started, min_severity=NOTIFY_MIN_SEVERITY)
         summary["events"] = len(await recent_changes(session, started))
     if events and notifier is not None:
@@ -66,6 +75,8 @@ async def run_cycle(
             summary["notified"] = True
         except Exception:  # сбой рассылки не должен ронять цикл мониторинга
             log.exception("Не удалось отправить уведомления об изменениях")
+    summary["duration_s"] = round(time.monotonic() - t0, 1)
+    log.info("цикл мониторинга: завершён за %.1f с, события=%s, статусы=%s", summary["duration_s"], summary["events"], summary["banks"])
     return summary
 
 

@@ -106,3 +106,18 @@ def test_env_example_parses_to_unset():
 
     s = Settings(_env_file=Path(__file__).parents[1] / ".env.example")
     assert s.bot_token is None and s.openai_api_key is None
+
+
+def test_empty_values_in_env_file_do_not_override_defaults(tmp_path):
+    f = tmp_path / ".env"
+    f.write_text("DATABASE_URL=\nRAW_STORAGE_DIR=\nREDIS_URL=\nMONITOR_INTERVAL_HOURS=\n")
+    s = Settings(_env_file=f)
+    assert s.database_url.startswith("postgresql+asyncpg://") and s.redis_url.startswith("redis://") and s.monitor_interval_hours == 6.0
+    assert str(s.raw_storage_dir).endswith("data/raw")
+
+
+def test_env_example_is_safe_to_copy_unedited():
+    from pathlib import Path
+
+    s = Settings(_env_file=Path(__file__).parents[1] / ".env.example")
+    assert s.bot_token is None and s.allowed_telegram_ids == [] and s.notify_changes is False  # без правки бот закрыт для всех, рассылка выключена

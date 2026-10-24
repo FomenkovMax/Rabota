@@ -4,6 +4,7 @@
 дата `fetched_at` — это дата сохранения, указанная человеком.
 """
 
+import asyncio
 from datetime import datetime
 from pathlib import Path
 
@@ -50,7 +51,7 @@ async def import_document(
     content_type = CONTENT_TYPES.get(file_path.suffix.lower())
     if content_type is None:
         raise ManualImportError(f"Поддерживаются {sorted(CONTENT_TYPES)}, получен {file_path.suffix!r}")
-    content = file_path.read_bytes()
+    content = await asyncio.to_thread(file_path.read_bytes)
     if not content:
         raise ManualImportError("Файл пустой")
     if content_type == "text/html" and looks_blocked(200, content):

@@ -12,5 +12,8 @@ COPY migrations ./migrations
 COPY config ./config
 COPY certs ./certs
 ENV CONFIG_DIR=/app/config EXTRA_CA_BUNDLE=/app/certs/russian_trusted_root_ca.pem
+# Не root: процессы приложения работают от непривилегированного пользователя
+RUN useradd --create-home --uid 10001 app && mkdir -p /data/raw && chown -R app /app /data
+USER app
 # Секреты в образ не копируются: .env подключается только через docker compose.
 CMD ["bankintel", "bot"]
