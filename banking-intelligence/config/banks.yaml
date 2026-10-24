@@ -15,7 +15,7 @@ banks:
   - slug: vtb
     name: ВТБ
     website: https://www.vtb.ru
-    adapter: generic
+    adapter: vtb
   - slug: genbank
     name: Генбанк
     website: https://www.genbank.ru
