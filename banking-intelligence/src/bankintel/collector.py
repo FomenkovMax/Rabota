@@ -17,6 +17,7 @@ from bankintel.db.models import (
     Source,
 )
 from bankintel.domain.enums import CollectionStatus, SourceStatus
+from bankintel.monitor import detect_changes
 from bankintel.sources import get_adapter
 from bankintel.sources.base import Fetcher, SourceRef
 from bankintel.sources.manual import ManualFetcher
@@ -54,7 +55,7 @@ async def collect_bank(
     for d in result.diagnostics if mode == "fetch" else []:
         session.add(
             FetchAttempt(
-                source_id=by_key[d.source_key].id, outcome=d.outcome.value,
+                source_id=by_key[d.source_key].id, run_id=run.id, outcome=d.outcome.value,
                 http_status=d.http_status, error=d.error, duration_ms=d.duration_ms,
             )
         )
@@ -67,7 +68,7 @@ async def collect_bank(
         digest, rel = save_raw(raw_root, bank.slug, doc.content, doc.content_type)
         row = Document(
             source_id=by_key[ref.key].id, url=doc.url, fetched_at=doc.fetched_at,
-            content_type=doc.content_type, sha256=digest, storage_path=rel, size_bytes=len(doc.content),
+            content_type=doc.content_type, sha256=digest, storage_path=rel, size_bytes=len(doc.content), run_id=run.id,
         )
         session.add(row)
         saved[(ref.key, doc.url)] = row
@@ -85,7 +86,7 @@ async def collect_bank(
         session.add(
             ProductSnapshot(
                 product_id=product.id, document_id=document.id, params=ep.params,
-                evidence=ep.evidence, extractor="rules",
+                evidence=ep.evidence, extractor="rules", run_id=run.id,
             )
         )
         avail = await session.scalar(select(RegionAvailability).where(RegionAvailability.product_id == product.id))
@@ -99,6 +100,7 @@ async def collect_bank(
     run.message = "; ".join(result.messages)[:2000] or None
     run.finished_at = datetime.now(UTC)
     await session.commit()
+    await detect_changes(session, run)
     return run
 
 

@@ -133,7 +133,7 @@ async def test_all_formats_built_from_same_data(loaded, tmp_path):
     pptx_text = "\n".join(texts)
     assert did in pptx_text and "Сбербанк" in pptx_text
     assert any(leader["name"] in c and money(leader["income_max"]) in c for c in cats) or leader_income in pptx_text
-    assert len(prs.slides) >= 9
+    assert len(prs.slides) >= 10
 
     wb = load_workbook(bundle.paths["xlsx"])
     assert did in wb.properties.description

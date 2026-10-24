@@ -63,6 +63,35 @@ async def _report(out: str) -> None:
         await engine.dispose()
 
 
+def _monitor_once() -> None:
+    from bankintel.cycle import redis_lock
+    from bankintel.tasks import _cycle
+
+    with redis_lock(get_settings().redis_url) as got:
+        if not got:
+            raise SystemExit("Цикл мониторинга уже выполняется (замок в Redis)")
+        print(asyncio.run(_cycle()))
+
+
+async def _changes(days: int) -> None:
+    from datetime import UTC, datetime, timedelta
+
+    from bankintel.monitor import monitoring_status, recent_changes
+
+    engine = make_engine(get_settings().database_url)
+    try:
+        async with make_session_factory(engine)() as session:
+            st = await monitoring_status(session)
+            print(f"Наблюдение с {st['since']}, сравнений с предыдущим запуском: {st['comparisons']}")
+            items = await recent_changes(session, datetime.now(UTC) - timedelta(days=days))
+            for it in items:
+                print(f"{it['detected_at'][:16]} [{it['severity']}] {it['text']}")
+            if not items:
+                print("Изменений нет" + (" (пока только базовая линия)" if not st["comparisons"] else ""))
+    finally:
+        await engine.dispose()
+
+
 async def _discover(slug: str) -> None:
     from sqlalchemy import select
 
@@ -141,6 +170,9 @@ def main() -> None:
     i.add_argument("--note")
     rp = sub.add_parser("report", help="сформировать отчёты PDF/HTML/PPTX/XLSX из единого набора данных")
     rp.add_argument("--out", default="reports", help="каталог для файлов (по умолчанию ./reports)")
+    sub.add_parser("monitor", help="один цикл мониторинга: сбор, страницы продуктов, поиск изменений, уведомления")
+    ch = sub.add_parser("changes", help="показать изменения за период")
+    ch.add_argument("--days", type=int, default=7)
     sub.add_parser("bot", help="запустить Telegram-бота")
     args = parser.parse_args()
     if args.cmd == "seed":
@@ -155,6 +187,10 @@ def main() -> None:
         asyncio.run(_import_doc(args))
     elif args.cmd == "report":
         asyncio.run(_report(args.out))
+    elif args.cmd == "monitor":
+        _monitor_once()
+    elif args.cmd == "changes":
+        asyncio.run(_changes(args.days))
     elif args.cmd == "bot":
         from bankintel.bot.app import main as bot_main
 

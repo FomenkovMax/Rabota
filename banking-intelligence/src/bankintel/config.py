@@ -21,6 +21,10 @@ class Settings(BaseSettings):
     # Дополнительный файл корневых сертификатов (PEM) для сайтов, чей CA отсутствует
     # в стандартном наборе. Проверка сертификатов никогда не отключается.
     extra_ca_bundle: Path | None = None
+    redis_url: str = "redis://localhost:6379/0"
+    monitor_interval_hours: float = 6.0
+    # Рассылка изменений пользователям из ALLOWED_TELEGRAM_IDS; по умолчанию выключена.
+    notify_changes: bool = False
     fetch_min_interval_s: float = 2.0
     fetch_timeout_s: float = 20.0
     fetch_max_bytes: int = 10_000_000

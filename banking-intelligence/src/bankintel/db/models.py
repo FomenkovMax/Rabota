@@ -72,6 +72,7 @@ class FetchAttempt(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     source_id: Mapped[int] = mapped_column(ForeignKey("sources.id"))
     attempted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    run_id: Mapped[int | None] = mapped_column(ForeignKey("collection_runs.id"), index=True)
     outcome: Mapped[str] = mapped_column(String(30))
     http_status: Mapped[int | None] = mapped_column(Integer)
     error: Mapped[str | None] = mapped_column(Text)
@@ -94,6 +95,7 @@ class Document(Base):
     # fetched — получен загрузчиком; manual_import — внесён человеком (fetched_at = дата сохранения, со слов человека)
     origin: Mapped[str] = mapped_column(String(20), default="fetched", server_default="fetched")
     note: Mapped[str | None] = mapped_column(Text)
+    run_id: Mapped[int | None] = mapped_column(ForeignKey("collection_runs.id"), index=True)
 
 
 class Product(Base):
@@ -122,6 +124,7 @@ class ProductSnapshot(Base):
     # Дословные цитаты из документа, подтверждающие params.
     evidence: Mapped[dict | None] = mapped_column(JSON)
     extractor: Mapped[str] = mapped_column(String(50))  # "rules" | "llm:<model>" | "manual"
+    run_id: Mapped[int | None] = mapped_column(ForeignKey("collection_runs.id"), index=True)
     base_rate_pct: Mapped[Decimal | None] = mapped_column(Numeric(6, 3))
 
 
@@ -147,6 +150,8 @@ class ChangeEvent(Base):
     change_type: Mapped[str] = mapped_column(String(20))
     diff: Mapped[dict | None] = mapped_column(JSON)
     snapshot_id: Mapped[int | None] = mapped_column(ForeignKey("product_snapshots.id"))
+    run_id: Mapped[int | None] = mapped_column(ForeignKey("collection_runs.id"), index=True)
+    severity: Mapped[str] = mapped_column(String(10), default="info", server_default="info")  # rate | conditions | info
 
 
 class CollectionRun(Base):

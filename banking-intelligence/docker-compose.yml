@@ -1,16 +1,19 @@
 # Запуск: cp .env.example .env && (заполнить BOT_TOKEN, ALLOWED_TELEGRAM_IDS) && docker compose up --build
-# Redis/Celery добавятся на этапе 2 вместе с реальным сбором данных.
+# Мониторинг изменений: redis + worker + beat (интервал — MONITOR_INTERVAL_HOURS, по умолчанию 6 ч).
 x-app: &app
   build: .
   env_file: .env
   environment:
     DATABASE_URL: postgresql+asyncpg://bankintel:bankintel@db:5432/bankintel
     RAW_STORAGE_DIR: /data/raw
+    REDIS_URL: redis://redis:6379/0
   volumes:
     - raw_data:/data/raw
   depends_on:
     migrate:
       condition: service_completed_successfully
+    redis:
+      condition: service_healthy
 
 services:
   db:
@@ -23,6 +26,13 @@ services:
       - pg_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U bankintel"]
+      interval: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       retries: 10
 
@@ -39,6 +49,14 @@ services:
   bot:
     <<: *app
     command: bankintel bot
+
+  worker:
+    <<: *app
+    command: celery -A bankintel.tasks worker -l info --concurrency 1
+
+  beat:
+    <<: *app
+    command: celery -A bankintel.tasks beat -l info --schedule /tmp/celerybeat-schedule
 
   api:
     <<: *app

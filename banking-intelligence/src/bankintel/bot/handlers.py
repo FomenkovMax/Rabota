@@ -56,6 +56,19 @@ async def cmd_savings(message: Message, session_factory: async_sessionmaker) -> 
     await message.answer(compare_views.savings_text(facts))
 
 
+@router.message(Command("changes"))
+async def cmd_changes(message: Message, command: CommandObject, session_factory: async_sessionmaker) -> None:
+    from bankintel.bot.changes_views import changes_text, parse_days
+
+    try:
+        days = parse_days(command.args)
+    except ValueError as exc:
+        await message.answer(escape(str(exc)))
+        return
+    async with session_factory() as session:
+        await message.answer(await changes_text(session, days))
+
+
 _report_lock = asyncio.Lock()
 
 

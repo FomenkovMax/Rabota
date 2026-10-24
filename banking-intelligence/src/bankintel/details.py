@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from bankintel.db.models import Bank, CollectionRun, Document, FetchAttempt, Product, ProductSnapshot, Source
 from bankintel.domain.enums import CollectionStatus
+from bankintel.monitor import detect_changes
 from bankintel.sources import get_adapter
 from bankintel.sources.base import Fetcher, SourceRef
 from bankintel.sources.common import index_conditions
@@ -61,7 +62,7 @@ async def collect_details(session: AsyncSession, bank: Bank, fetcher: Fetcher, r
 
         doc, diag = await fetcher.fetch(ref)
         session.add(
-            FetchAttempt(source_id=source.id, outcome=diag.outcome.value, http_status=diag.http_status,
+            FetchAttempt(source_id=source.id, run_id=run.id, outcome=diag.outcome.value, http_status=diag.http_status,
                          error=diag.error, duration_ms=diag.duration_ms)
         )
         if doc is None:
@@ -70,7 +71,7 @@ async def collect_details(session: AsyncSession, bank: Bank, fetcher: Fetcher, r
             continue
         digest, rel = save_raw(raw_root, bank.slug, doc.content, doc.content_type)
         row = Document(source_id=source.id, url=doc.url, fetched_at=doc.fetched_at, content_type=doc.content_type,
-                       sha256=digest, storage_path=rel, size_bytes=len(doc.content))
+                       sha256=digest, storage_path=rel, size_bytes=len(doc.content), run_id=run.id)
         session.add(row)
         await session.flush()
         fetched += 1
@@ -85,7 +86,7 @@ async def collect_details(session: AsyncSession, bank: Bank, fetcher: Fetcher, r
             continue
         session.add(
             ProductSnapshot(
-                product_id=product.id, document_id=row.id, extractor="rules",
+                product_id=product.id, document_id=row.id, extractor="rules", run_id=run.id,
                 params={
                     "kind": "conditions", "page_key": "detail", "product_url": url,
                     "conditions": index_conditions(conditions),
@@ -108,4 +109,5 @@ async def collect_details(session: AsyncSession, bank: Bank, fetcher: Fetcher, r
         status = CollectionStatus.OK
     run.status, run.message, run.finished_at = status.value, "; ".join(messages)[:2000] or None, datetime.now(UTC)
     await session.commit()
+    await detect_changes(session, run)
     return run
