@@ -104,3 +104,13 @@ def test_health_data_marks_stale_and_ignores_failed_runs(api):
     _seed(url, [("ok", 30), ("failed", 0.1)])  # свежий, но неудачный запуск не освежает данные
     d = client.get("/health/data").json()
     assert d["status"] == "degraded" and d["stale_banks"] == ["psb"] and d["banks"][0]["age_hours"] > 24
+
+
+def test_noisy_third_party_loggers_are_quiet_at_info_but_not_at_debug():
+    configure_logging("INFO")
+    assert logging.getLogger("fontTools.subset").getEffectiveLevel() == logging.WARNING
+    assert logging.getLogger("weasyprint.progress").getEffectiveLevel() == logging.WARNING
+    assert logging.getLogger("bankintel.cycle").getEffectiveLevel() == logging.INFO      # собственные логи не заглушаем
+    configure_logging("DEBUG")
+    assert logging.getLogger("fontTools.subset").getEffectiveLevel() == logging.DEBUG    # при отладке доступно всё
+    configure_logging("WARNING")

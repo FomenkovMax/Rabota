@@ -4,7 +4,7 @@
 <td>{{ p.rate_text or '—' }}{% if p.base_rate_max %}<br><span class="muted">базовая {{ p.base_rate_max | pct }}</span>{% endif %}</td>
 {% if is_deposit %}<td>{{ p.term_text or '—' }}</td>{% endif %}
 <td>{% if p.amount_min %}от {{ p.amount_min | money }}{% endif %}{% if p.amount_max %} до {{ p.amount_max | money }}{% endif %}{% if p.currency and p.currency != 'RUB' %} ({{ p.currency }}){% endif %}{% if not p.amount_min and not p.amount_max %}—{% endif %}</td>
-<td>{% if 'restricted_audience' in p.flags %}<span class="chip">особые условия</span>{% endif %}{% if 'floating_rate' in p.flags %}<span class="chip">плавающая</span>{% endif %}{% if 'limited_time' in p.flags %}<span class="chip">ограничено по времени</span>{% endif %}{% if 'ai_assisted' in p.flags %}<span class="chip">часть данных — AI (цитата проверена)</span>{% endif %}{% if p.notes and 'ai_assisted' not in p.flags %}<span class="chip">источники расходятся</span>{% endif %}</td>
+<td>{% if 'restricted_audience' in p.flags %}<span class="chip">особые условия</span>{% endif %}{% if 'floating_rate' in p.flags %}<span class="chip">плавающая</span>{% endif %}{% if 'limited_time' in p.flags %}<span class="chip">ограничено по времени</span>{% endif %}{% if 'ai_assisted' in p.flags %}<span class="chip">часть данных — AI (цитата проверена)</span>{% endif %}{% if 'sources_conflict' in p.flags %}<span class="chip">источники расходятся</span>{% endif %}</td>
 <td>{{ {'confirmed':'подтверждена','unavailable':'недоступен','not_confirmed':'не подтверждена','unknown':'неизвестно'}[p.lnr_status] }}</td><td>{{ p.checked_at | date }}</td></tr>{% endfor %}</table>
 {% endmacro %}
 <!doctype html>
@@ -85,7 +85,7 @@
     <table><tr><th>Банк</th><th>Продукт</th><th>Ставка (сайт)</th><th>Срок</th><th class="num">Доход, ₽</th><th>Пометки</th></tr>
     {% for r in s.open + s.restricted %}{% if loop.index <= 12 %}<tr>
       <td>{{ r.bank }}</td><td>{{ r.name }}</td><td>{{ r.rate_text or '—' }}</td><td>{{ r.term_text or '—' }}</td>
-      <td class="num">{% if r.income_min %}{{ r.income_min | money }} – {% else %}до {% endif %}{{ r.income_max | money }}</td>
+      <td class="num">{% if r.income_min and r.income_min != r.income_max %}{{ r.income_min | money }} – {% elif not r.income_min %}до {% endif %}{{ r.income_max | money }}{% if r.rate_applied %}<br><span class="muted">точная ставка {{ r.rate_applied | pct }}</span>{% endif %}</td>
       <td>{% if r in s.restricted %}<span class="chip">особые условия</span>{% endif %}{% if 'floating_rate' in r.flags %}<span class="chip">плавающая</span>{% endif %}{% if 'limited_time' in r.flags %}<span class="chip">ограничено по времени</span>{% endif %}</td></tr>{% endif %}{% endfor %}</table>
     {% for n in s.banks_without_data %}{% if loop.first %}<p class="muted">Нет данных по банкам: {% endif %}{{ n }}{% if not loop.last %}, {% else %}.</p>{% endif %}{% endfor %}
     {% if s.excluded %}<details {{ 'open' if mode == 'pdf' }}><summary>Исключено из сценария: {{ s.excluded | length }}</summary>

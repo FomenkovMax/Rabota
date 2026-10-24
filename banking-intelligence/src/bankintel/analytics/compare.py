@@ -12,6 +12,7 @@ from decimal import Decimal
 from bankintel.analytics.calc import simple_interest
 from bankintel.analytics.facts import ProductFacts
 from bankintel.analytics.parsing import months_to_days
+from bankintel.analytics.rate_tables import lookup, nearest_fixed_term
 
 STALE_AFTER = timedelta(days=7)
 
@@ -48,6 +49,7 @@ class ScenarioResult:
     warnings: list[str] = field(default_factory=list)
     income_min: Decimal | None = None
     income_max: Decimal | None = None
+    rate: Decimal | None = None  # применённая точная ставка (если банк публикует таблицу ставок)
 
 
 def evaluate(facts: ProductFacts, sc: Scenario, now: datetime | None = None) -> ScenarioResult:
@@ -60,6 +62,8 @@ def evaluate(facts: ProductFacts, sc: Scenario, now: datetime | None = None) -> 
         return excluded("валюта продукта не определена")
     if facts.currency != sc.currency:
         return excluded(f"валюта {facts.currency}, сценарий в {sc.currency}")
+    if facts.rate_table:
+        return _evaluate_table(facts, sc, now, excluded)
     if facts.rate_max is None:
         return excluded("ставка не распознана")
     if facts.term is None:
@@ -82,22 +86,52 @@ def evaluate(facts: ProductFacts, sc: Scenario, now: datetime | None = None) -> 
         warnings.append("нижняя граница ставки на сайте не указана — известна только верхняя")
     elif facts.rate_min != facts.rate_max:
         warnings.append("фактическая ставка зависит от срока, суммы и условий (сайт даёт диапазон)")
+    warnings += _common_warnings(facts, now)
+    return ScenarioResult(facts, True, None, warnings, income_min, income_max)
+
+
+def _common_warnings(facts: ProductFacts, now: datetime | None) -> list[str]:
+    out = []
     if "floating_rate" in facts.flags:
-        warnings.append("плавающая ставка (привязана к ключевой ставке ЦБ)")
+        out.append("плавающая ставка (может меняться; в расчёте — начальная)")
     if "limited_time" in facts.flags:
-        warnings.append("предложение ограничено по времени (см. описание на сайте)")
+        out.append("предложение ограничено по времени (см. описание на сайте)")
     if "restricted_audience" in facts.flags:
-        warnings.append("предложение для ограниченной категории клиентов или с особыми условиями")
+        out.append("предложение для ограниченной категории клиентов или с особыми условиями")
     if facts.lnr_status != "confirmed":
-        warnings.append("доступность в ЛНР не подтверждена источником")
+        out.append("доступность в ЛНР не подтверждена источником")
     now = now or datetime.now(UTC)
     if facts.checked_at is not None:
         checked = facts.checked_at if facts.checked_at.tzinfo else facts.checked_at.replace(tzinfo=UTC)
         if now - checked > STALE_AFTER:
-            warnings.append(f"данные старше 7 дней (от {checked:%d.%m.%Y})")
+            out.append(f"данные старше 7 дней (от {checked:%d.%m.%Y})")
     else:
-        warnings.append("дата проверки неизвестна")
-    return ScenarioResult(facts, True, None, warnings, income_min, income_max)
+        out.append("дата проверки неизвестна")
+    return out
+
+
+def _evaluate_table(facts: ProductFacts, sc: Scenario, now, excluded) -> ScenarioResult:
+    """Банк публикует точную ставку для сочетания «сумма × срок»: интервала нет, ставка берётся из таблицы банка (выплата в конце срока)."""
+    table, days = facts.rate_table, sc.days
+    if table["fixed_terms"]:
+        term = nearest_fixed_term(table, days)
+    else:
+        term = min(max(days, table["min_term"]), table["max_term"])
+        term = term if abs(term - days) <= 3 else None
+    if term is None:
+        return excluded(f"срок {sc.months} мес. не подходит под сроки продукта ({facts.term_text})")
+    if facts.amount and facts.amount.max is not None and sc.amount > facts.amount.max:
+        return excluded(f"сумма больше максимальной ({facts.amount.max:,.0f})".replace(",", " "))
+    quote = lookup(table, sc.amount, term, "at_end")
+    if quote is None:
+        if facts.amount and facts.amount.min is not None and sc.amount < facts.amount.min:
+            return excluded(f"сумма меньше минимальной ({facts.amount.min:,.0f})".replace(",", " "))
+        return excluded("банк не публикует ставку для этой суммы и срока")
+    income = simple_interest(sc.amount, quote.rate, sc.days)
+    warnings = [f"точная ставка {quote.rate}% из таблицы банка для этой суммы и срока"] + _common_warnings(facts, now)
+    if term != days:
+        warnings.insert(1, f"срок продукта {term} дн. (сценарий — {days} дн.), доход считается за срок сценария")
+    return ScenarioResult(facts, True, None, warnings, income, income, quote.rate)
 
 
 @dataclass

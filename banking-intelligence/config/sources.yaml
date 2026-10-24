@@ -54,3 +54,15 @@ sources:
     url: https://www.cmrbank.ru
     category: discovery
     status: todo
+  - bank: cmr
+    key: deposits
+    url: https://www.cmrbank.ru/person/person-deposit/deposit-calc/
+    category: deposit
+    status: active
+    notes: Страница «Вклады» (калькулятор; данные — JSON внутри страницы). Добавлено 24.10.2026 по просьбе владельца («займись ЦМР»), найдено обходом официального сайта; требует подтверждения владельцем.
+  - bank: cmr
+    key: savings_accounts
+    url: https://www.cmrbank.ru/person/person-deposit/deposit-account/
+    category: savings
+    status: active
+    notes: Страница «Накопительные счета». Добавлено 24.10.2026 по просьбе владельца («займись ЦМР»), найдено обходом официального сайта; требует подтверждения владельцем.

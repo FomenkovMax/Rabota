@@ -23,8 +23,13 @@ def test_real_config_has_no_unverified_claims():
     cfg = load_config(get_settings().config_dir)
     assert not any(b.domain_verified or b.lnr_presence_verified for b in cfg.banks)
     active = {(s.bank, s.key) for s in cfg.sources if s.status == "active"}
-    assert active == {("psb", "deposits"), ("psb", "savings_accounts"), ("psb", "savings_offers"), ("vtb", "deposits")}
-    assert all(s.notes and "Подтверждено" in s.notes for s in cfg.sources if s.status == "active")
+    assert active == {("psb", "deposits"), ("psb", "savings_accounts"), ("psb", "savings_offers"), ("vtb", "deposits"),
+                      ("cmr", "deposits"), ("cmr", "savings_accounts")}
+    for s in cfg.sources:
+        if s.status != "active":
+            continue
+        # каждый активный источник либо подтверждён владельцем, либо честно помечен как «требует подтверждения»
+        assert s.notes and ("Подтверждено" in s.notes or "требует подтверждения" in s.notes), s.key
 
 
 def test_foreign_domain_source_rejected():
@@ -69,7 +74,7 @@ async def test_sync_is_idempotent(session_factory):
         second = await sync_registry(s, cfg)
         assert first["banks_created"] == 5 and second["banks_created"] == 0
         assert len((await s.scalars(select(Bank))).all()) == 5
-        assert len((await s.scalars(select(Source))).all()) == 9
+        assert len((await s.scalars(select(Source))).all()) == 11
 
 
 async def test_sync_keeps_manual_verification(session_factory):

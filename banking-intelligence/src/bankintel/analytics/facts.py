@@ -43,6 +43,7 @@ class ProductFacts:
     lnr_status: str = "unknown"
     product_url: str | None = None
     checked_at: datetime | None = None
+    rate_table: dict | None = None  # таблица «сумма × срок -> точная ставка» (если банк её публикует)
     ai_facts: dict = field(default_factory=dict)  # проверенные AI-факты (капитализация, пополнение и т.д.) — справочно
     snapshot_ids: list[int] = field(default_factory=list)
     document_ids: list[int] = field(default_factory=list)
@@ -115,9 +116,25 @@ def facts_from_params(
         amount, ai_used = ai_amount, True
         notes.append(f"сумма извлечена AI, цитата проверена: «{ai['min_amount']['quote']}»")
 
+    table = card.get("rate_table")
+    if table:  # банк публикует точные ставки: срок и сумма берутся из таблицы, а не из текста карточки
+        days = sorted({e["days"] for t in table["tiers"] for e in t["terms"]})
+        if table["fixed_terms"]:
+            term, term_text = TermSpec(values=tuple(days)), ", ".join(map(str, days)) + " дн."
+        else:
+            term = TermSpec(min_days=table["min_term"], max_days=table["max_term"])
+            term_text = f"{table['min_term']} дн." if table["min_term"] == table["max_term"] else f"от {table['min_term']} до {table['max_term']} дн."
+        min_sum = min((Decimal(str(t["min_sum"])) for t in table["tiers"]), default=None)
+        max_sum = Decimal(str(card["max_sum"])) if card.get("max_sum") else None
+        amount = MoneyRange(min_sum, max_sum, "RUB")
+        if max_sum is not None:
+            notes.append(f"максимальная сумма {max_sum:,.0f} ₽ — поле max_sum данных банка (смысл на сайте не раскрыт, учтено как ограничение)".replace(",", " "))
+
     text = f"{card.get('title', '')} {card.get('description') or ''}"
     flags = []
     if _FLOATING.search(text):
+        flags.append("floating_rate")
+    if card.get("floating_rate"):
         flags.append("floating_rate")
     if _LIMITED.search(text):
         flags.append("limited_time")
@@ -126,12 +143,14 @@ def facts_from_params(
 
     if ai_used:
         flags.append("ai_assisted")
+    if any(n.startswith(("срок:", "мин. сумма", "макс. сумма")) for n in notes):  # справочные примечания расхождением не считаются
+        flags.append("sources_conflict")
     return ProductFacts(
         product_id=product.get("id"), bank_slug=bank["slug"], bank_name=bank["name"], is_benchmark=bank.get("is_benchmark", False),
         name=product["name"], category=product["category"], currency=currency,
         rate_min=_dec(rate.get("min")), rate_max=_dec(rate.get("max")), rate_text=card.get("headline_rate_text"),
         base_rate_max=_dec(base.get("max")), amount=amount, term=term, term_text=term_text,
-        flags=flags, notes=notes, product_url=card.get("product_url"), ai_facts=ai,
+        flags=sorted(set(flags)), notes=notes, product_url=card.get("product_url"), ai_facts=ai, rate_table=table,
     )
 
 

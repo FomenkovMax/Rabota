@@ -33,7 +33,7 @@ async def collect_details(session: AsyncSession, bank: Bank, fetcher: Fetcher, r
     await session.flush()
     adapter = get_adapter(bank.adapter)(bank.slug, fetcher)
     messages: list[str] = []
-    fetched = failed = empty = 0
+    fetched = failed = empty = no_url = 0
 
     products = (await session.scalars(select(Product).where(Product.bank_id == bank.id, Product.is_active))).all()
     for product in products:
@@ -44,6 +44,7 @@ async def collect_details(session: AsyncSession, bank: Bank, fetcher: Fetcher, r
         ).all()
         url = next((s.params.get("product_url") for s in snaps if s.params.get("product_url")), None)
         if not url:
+            no_url += 1
             continue
         if not _official(url, bank):
             messages.append(f"{product.name}: ссылка {url} вне официальных доменов банка — пропущена")
@@ -99,7 +100,9 @@ async def collect_details(session: AsyncSession, bank: Bank, fetcher: Fetcher, r
     if empty:
         messages.append(f"условия не извлечены правилами для {empty} стр. (документы сохранены; нужен этап 3)")
     total = fetched + failed
-    if total == 0:
+    if total == 0 and no_url and no_url == len(products):
+        status, messages = CollectionStatus.OK, ["У продуктов нет отдельных страниц: данные банка берутся из страницы со списком"]
+    elif total == 0:
         status, messages = CollectionStatus.FAILED, ["Нет продуктов со ссылками на страницы"]
     elif failed == total:
         status = CollectionStatus.FAILED

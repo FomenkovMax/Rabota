@@ -67,7 +67,7 @@ def _row(r: ScenarioResult) -> dict:
     return {
         "bank": f.bank_name, "bank_slug": f.bank_slug, "name": f.name,
         "rate_text": f.rate_text, "rate_min": _s(f.rate_min), "rate_max": _s(f.rate_max),
-        "income_min": _s(r.income_min), "income_max": _s(r.income_max),
+        "income_min": _s(r.income_min), "income_max": _s(r.income_max), "rate_applied": _s(r.rate),
         "term_text": f.term_text, "flags": sorted(f.flags), "warnings": r.warnings,
         "lnr_status": f.lnr_status, "product_url": f.product_url,
         "checked_at": f.checked_at.isoformat() if f.checked_at else None, "document_ids": f.document_ids,

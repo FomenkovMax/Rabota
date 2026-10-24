@@ -8,8 +8,8 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
-SOURCE_DIRS = ["src", "tests", "config", "migrations", "certs", "docs"]
-SOURCE_SUFFIXES = {".py", ".j2", ".yaml", ".yml", ".html", ".md", ".pem", ".toml", ".ini", ".mako"}
+SOURCE_DIRS = ["src", "tests", "config", "migrations", "certs", "docs", "tools"]
+SOURCE_SUFFIXES = {".py", ".j2", ".yaml", ".yml", ".html", ".md", ".pem", ".toml", ".ini", ".mako", ".json"}
 
 
 @pytest.mark.skipif(shutil.which("git") is None or not (ROOT.parent / ".git").exists() and not (ROOT / ".git").exists(), reason="не git-checkout")

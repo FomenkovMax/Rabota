@@ -25,7 +25,8 @@
 | deposit (раскрытие ставок) | https://www.vtb.ru/ir/disclosure/regulation | не проверялось |
 | promo | /promo/zpmln/, /promo/13pensiy/, /promo/milpens-5000/, /promo/kk-million/ | не проверялось; по названиям — зарплатные/пенсионные/карточные акции, нужна ручная оценка |
 
-## ЦМР банк (cmrbank.ru)
+## ЦМР банк (cmrbank.ru) — страницы найдены, адаптер готов (`docs/cmr.md`)
+Найдены: `/person/person-deposit/deposit-calc/` (вклады) и `/person/person-deposit/deposit-account/` (накопительные счета); раздел «Частным клиентам» → «Вклады и счета». Ранняя версия заметки ниже устарела: данные не в статическом HTML главной, а в JSON на этих страницах.
 Продуктовых страниц вкладов в статическом HTML главной не найдено. Есть:
 | deposit (раскрытие ставок) | https://www.cmrbank.ru/about/disclosure-regulatory-purposes/ | ✅ 200, 15 КБ |
 | deposit (калькулятор) | https://www.cmrbank.ru/person/person-deposit/deposit-calc/ | не проверялось |

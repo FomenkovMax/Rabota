@@ -24,5 +24,5 @@ banks:
   - slug: cmr
     name: ЦМР банк
     website: https://www.cmrbank.ru
-    adapter: generic
+    adapter: cmr
     notes: Домен предварительный, обязательно сверить.
