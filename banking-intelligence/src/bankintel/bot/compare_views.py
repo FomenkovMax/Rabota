@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from bankintel.analytics.compare import ComparisonReport, Scenario, compare
 from bankintel.analytics.facts import ProductFacts, load_facts
 from bankintel.db.models import Bank
+from bankintel.formatting import money, pct  # noqa: F401
 
 MAX_AMOUNT = Decimal(1_000_000_000)
 LNR_NOTE = "доступность в ЛНР не подтверждена источниками"
@@ -16,15 +17,6 @@ METHOD_NOTE = (
     "Доход — простой процент по номинальной ставке с сайта (факт. дни/365), до налогов и без капитализации. "
     "Ставки на сайтах — диапазоны, поэтому показан интервал."
 )
-
-
-def money(x: Decimal) -> str:
-    s = f"{x:,.2f}".replace(",", " ")
-    return (s[:-3] if s.endswith(".00") else s.replace(".", ",")) + " ₽"
-
-
-def pct(x: Decimal) -> str:
-    return f"{x.normalize():f}".replace(".", ",") + "%"
 
 
 def parse_scenario(args: str | None) -> Scenario:

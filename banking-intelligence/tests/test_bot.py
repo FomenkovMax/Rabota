@@ -63,7 +63,7 @@ async def test_html_is_escaped(session_factory):
 def test_planned_commands_registered_and_honest():
     for cmd in views.PLANNED:
         assert "пока не реализовано" in views.planned_text(cmd)
-    assert len(handlers.router.message.handlers) == 7 + len(views.PLANNED)
+    assert len(handlers.router.message.handlers) == 8 + len(views.PLANNED)
 
 
 async def test_allowlist_blocks_and_allows():

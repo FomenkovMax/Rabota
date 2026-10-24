@@ -1,6 +1,6 @@
 from aiogram import Router
 from aiogram.filters import Command, CommandObject, CommandStart
-from aiogram.types import Message
+from aiogram.types import FSInputFile, Message
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 import asyncio
@@ -54,6 +54,38 @@ async def cmd_savings(message: Message, session_factory: async_sessionmaker) -> 
     async with session_factory() as session:
         facts, _ = await compare_views.load_for_bot(session)
     await message.answer(compare_views.savings_text(facts))
+
+
+_report_lock = asyncio.Lock()
+
+
+@router.message(Command("report"))
+async def cmd_report(message: Message, session_factory: async_sessionmaker) -> None:
+    import tempfile
+    from pathlib import Path
+
+    from bankintel.reports.dataset import DatasetError
+    from bankintel.reports.service import generate_reports
+
+    if _report_lock.locked():
+        await message.answer("Отчёт уже формируется, дождитесь окончания.")
+        return
+    async with _report_lock:
+        await message.answer("Формирую отчёты (PDF, HTML, PPTX, XLSX) из текущих данных…")
+        with tempfile.TemporaryDirectory() as tmp:
+            try:
+                async with session_factory() as session:
+                    bundle = await generate_reports(session, Path(tmp))
+            except DatasetError as exc:
+                await message.answer("Отчёт не сформирован:\n" + escape(str(exc))[:3500])
+                return
+            m = bundle.dataset["meta"]
+            caption = (
+                f"Набор данных {bundle.dataset_id}. Демо-прототип: банков с данными {m['banks_with_data']} из {m['banks_total']}, "
+                f"без Сбербанка; доступность в ЛНР не подтверждена."
+            )
+            for fmt, path in bundle.paths.items():
+                await message.answer_document(FSInputFile(path), caption=f"{fmt.upper()} · {caption}")
 
 
 _refresh_lock = asyncio.Lock()

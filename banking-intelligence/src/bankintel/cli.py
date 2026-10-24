@@ -42,6 +42,27 @@ async def _collect(include_todo: bool, with_details: bool = False) -> None:
         await engine.dispose()
 
 
+async def _report(out: str) -> None:
+    from pathlib import Path
+
+    from bankintel.reports.dataset import DatasetError
+    from bankintel.reports.service import generate_reports
+
+    settings = get_settings()
+    engine = make_engine(settings.database_url)
+    try:
+        async with make_session_factory(engine)() as session:
+            try:
+                bundle = await generate_reports(session, Path(out))
+            except DatasetError as exc:
+                raise SystemExit(str(exc))
+        print(f"Набор данных {bundle.dataset_id}")
+        for fmt, path in bundle.paths.items():
+            print(f"  {fmt:5} {path} ({path.stat().st_size // 1024} КБ)")
+    finally:
+        await engine.dispose()
+
+
 async def _discover(slug: str) -> None:
     from sqlalchemy import select
 
@@ -118,6 +139,8 @@ def main() -> None:
     i.add_argument("--file", required=True)
     i.add_argument("--captured-at", required=True, help="когда сохранено, ISO с часовым поясом: 2026-10-24T12:00+03:00")
     i.add_argument("--note")
+    rp = sub.add_parser("report", help="сформировать отчёты PDF/HTML/PPTX/XLSX из единого набора данных")
+    rp.add_argument("--out", default="reports", help="каталог для файлов (по умолчанию ./reports)")
     sub.add_parser("bot", help="запустить Telegram-бота")
     args = parser.parse_args()
     if args.cmd == "seed":
@@ -130,6 +153,8 @@ def main() -> None:
         asyncio.run(_discover(args.bank))
     elif args.cmd == "import-doc":
         asyncio.run(_import_doc(args))
+    elif args.cmd == "report":
+        asyncio.run(_report(args.out))
     elif args.cmd == "bot":
         from bankintel.bot.app import main as bot_main
 

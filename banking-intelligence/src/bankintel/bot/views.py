@@ -13,7 +13,6 @@ DEMO_NOTICE = "⚠️ Демо-прототип: данные только по 
 PLANNED = {
     "promo": ("Акции", 2),
     "changes": ("История изменений", 6),
-    "report": ("Отчёты PDF/HTML/PPTX/XLSX", 5),
 }
 
 
@@ -26,8 +25,9 @@ def start_text() -> str:
         "/status — состояние данных\n"
         "/deposits — вклады · /savings — накопительные счета\n"
         "/compare [сумма] [мес.] — сравнение вкладов, напр. /compare 500000 12\n"
+        "/report — отчёты PDF, HTML, PPTX, XLSX\n"
         "/refresh — обновить данные\n"
-        "/promo /changes /report — в разработке (см. PLANS.md)"
+        "/promo /changes — в разработке (см. PLANS.md)"
     )
 
 
