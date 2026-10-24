@@ -109,6 +109,31 @@ async def _prune(args) -> None:
         await engine.dispose()
 
 
+async def _ai_extract(args) -> None:
+    from bankintel.ai.client import AiDisabled, build_client
+    from bankintel.ai.extractor import run_extraction
+
+    settings = get_settings()
+    dry_run, client = args.dry_run, None
+    if not dry_run:
+        try:
+            client = build_client(settings)
+        except AiDisabled as exc:
+            print(f"AI не запущен: {exc}. Выполняю пробный запуск (ничего не отправляется).")
+            dry_run = True
+    engine = make_engine(settings.database_url)
+    try:
+        async with make_session_factory(engine)() as session:
+            rep = await run_extraction(session, settings, client, dry_run=dry_run, limit=args.limit)
+        print(f"{'ПРОБНЫЙ ЗАПУСК (ничего не отправлено)' if rep.dry_run else 'Готово'}: документов рассмотрено {rep.considered}, "
+              f"к отправке {rep.to_send} (~{rep.chars} симв.), сохранено {rep.stored}, фактов принято {rep.facts_accepted}, "
+              f"отброшено {rep.facts_rejected}, обновлений ЛНР {rep.lnr_updates}")
+        for line in rep.skipped + rep.failed:
+            print("  -", line)
+    finally:
+        await engine.dispose()
+
+
 async def _discover(slug: str) -> None:
 
     from bankintel.sources.base import SourceRef
@@ -192,6 +217,9 @@ def main() -> None:
     pr.add_argument("--keep-snapshots", type=int, default=20, help="сколько последних снимков хранить на продукт и источник (≥3)")
     pr.add_argument("--attempts-days", type=int, default=90, help="хранить попытки загрузки столько дней")
     pr.add_argument("--documents-days", type=int, default=180, help="не удалять документы моложе стольких дней")
+    ai = sub.add_parser("ai-extract", help="AI-извлечение условий со страниц продуктов (по умолчанию пробный запуск без отправки)")
+    ai.add_argument("--dry-run", action="store_true", help="только посчитать, что было бы отправлено")
+    ai.add_argument("--limit", type=int, default=None)
     sub.add_parser("bot", help="запустить Telegram-бота")
     args = parser.parse_args()
     from bankintel.logging_setup import configure_logging
@@ -216,6 +244,8 @@ def main() -> None:
         asyncio.run(_changes(args.days))
     elif args.cmd == "prune":
         asyncio.run(_prune(args))
+    elif args.cmd == "ai-extract":
+        asyncio.run(_ai_extract(args))
     elif args.cmd == "bot":
         from bankintel.bot.app import main as bot_main
 

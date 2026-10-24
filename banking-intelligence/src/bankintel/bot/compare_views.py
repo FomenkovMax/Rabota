@@ -49,6 +49,8 @@ def _flags(f: ProductFacts) -> str:
         out.append("👥 особые условия/категория клиентов")
     if "floating_rate" in f.flags:
         out.append("📈 плавающая")
+    if "ai_assisted" in f.flags:
+        out.append("🤖 часть данных извлечена AI")
     if "limited_time" in f.flags:
         out.append("⏳ ограничено по времени")
     return (" " + ", ".join(out)) if out else ""
@@ -127,7 +129,7 @@ def _catalog(facts: list[ProductFacts], category: str, title: str) -> str:
         if f.base_rate_max is not None:
             extra.append(f"базовая {pct(f.base_rate_max)}")
         tail = f" · {'; '.join(extra)}" if extra else ""
-        mark = " ℹ️ источники расходятся" if f.notes else ""
+        mark = " ℹ️ источники расходятся" if f.notes and "ai_assisted" not in f.flags else ""
         lines.append(f"• {escape(f.name)}: {_rate(f)}{tail}{_flags(f)}{mark}")
     lines.append(f"\n⚠️ {LNR_NOTE[0].upper() + LNR_NOTE[1:]}.")
     return "\n".join(lines)

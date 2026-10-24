@@ -21,6 +21,11 @@ class Settings(BaseSettings):
     # Дополнительный файл корневых сертификатов (PEM) для сайтов, чей CA отсутствует
     # в стандартном наборе. Проверка сертификатов никогда не отключается.
     extra_ca_bundle: Path | None = None
+    # AI-извлечение (этап 3). Выключено по умолчанию: включение = решение отправлять ПУБЛИЧНЫЕ тексты страниц банков во внешний API.
+    ai_enabled: bool = False
+    ai_model: str | None = None
+    ai_max_docs_per_run: int = 20
+    ai_max_chars: int = 60_000
     log_level: str = "INFO"
     log_json: bool = False
     redis_url: str = "redis://localhost:6379/0"

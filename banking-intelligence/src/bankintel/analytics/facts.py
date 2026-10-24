@@ -43,6 +43,7 @@ class ProductFacts:
     lnr_status: str = "unknown"
     product_url: str | None = None
     checked_at: datetime | None = None
+    ai_facts: dict = field(default_factory=dict)  # проверенные AI-факты (капитализация, пополнение и т.д.) — справочно
     snapshot_ids: list[int] = field(default_factory=list)
     document_ids: list[int] = field(default_factory=list)
 
@@ -76,7 +77,7 @@ def _stricter_term(a: TermSpec, b: TermSpec) -> TermSpec:
 
 
 def facts_from_params(
-    *, bank: dict, product: dict, card: dict, conditions: dict | None = None
+    *, bank: dict, product: dict, card: dict, conditions: dict | None = None, ai: dict | None = None
 ) -> ProductFacts:
     """Чистая функция: params снимков -> факты. bank: slug,name,is_benchmark; product: id,name,category."""
     notes: list[str] = []
@@ -102,6 +103,18 @@ def facts_from_params(
     amount = _merge_money(parse_money_range(card.get("amount_text")), parse_money_range(cond.get("min_amount")), notes)
     currency = card.get("currency") or (amount.currency if amount else None) or _currency_from_words(cond.get("currency"))
 
+    ai = ai or {}
+    ai_used = False
+    if term is None and "term" in ai:  # AI только заполняет пробелы; значение, найденное правилами, не перезаписывается
+        t = parse_term(ai["term"]["value"])
+        if t is not None:
+            term, term_text, ai_used = t, ai["term"]["value"], True
+            notes.append(f"срок извлечён AI, цитата проверена: «{ai['term']['quote']}»")
+    ai_amount = parse_money_range(ai["min_amount"]["value"]) if "min_amount" in ai else None
+    if amount is None and ai_amount is not None:
+        amount, ai_used = ai_amount, True
+        notes.append(f"сумма извлечена AI, цитата проверена: «{ai['min_amount']['quote']}»")
+
     text = f"{card.get('title', '')} {card.get('description') or ''}"
     flags = []
     if _FLOATING.search(text):
@@ -111,12 +124,14 @@ def facts_from_params(
     if _RESTRICTED.search(text):
         flags.append("restricted_audience")
 
+    if ai_used:
+        flags.append("ai_assisted")
     return ProductFacts(
         product_id=product.get("id"), bank_slug=bank["slug"], bank_name=bank["name"], is_benchmark=bank.get("is_benchmark", False),
         name=product["name"], category=product["category"], currency=currency,
         rate_min=_dec(rate.get("min")), rate_max=_dec(rate.get("max")), rate_text=card.get("headline_rate_text"),
         base_rate_max=_dec(base.get("max")), amount=amount, term=term, term_text=term_text,
-        flags=flags, notes=notes, product_url=card.get("product_url"),
+        flags=flags, notes=notes, product_url=card.get("product_url"), ai_facts=ai,
     )
 
 
@@ -141,12 +156,14 @@ async def load_facts(session: AsyncSession, *, category: str | None = None) -> l
         # основная карточка: со страницы списка вкладов/счетов, иначе самая свежая
         card = next((s for s in cards if s.params.get("page_key") in ("deposits", "savings_accounts")), cards[0])
         detail = next((s for s in snaps if s.params.get("kind") == "conditions"), None)
+        ai_snap = next((s for s in snaps if s.params.get("kind") == "ai_conditions"), None)
         facts = facts_from_params(
             bank={"slug": bank.slug, "name": bank.name, "is_benchmark": bank.is_benchmark},
             product={"id": product.id, "name": product.name, "category": product.category},
             card=card.params, conditions=detail.params if detail else None,
+            ai=ai_snap.params.get("facts") if ai_snap else None,
         )
-        used = [s for s in (card, detail) if s]
+        used = [s for s in (card, detail, ai_snap) if s]
         facts.snapshot_ids = [s.id for s in used]
         facts.document_ids = [s.document_id for s in used]
         docs = (await session.scalars(select(Document).where(Document.id.in_(facts.document_ids)))).all()
