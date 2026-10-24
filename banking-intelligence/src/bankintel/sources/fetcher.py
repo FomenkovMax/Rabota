@@ -20,6 +20,10 @@ BLOCK_MARKERS = (
 )
 
 
+class BlockedError(Exception):
+    """Антибот отдал страницу блокировки вместо ожидаемого содержимого."""
+
+
 def _ms(start: float) -> int:
     return int((time.monotonic() - start) * 1000)
 
@@ -94,6 +98,8 @@ class HttpFetcher:
             return self._robots[origin]
         rp = RobotFileParser()
         resp = await self._throttled_get(origin + "/robots.txt")
+        if looks_blocked(resp.status_code, resp.content):
+            raise BlockedError("robots.txt подменён страницей блокировки (WAF/антибот)")
         if resp.status_code in (404, 410):
             rp.parse([])  # robots.txt отсутствует -> разрешено
         elif resp.status_code >= 400:
@@ -117,6 +123,8 @@ class HttpFetcher:
                     return None, diag(FetchOutcome.ROBOTS_DISALLOWED, error="robots.txt запрещает или недоступен (401/403/5xx)")
                 resp = await self._throttled_get(source.url)
                 break
+            except BlockedError as exc:
+                return None, diag(FetchOutcome.BLOCKED, error=str(exc))
             except httpx.HTTPError as exc:
                 if _is_tls_error(exc):
                     return None, diag(FetchOutcome.TLS_ERROR, error=f"{type(exc).__name__}: {exc!r}"[:500])

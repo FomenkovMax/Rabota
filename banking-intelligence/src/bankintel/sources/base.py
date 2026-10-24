@@ -31,6 +31,7 @@ class FetchedDocument:
     content_type: str | None = None
     http_status: int = 200
     fetched_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    document_id: int | None = None  # задан, если документ уже сохранён в БД (ручной импорт)
 
 
 @dataclass

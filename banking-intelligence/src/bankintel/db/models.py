@@ -57,6 +57,8 @@ class Source(Base):
     url: Mapped[str] = mapped_column(String(1000))
     category: Mapped[str] = mapped_column(String(30))
     status: Mapped[str] = mapped_column(String(20), default="todo")
+    # fetch — загружаем сами; manual — документы вносит человек (сайт недоступен загрузчику)
+    mode: Mapped[str] = mapped_column(String(10), default="fetch", server_default="fetch")
     notes: Mapped[str | None] = mapped_column(Text)
 
     bank: Mapped[Bank] = relationship(back_populates="sources")
@@ -89,6 +91,9 @@ class Document(Base):
     sha256: Mapped[str] = mapped_column(String(64), index=True)
     storage_path: Mapped[str] = mapped_column(String(500))
     size_bytes: Mapped[int] = mapped_column(Integer)
+    # fetched — получен загрузчиком; manual_import — внесён человеком (fetched_at = дата сохранения, со слов человека)
+    origin: Mapped[str] = mapped_column(String(20), default="fetched", server_default="fetched")
+    note: Mapped[str | None] = mapped_column(Text)
 
 
 class Product(Base):

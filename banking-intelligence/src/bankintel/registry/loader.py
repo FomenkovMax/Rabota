@@ -41,5 +41,6 @@ async def sync_registry(session: AsyncSession, cfg: RegistryConfig) -> dict[str,
             src = Source(bank_id=bank.id, key=sc.key, url=str(sc.url), category=sc.category)
             session.add(src)
         src.url, src.category, src.status, src.notes = str(sc.url), sc.category, sc.status, sc.notes
+        src.mode = sc.mode
     await session.commit()
     return {"banks_created": created, "banks_updated": updated, "sources": len(cfg.sources)}

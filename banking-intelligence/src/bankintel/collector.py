@@ -19,6 +19,7 @@ from bankintel.db.models import (
 from bankintel.domain.enums import CollectionStatus, SourceStatus
 from bankintel.sources import get_adapter
 from bankintel.sources.base import Fetcher, SourceRef
+from bankintel.sources.manual import ManualFetcher
 from bankintel.sources.storage import save_raw
 
 
@@ -29,13 +30,18 @@ async def collect_bank(
     raw_root: Path,
     *,
     include_todo: bool = False,
+    mode: str = "fetch",
 ) -> CollectionRun:
     """include_todo=True нужен только для зондирования корня сайта (probe); обычный сбор
     идёт по источникам, URL которых подтверждён человеком (status=active)."""
     wanted = {SourceStatus.ACTIVE.value} | ({SourceStatus.TODO.value} if include_todo else set())
     rows = (
-        await session.scalars(select(Source).where(Source.bank_id == bank.id, Source.status.in_(wanted)))
+        await session.scalars(
+            select(Source).where(Source.bank_id == bank.id, Source.status.in_(wanted), Source.mode == mode)
+        )
     ).all()
+    if mode == "manual":
+        fetcher = ManualFetcher(session, raw_root)
     by_key = {r.key: r for r in rows}
     refs = [SourceRef(r.key, r.url, r.category) for r in rows]
 
@@ -45,7 +51,7 @@ async def collect_bank(
 
     result = await get_adapter(bank.adapter)(bank.slug, fetcher).collect(refs)
 
-    for d in result.diagnostics:
+    for d in result.diagnostics if mode == "fetch" else []:
         session.add(
             FetchAttempt(
                 source_id=by_key[d.source_key].id, outcome=d.outcome.value,
@@ -55,6 +61,9 @@ async def collect_bank(
 
     saved: dict[tuple[str, str], Document] = {}
     for ref, doc in result.documents:
+        if doc.document_id is not None:  # уже в БД (ручной импорт) — не дублируем
+            saved[(ref.key, doc.url)] = await session.get(Document, doc.document_id)
+            continue
         digest, rel = save_raw(raw_root, bank.slug, doc.content, doc.content_type)
         row = Document(
             source_id=by_key[ref.key].id, url=doc.url, fetched_at=doc.fetched_at,
@@ -94,8 +103,16 @@ async def collect_bank(
 
 
 async def collect_all(session: AsyncSession, fetcher: Fetcher, raw_root: Path, **kw) -> list[tuple[Bank, CollectionRun]]:
+    """Сбор по всем банкам. Банки с manual-источниками дополнительно обрабатываются по ранее
+    импортированным документам (без обращения к сети)."""
     banks = (await session.scalars(select(Bank).order_by(Bank.id))).all()
-    return [(b, await collect_bank(session, b, fetcher, raw_root, **kw)) for b in banks]
+    out = []
+    for b in banks:
+        out.append((b, await collect_bank(session, b, fetcher, raw_root, **kw)))
+        has_manual = await session.scalar(select(Source.id).where(Source.bank_id == b.id, Source.mode == "manual").limit(1))
+        if has_manual:
+            out.append((b, await collect_bank(session, b, fetcher, raw_root, mode="manual")))
+    return out
 
 
 __all__ = ["collect_bank", "collect_all", "CollectionStatus"]

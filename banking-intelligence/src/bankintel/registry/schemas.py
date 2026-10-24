@@ -29,7 +29,15 @@ class SourceConfig(BaseModel):
     url: HttpUrl
     category: str
     status: str = "todo"
+    mode: str = "fetch"  # fetch | manual
     notes: str | None = None
+
+
+    @model_validator(mode="after")
+    def _mode(self):
+        if self.mode not in ("fetch", "manual"):
+            raise ValueError(f"Источник {self.bank}/{self.key}: mode должен быть fetch или manual")
+        return self
 
 
 class RegistryConfig(BaseModel):

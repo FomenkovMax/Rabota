@@ -38,11 +38,12 @@ async def test_robots_disallow_respected():
     assert doc is None and diag.outcome == FetchOutcome.ROBOTS_DISALLOWED
 
 
-@pytest.mark.parametrize("status", [401, 403, 503])
-async def test_robots_unavailable_is_conservative(status):
+@pytest.mark.parametrize("status,outcome", [
+    (401, FetchOutcome.ROBOTS_DISALLOWED), (503, FetchOutcome.ROBOTS_DISALLOWED), (403, FetchOutcome.BLOCKED)])
+async def test_robots_unavailable_is_conservative(status, outcome):
     f = make({"/robots.txt": (status, b""), "/page": (200, b"x")})
-    _, diag = await f.fetch(SRC)
-    assert diag.outcome == FetchOutcome.ROBOTS_DISALLOWED
+    doc, diag = await f.fetch(SRC)
+    assert doc is None and diag.outcome == outcome
 
 
 @pytest.mark.parametrize("status,body", [(403, b"forbidden"), (429, b""), (200, b"<html>Please solve the CAPTCHA</html>"),
@@ -130,3 +131,10 @@ async def test_network_error_retried_once():
     f = HttpFetcher(UA, min_interval_s=0, transport=httpx.MockTransport(handler))
     doc, diag = await f.fetch(SRC)
     assert diag.outcome == FetchOutcome.OK and calls["n"] == 2
+
+
+async def test_robots_replaced_by_waf_page_is_blocked():
+    waf = "<script>{code:'user_blocked'}</script>Возникла проблема при открытии сайта".encode()
+    f = make({"/robots.txt": (200, waf), "/page": (200, b"<html>real</html>")})
+    doc, diag = await f.fetch(SRC)
+    assert doc is None and diag.outcome == FetchOutcome.BLOCKED

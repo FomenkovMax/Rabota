@@ -58,6 +58,40 @@ async def _discover(slug: str) -> None:
     print("\nЭто только кандидаты. Проверьте вручную и добавьте в config/sources.yaml со status: active.")
 
 
+async def _import_doc(args) -> None:
+    from datetime import datetime
+    from pathlib import Path
+
+    from sqlalchemy import select
+
+    from bankintel.db.models import Bank
+    from bankintel.sources.manual import ManualImportError, import_document
+
+    settings = get_settings()
+    cfg = next((b for b in load_config(settings.config_dir).banks if b.slug == args.bank), None)
+    if cfg is None:
+        raise SystemExit(f"Банк {args.bank!r} не найден в config/banks.yaml")
+    engine = make_engine(settings.database_url)
+    try:
+        async with make_session_factory(engine)() as session:
+            bank = await session.scalar(select(Bank).where(Bank.slug == args.bank))
+            if bank is None:
+                raise SystemExit("Банка нет в БД: выполните bankintel seed")
+            try:
+                doc = await import_document(
+                    session, bank, source_key=args.source_key, url=args.url, category=args.category,
+                    file_path=Path(args.file), captured_at=datetime.fromisoformat(args.captured_at),
+                    official_hosts=cfg.official_hosts, raw_root=settings.raw_storage_dir, note=args.note,
+                )
+            except ManualImportError as exc:
+                raise SystemExit(f"Импорт отклонён: {exc}")
+            print(f"Импортировано: document_id={doc.id} sha256={doc.sha256[:12]} {doc.size_bytes} байт")
+            print("Добавьте источник в config/sources.yaml (mode: manual, status: active), чтобы он не потерялся при seed:")
+            print(f"  - bank: {args.bank}\n    key: {args.source_key}\n    url: {args.url}\n    category: {args.category}\n    status: active\n    mode: manual")
+    finally:
+        await engine.dispose()
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="bankintel")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -66,6 +100,14 @@ def main() -> None:
     sub.add_parser("refresh", help="собрать данные по активным (подтверждённым) источникам")
     d = sub.add_parser("discover", help="найти кандидатов продуктовых страниц на сайте банка")
     d.add_argument("bank")
+    i = sub.add_parser("import-doc", help="внести вручную сохранённую страницу/PDF банка (если сайт недоступен загрузчику)")
+    i.add_argument("--bank", required=True)
+    i.add_argument("--source-key", required=True)
+    i.add_argument("--url", required=True, help="публичный URL, откуда сохранена страница")
+    i.add_argument("--category", required=True, choices=["deposit", "savings", "promo"])
+    i.add_argument("--file", required=True)
+    i.add_argument("--captured-at", required=True, help="когда сохранено, ISO с часовым поясом: 2026-10-24T12:00+03:00")
+    i.add_argument("--note")
     sub.add_parser("bot", help="запустить Telegram-бота")
     args = parser.parse_args()
     if args.cmd == "seed":
@@ -76,6 +118,8 @@ def main() -> None:
         asyncio.run(_collect(include_todo=False))
     elif args.cmd == "discover":
         asyncio.run(_discover(args.bank))
+    elif args.cmd == "import-doc":
+        asyncio.run(_import_doc(args))
     elif args.cmd == "bot":
         from bankintel.bot.app import main as bot_main
 
