@@ -86,17 +86,17 @@ class HttpFetcher:
                 self._last_hit[host] = time.monotonic()
 
     async def _robots_for(self, url: str) -> RobotFileParser | None:
-        """None = robots.txt недоступен по 5xx -> консервативно запрещаем."""
+        """None = robots.txt недоступен (401/403/5xx) -> консервативно запрещаем."""
         p = urlparse(url)
         origin = f"{p.scheme}://{p.netloc}"
         if origin in self._robots:
             return self._robots[origin]
         rp = RobotFileParser()
         resp = await self._throttled_get(origin + "/robots.txt")
-        if resp.status_code >= 500:
-            rp = None
-        elif resp.status_code >= 400:
+        if resp.status_code in (404, 410):
             rp.parse([])  # robots.txt отсутствует -> разрешено
+        elif resp.status_code >= 400:
+            rp = None  # 401/403/5xx: доступ закрыт или сбой -> консервативно запрещаем
         else:
             rp.parse(resp.text.splitlines())
         self._robots[origin] = rp

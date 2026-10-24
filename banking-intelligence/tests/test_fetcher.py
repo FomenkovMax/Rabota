@@ -38,8 +38,9 @@ async def test_robots_disallow_respected():
     assert doc is None and diag.outcome == FetchOutcome.ROBOTS_DISALLOWED
 
 
-async def test_robots_5xx_is_conservative():
-    f = make({"/robots.txt": (503, b""), "/page": (200, b"x")})
+@pytest.mark.parametrize("status", [401, 403, 503])
+async def test_robots_unavailable_is_conservative(status):
+    f = make({"/robots.txt": (status, b""), "/page": (200, b"x")})
     _, diag = await f.fetch(SRC)
     assert diag.outcome == FetchOutcome.ROBOTS_DISALLOWED
 
@@ -96,3 +97,19 @@ def test_discovery_strips_utm():
     html = '<a href="/d/?utm_medium=x&id=3">Вклады</a>'.encode()
     (c,) = discover_links(html, "https://www.example-bank.test/", {"example-bank.test"})
     assert c.url == "https://www.example-bank.test/d/?id=3"
+
+
+def test_ca_fingerprint_pinned():
+    import hashlib, ssl
+    from pathlib import Path
+
+    pem = (Path(__file__).parents[1] / "certs" / "russian_trusted_root_ca.pem").read_text()
+    digest = hashlib.sha256(ssl.PEM_cert_to_DER_cert(pem)).hexdigest().upper()
+    assert digest == "D26D2D0231B7C39F92CC738512BA541035" "19E4405D68B5BD703E9788CA8ECF31"
+
+
+def test_fetcher_accepts_extra_ca(tmp_path):
+    from pathlib import Path
+
+    ca = Path(__file__).parents[1] / "certs" / "russian_trusted_root_ca.pem"
+    HttpFetcher(UA, extra_ca_bundle=ca)  # не падает при загрузке PEM
