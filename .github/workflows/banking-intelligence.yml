@@ -1,8 +1,7 @@
 name: banking-intelligence
 
+# Только pull request: на push в ветки и в main CI не запускается (экономия минут Actions).
 on:
-  push:
-    paths: ["banking-intelligence/**", ".github/workflows/banking-intelligence.yml"]
   pull_request:
     paths: ["banking-intelligence/**", ".github/workflows/banking-intelligence.yml"]
 
