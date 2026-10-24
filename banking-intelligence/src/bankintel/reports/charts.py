@@ -32,6 +32,8 @@ def chart_rows(scenario: dict, limit: int = MAX_ROWS) -> list[dict]:
 
 
 def value_label(row: dict) -> str:
+    if row["lo"] is not None and row["lo"] == row["hi"]:
+        return money(row["hi"])
     return f"{money(row['lo'])} – {money(row['hi'])}" if row["lo"] is not None else f"до {money(row['hi'])}"
 
 

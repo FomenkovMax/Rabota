@@ -36,6 +36,10 @@ class JsonFormatter(logging.Formatter):
         return json.dumps(data, ensure_ascii=False)
 
 
+# Сторонние библиотеки на INFO пишут сотни служебных строк (шаги рендеринга PDF, подмножества шрифтов, каждый HTTP-запрос).
+NOISY = ("weasyprint", "fontTools", "PIL", "httpx", "httpcore", "asyncio")
+
+
 def configure_logging(level: str = "INFO", json_logs: bool = False) -> None:
     handler = logging.StreamHandler(sys.stderr)
     handler.setFormatter(JsonFormatter() if json_logs else logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
@@ -43,3 +47,7 @@ def configure_logging(level: str = "INFO", json_logs: bool = False) -> None:
     root = logging.getLogger()
     root.handlers[:] = [handler]
     root.setLevel(level.upper())
+    # на INFO шумные библиотеки приглушаем до WARNING; на DEBUG показываем всё, на WARNING и выше — наследуют общий уровень
+    quiet = logging.WARNING if logging.DEBUG < root.level < logging.WARNING else logging.NOTSET
+    for name in NOISY:
+        logging.getLogger(name).setLevel(quiet)

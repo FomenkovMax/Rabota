@@ -84,7 +84,7 @@ def compare_text(rep: ComparisonReport) -> str:
         lines.append("\n<b>Топ-5 вкладов для всех</b>")
         for r in open_top:
             f = r.facts
-            lines.append(f"{escape(f.bank_name)} · {escape(f.name)}: до {money(r.income_max)} ({_rate(f)}){_flags(f)}")
+            lines.append(f"{escape(f.bank_name)} · {escape(f.name)}: {'' if r.income_min == r.income_max else 'до '}{money(r.income_max)} ({_rate_of(r)}){_flags(f)}")
     if rep.excluded:
         lines.append(f"\nИсключено {len(rep.excluded)} из {len(rep.results)} вкладов (срок, сумма, валюта или данные не подходят). Подробности: /deposits")
     if rep.eligible and any(r.facts.lnr_status != "confirmed" for r in rep.eligible):
@@ -92,10 +92,19 @@ def compare_text(rep: ComparisonReport) -> str:
     return "\n".join(lines).strip()
 
 
+def _income(r) -> str:
+    if r.income_min is not None and r.income_min == r.income_max:
+        return money(r.income_max)  # точная ставка банка или ставка без диапазона
+    return (f"{money(r.income_min)} – " if r.income_min is not None else "до ") + money(r.income_max)
+
+
+def _rate_of(r) -> str:
+    return f"ставка {pct(r.rate)}, точная" if r.rate is not None else _rate(r.facts)
+
+
 def _line(r) -> str:
     f = r.facts
-    lo = f"{money(r.income_min)} – " if r.income_min is not None else "до "
-    return f"• <b>{escape(f.bank_name)}</b> — {escape(f.name)}: {lo}{money(r.income_max)} ({_rate(f)}){_flags(f)}"
+    return f"• <b>{escape(f.bank_name)}</b> — {escape(f.name)}: {_income(r)} ({_rate_of(r)}){_flags(f)}"
 
 
 def deposits_text(facts: list[ProductFacts]) -> str:
@@ -129,7 +138,7 @@ def _catalog(facts: list[ProductFacts], category: str, title: str) -> str:
         if f.base_rate_max is not None:
             extra.append(f"базовая {pct(f.base_rate_max)}")
         tail = f" · {'; '.join(extra)}" if extra else ""
-        mark = " ℹ️ источники расходятся" if f.notes and "ai_assisted" not in f.flags else ""
+        mark = " ℹ️ источники расходятся" if "sources_conflict" in f.flags else ""
         lines.append(f"• {escape(f.name)}: {_rate(f)}{tail}{_flags(f)}{mark}")
     lines.append(f"\n⚠️ {LNR_NOTE[0].upper() + LNR_NOTE[1:]}.")
     return "\n".join(lines)

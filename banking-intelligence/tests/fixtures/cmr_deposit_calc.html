@@ -1,0 +1,906 @@
+<!DOCTYPE HTML>
+<html lang="ru">
+<head>
+
+<title>ЦМРБанк (ООО) > Вклады</title>
+<meta charset="utf-8">
+<link rel="shortcut icon" href="/favicon.ico" type="image/x-icon">
+<meta name="description" content="">
+<meta name="keywords" content="">
+<meta name="SKYPE_TOOLBAR" content="SKYPE_TOOLBAR_PARSER_COMPATIBLE">
+<link rel="stylesheet" type="text/css" href="/css/site.css?ver=14">
+<link rel="stylesheet" type="text/css" href="/css/jquery-ui.1.14.1.min.css">
+<link rel="stylesheet" type="text/css" href="/css/bank.css?ver=14">
+<script type="text/javascript" src="/js/jquery-3.7.1.min.js"></script>
+<script type="text/javascript" src="/js/jquery-ui.1.14.1.min.js"></script>
+<script type="text/javascript" src="/js/JsHttpRequest.js"></script>
+<script type="text/javascript" src="/js/common.js?v=2"></script>
+<script type="text/javascript" src="/js/forms.js"></script>
+<script type="text/javascript" src="/js/jquery.placeholder.js"></script>
+<script type="text/javascript" src="/js/jquery.selectbox.min.js"></script>
+<script type="text/javascript" src="/js/jquery.maskedinput.js"></script>
+<script type="text/javascript" src="/js/site.js"></script>
+<script type="text/javascript" src="/js/touch-punch.min.js"></script>
+
+<link rel="stylesheet" href="/css/bvi.min.css?v=1" type="text/css">
+
+<script src="/js/js.cookie.js"></script>
+<script src="/js/bvi-init.js?v1"></script>
+<script src="/js/bvi.min.js"></script>
+
+<script src="/js/vue/vue.js" type="text/javascript"></script>
+<script src="/js/moment.min.js" type="text/javascript"></script>
+</head>
+<body>
+<div class="wrapper">
+<div class="head">
+<div class="head-inner">
+<a href="/" class="head-logo"><img src="/i/logo.png" alt="" ></a>
+<div class="head-offices">
+<a href="/offices/">Офисы</a>
+<a href="https://www.cmrbank.ru/atm/" class="btn btn__blue">Банкоматы</a>
+</div>
+<!-- Yandex.Metrika counter -->
+<script type="text/javascript" >
+(function(m,e,t,r,i,k,a){m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)};
+m[i].l=1*new Date();
+for (var j = 0; j < document.scripts.length; j++) {if (document.scripts[j].src === r) { return; }}
+k=e.createElement(t),a=e.getElementsByTagName(t)[0],k.async=1,k.src=r,a.parentNode.insertBefore(k,a)})
+(window, document, "script", "https://mc.yandex.ru/metrika/tag.js", "ym");
+
+ym(91703904, "init", {
+clickmap:true,
+trackLinks:true,
+accurateTrackBounce:true,
+webvisor:true
+});
+</script>
+<noscript><div><img src="https://mc.yandex.ru/watch/91703904" style="position:absolute; left:-9999px;" alt="" /></div></noscript>
+<!-- /Yandex.Metrika counter -->
+<div class="head-info">
+<span class="head-phone" style="margin-top: .5em;"><a href="tel:88002344300" rel="nofollow"><span>8 800</span> 23-44-300</a></span>
+<a href="https://web.max.ru/-4120047588719" class="btn btn__blue" style="margin-top: 1rem;">МАХ: главное в нашем канале</a>
+</div>
+<div class="head-btns">
+<div class="btn btn__blue">
+<img src="/i/header_ibank_img.png" alt="" >
+<a href="https://ibank.cmrbank.ru/ibank2/" target="_blank" style="margin-left: .75rem;">Интернет-банк для юр.лиц</a>
+</div>
+<div class="btn btn__blue" style="margin-top: .5rem;">
+<img src="/i/header_ibank_img.png" alt="" >
+<a href="https://online.cmrbank.ru" target="_blank" style="margin-left: .75rem;">Интернет-банк для физ.лиц</a>
+</div>
+</div>
+</div>
+</div>
+<!--
+<div class="header">
+<div class="header_inner">
+<a href="/"><img class="logo" src="/i/logo.png" alt="" ></a>
+!-- INCLUDE BLOCK: block1 --
+<div class="header_offices">
+<a href="/offices/">Офисы и филиалы</a>
+</div>
+<div class="header_info">
+<span class="header_phone"><a href="tel:88002500922" rel="nofollow"><span>8 800</span> 250-09-22</a> </span>
+</div>
+
+<div class="header_ibank">
+<img src="/i/header_ibank_img.png" alt="" >
+
+<div class="header_ibank_item">
+<a href="https://ibank.cmrbank.ru/ibank2/" target="_blank">Интернет-банк</a>
+</div>
+</div>
+
+<div class="header_ibank">
+<img src="/i/header_ibank_img.png" alt="" >
+
+<div class="header_ibank_item">
+<a href="https://ibank.cmrbank.ru/cfc" target="_blank">ЦФК</a>
+</div>
+</div>
+
+<div class="cl"></div>
+</div>
+</div>
+-->
+<div class="nav">
+<div class="nav_inner">
+<ul>
+<li>
+<a href="/about/">О Банке</a>
+<li class="curr">
+
+
+<a href="/person/person-rko/">Частным клиентам</a>
+<li>
+<a href="/legal/">Бизнесу</a>
+<li>
+<a href="/partnership/">Партнерам</a>
+<li>
+<a href="/banks/">Кредитным организациям</a>
+<li>
+<a href="/offices/">Контакты</a>
+</ul>
+
+</div>
+</div>
+<div class="content">
+<div class="content_left">
+<div class="left_submenu">
+<ul>
+<li>
+<a href="/person/person-rko/">Расчетно-кассовое обслуживание</a>
+
+
+<li>
+<a href="/person/card/">Карты</a>
+
+
+<li>
+<a href="/person/person-loans/">Кредиты</a>
+
+
+<li class="curr2">
+<a href="/person/person-deposit/">Вклады и счета</a>
+
+<ul>
+<li class="curr3">
+<a href="/person/person-deposit/deposit-calc/">Вклады</a>
+
+
+<li>
+<a href="/person/person-deposit/deposit-account/">Накопительные счета</a>
+
+
+</ul>
+</li>
+
+<li>
+<a href="/person/payments-and-transfers/">Платежи и переводы</a>
+
+
+<li>
+<a href="/person/person-tarif/">Тарифы</a>
+
+
+<li>
+<a href="/person/online-banking/">Онлайн-сервисы</a>
+
+
+<li>
+<a href="/person/obmen-valjuty/">Курсы валют</a>
+
+
+<li>
+<a href="/person/ebs/">Единая биометрическая система</a>
+
+
+<li>
+<a href="/person/person_fatca/">FATCA</a>
+
+
+</ul>
+
+</div>
+
+
+</div>
+<div class="content_right">
+<div class="breadcrumb"><a href="/" class="special">Главная страница</a>&nbsp;/&nbsp;<a href="/person/person-rko/" class="special">Частным клиентам</a>&nbsp;/&nbsp;<a href="/person/person-deposit/" class="special">Вклады и счета</a>&nbsp;/&nbsp;<span>Вклады</span></div>
+
+<h1>Вклады</h1>
+<div id="app">
+<div style="display: none; padding: 1rem; margin: 1rem 0; border: 1px solid #0371ae;" id="vueNotSupport">
+Для корректного отображения содержимого рекомендуем использовать другой браузер
+</div>
+<div style="display: none;" :style="{ display: state.input.loading ? 'none' : 'block'}">
+<h2>Рассчитайте доход по вкладу</h2>
+<div class="row">
+<div class="col col-7 pr-2">
+<div class="mb-4">
+<label style="display: block">Сумма, руб.</label>
+<input v-model.number="state.input.sum" @keypress="isNumber($event)" @blur="state.input.sum < state.deposit_min_sum && (state.input.sum = state.deposit_min_sum)" type="number" step="1000" class="input">
+<sub style="display: block">от {{ formatMoney(state.deposit_min_sum, false) }} руб.</sub>
+</div>
+
+<div class="mb-4">
+<label style="display: block">Срок</label>
+<div class="d-flex flex-wrap g-1 mb-2">
+<label v-for="(title, term) in state.terms" class="btn btn__radio" :class="{btn__radio_checked: state.input.term == term}">
+<input v-model="state.input.term" :value="term" type="radio" step="1"> {{ title }}
+</label>
+</div>
+<input v-model.number="state.input.term" @keypress="isNumber($event)" @input="onChangeTerm" type="number" class="input">
+</div>
+
+<div>
+<label style="display: block">Выплата процентов</label>
+<div class="d-flex flex-wrap g-1">
+<label v-if="!state.hide_params.at_end" class="btn btn__radio" :class="{btn__radio_checked: state.input.pct_pay == 'at_end'}">
+<input v-model="state.input.pct_pay" value="at_end" type="radio"> В конце срока
+</label>
+<label v-if="!state.hide_params.at_month_deposit" class="btn btn__radio" :class="{btn__radio_checked: state.input.pct_pay == 'at_month_deposit'}">
+<input v-model="state.input.pct_pay" value="at_month_deposit" type="radio"> Ежемесячно на вклад
+</label>
+<label v-if="!state.hide_params.at_month_account" class="btn btn__radio" :class="{btn__radio_checked: state.input.pct_pay == 'at_month_account'}">
+<input v-model="state.input.pct_pay" value="at_month_account" type="radio"> Ежемесячно на счет
+</label>
+</div>
+</div>
+
+</div>
+<div v-if="respectiveDeposites[0]" class="col col-5 px-3 py-2" style="background: #cae9ff;">
+<div class="text__gray text__center mb-2">Наше предложение <sup>*</sup></div>
+<div class="text__lg text__bold text__center mb-2">{{ respectiveDeposites[0].name }}</div>
+<div class="text__sm text__gray">Процентная ставка:</div>
+<div class="text__bold mb-2">{{ formatMoney(respectiveDeposites[0].calculation.rate) }} %</div>
+<div class="text__sm text__gray">Доходность:</div>
+<div class="text__bold mb-2">{{ formatMoney(respectiveDeposites[0].calculation.profit_pct) }} %</div>
+<div class="text__sm text__gray">Доход по вкладу:</div>
+<div class="text__bold mb-2">{{ formatMoney(respectiveDeposites[0].calculation.profit_sum, false) }} руб.</div>
+<div class="text__sm text__gray">Сумма в конце срока:</div>
+<div class="text__bold mb-4">{{ formatMoney(respectiveDeposites[0].calculation.sum + respectiveDeposites[0].calculation.profit_sum, false) }} руб.</div>
+<div class="text__center"><a v-if="respectiveDeposites[0].link" :href="respectiveDeposites[0].link" class="btn btn__blue d-inline-block">Открыть</a></div>
+</div>
+</div>
+<div class="d-flex mt-2 mb-4 g-4">
+<div>
+<label v-if="!state.hide_params.replenish" style="display: block">
+<input v-model="state.input.replenish" type="checkbox"> С пополнением
+</label>
+<label v-if="!state.hide_params.withdraw" style="display: block">
+<input v-model="state.input.withdraw" type="checkbox"> С частичным снятием
+</label>
+</div>
+<div>
+<label v-if="!state.hide_params.salary_card" style="display: block">
+<input v-model="state.input.salary_card" type="checkbox"> Получаю зарплату на карту банка
+</label>
+<label v-if="!state.hide_params.retiree" style="display: block">
+<input v-model="state.input.retiree" type="checkbox"> Я пенсионер
+</label>
+</div>
+</div>
+
+<div class="text__gray text__center mb-6"><sup>*</sup> {{ state.note }}</div>
+
+<h2 class="mb-6">
+<label @click="state.mode='ALL'" :style="'ALL' == state.mode ? 'padding-bottom: 4px; border-bottom: 5px solid #0081c8;' : ''" :class="{text__gray: 'CALC' == state.mode }" class="cursor__pointer">Все вклады</label> /
+<label @click="state.mode='CALC'" :style="'CALC' == state.mode ? 'padding-bottom: 4px; border-bottom: 5px solid #0081c8;' : ''" :class="{text__gray: 'ALL' == state.mode }" class="cursor__pointer">Подходящие вклады</label>
+</h2>
+
+<transition name="fade">
+<transition-group v-if="'CALC' == state.mode" name="fade" tag="div">
+<template v-for="(deposit, i) in respectiveDeposites" :key="deposit.id">
+<div class="row mb-6">
+<div class="col col-3 pr-2">
+<img v-if="deposit.img_file_path" :src="deposit.img_file_path" style="max-width: 100%; max-height: 200px;"/>
+</div>
+<div class="col col-9">
+<div class="text__lg text__bold">{{ deposit.name }}</div>
+<div class="text__gray mb-2">{{ deposit.annotation }}</div>
+<div class="d-flex mb-2">
+<div>
+<div class="text__bold">{{ formatMoney(deposit.calculation.sum, false) }}&nbsp;руб.</div>
+<div class="text__sm text__gray">Сумма</div>
+</div>
+<div class="pl-4">
+<div class="text__bold">{{ deposit.calculation.term }}&nbsp;дн.</div>
+<div class="text__sm text__gray">Срок</div>
+</div>
+<div class="pl-4">
+<div class="text__bold">{{ deposit.calculation.replenish ? 'Да' : 'Нет' }}</div>
+<div class="text__sm text__gray">Пополнение</div>
+</div>
+<div class="pl-4">
+<div class="text__bold">{{ deposit.calculation.withdraw ? 'Да' : 'Нет' }}</div>
+<div class="text__sm text__gray">Снятие</div>
+</div>
+<div class="pl-4">
+<div class="text__bold">
+{{ 'at_end' == state.input.pct_pay ? 'В конце срока' : 'Ежемесячно' }}
+<!--{{ deposit.calculation.pct_pay_at_month ? 'Ежемесячно' : '' }}
+{{ deposit.calculation.pct_pay_at_month && deposit.calculation.pct_pay_at_end ? '/' : '' }}
+{{ deposit.calculation.pct_pay_at_end ? 'В конце срока' : '' }}-->
+</div>
+<div class="text__sm text__gray">Выплата процентов</div>
+</div>
+</div>
+<div class="row">
+<div class="col col-3">
+<div class="text__bold">{{ formatMoney(deposit.calculation.profit_pct) }} %</div>
+<div class="text__sm text__gray">Доходность</div>
+</div>
+<div class="col col-4">
+<div class="text__bold">{{ formatMoney(deposit.calculation.profit_sum + deposit.calculation.sum, false) }} руб.</div>
+<div class="text__sm text__gray">Сумма в конце срока</div>
+</div>
+<div class="col col-3">
+<div class="text__bold">{{ formatMoney(deposit.calculation.profit_sum, false) }} руб.</div>
+<div class="text__sm text__gray">Доход по вкладу</div>
+</div>
+</div>
+<div class="mt-4 mb-6">
+<a v-if="deposit.pdf_file_path" :href="deposit.pdf_file_path" class="btn btn__blue d-inline-block">Условия</a>
+<a v-if="deposit.link" :href="deposit.link" class="btn btn__blue d-inline-block mx-4">Открыть</a>
+</div>
+<hr v-if="i<respectiveDeposites.length-1" size="1" color="#cccccc" class="ma-0" />
+</div>
+</div>
+</template>
+</transition-group>
+</transition>
+<transition name="fade">
+<div v-if="'ALL' == state.mode">
+<template v-for="(deposit, i) in allDeposites">
+<div class="row mb-6">
+<div class="col col-3 pr-2">
+<img v-if="deposit.img_file_path" :src="deposit.img_file_path" style="max-width: 100%; max-height: 200px;"/>
+</div>
+<div class="col col-9">
+<div class="text__lg text__bold">{{ deposit.name }}</div>
+<div class="text__gray mb-2">{{ deposit.annotation }}</div>
+<div class="d-flex mb-2">
+<div>
+<div class="text__bold">От {{ formatMoney(deposit.min_sum, false) }}&nbsp;руб.</div>
+<div class="text__sm text__gray">Сумма</div>
+</div>
+<div class="pl-4">
+<div class="text__bold">От {{ deposit.min_term }}&nbsp;дн.</div>
+<div class="text__sm text__gray">Срок</div>
+</div>
+<div class="pl-4">
+<div class="text__bold">{{ deposit.has_replenish ? 'Да' : 'Нет' }}</div>
+<div class="text__sm text__gray">Пополнение</div>
+</div>
+<div class="pl-4">
+<div class="text__bold">{{ deposit.has_withdraw ? 'Да' : 'Нет' }}</div>
+<div class="text__sm text__gray">Снятие</div>
+</div>
+</div>
+<div class="d-flex">
+<div>
+<div class="text__bold">До {{ formatMoney(deposit.max_rate) }} %</div>
+<div class="text__sm text__gray">Доходность</div>
+</div>
+<div class="pl-4">
+<div class="text__bold">
+{{ deposit.pct_pay_at_month ? 'Ежемесячно' : '' }}
+{{ deposit.pct_pay_at_month && deposit.pct_pay_at_end ? '/' : '' }}
+{{ deposit.pct_pay_at_end ? 'В конце срока' : '' }}
+</div>
+<div class="text__sm text__gray">Выплата процентов</div>
+</div>
+</div>
+<div class="mt-4 mb-6">
+<a v-if="deposit.pdf_file_path" :href="deposit.pdf_file_path" class="btn btn__blue d-inline-block">Условия</a>
+<a v-if="deposit.link" :href="deposit.link" class="btn btn__blue d-inline-block mx-4">Открыть</a>
+</div>
+<hr v-if="i<allDeposites.length-1" size="1" color="#cccccc" class="ma-0" />
+</div>
+</div>
+</template>
+</div>
+</transition>
+</div>
+</div>
+
+<script>
+const { createApp, reactive, onBeforeMount, watch, computed } = Vue
+
+createApp({
+setup() {
+const state = reactive({
+mode: 'CALC',
+input: {
+sum: 300000,
+term: 31,
+pct_pay: 'at_end',
+replenish: !!'', // С пополнением
+withdraw: !!'', // С частичным снятием
+salary_card: !!'',
+retiree: !!'',
+loading: true,
+},
+terms: {"31":"1 мес.","91":"3 мес.","181":"6 мес.","276":"9 мес.","367":"1 год","550":"1,5 года","730":"2 года","1095":"3 года"},
+deposit_min_sum: 10000,
+exclude_terms: [366],
+deposit_default_sum: 300000,
+deposit_default_term: 31,
+deposit_default_pct_pay: 'at_end',
+deposit_default_replenish: !!'',
+deposit_default_withdraw: !!'',
+deposit_default_salary_card: !!'',
+deposit_default_retiree: !!'',
+note: 'Расчет калькулятора предварительный и носит информационный характер. По вкладу «ЦМР Резерв» (вклад с переменной процентной ставкой) в расчете указывается начальная процентная ставка и доходность, рассчитанная исходя из начальной процентной ставки.',
+deposites: {"21":{"id":"21","name":"Вклад \"Доход на максимум\"","type":"deposit","is_active":"1","max_term":0,"max_sum":500000,"link":"https:\/\/online.cmrbank.ru\/auth\/login","dscr":"","annotation":"Вклад с максимальной доходностью","rates":{"85":{"replenish":null,"withdraw":null,"salary_card":false,"pct_at_month":{"salary_card_disable":[null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,12.9,12.7,11.2,10.1,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,7.5,5.6,4.6],"salary_card_on":{"139":12.4,"140":14.5,"141":13,"142":12,"143":8.5,"144":8,"145":8},"salary_card_off":{"139":12.2,"140":14.3,"141":12.8,"142":11.8,"143":8.3,"144":7.8,"145":7.8}},"pct_at_and":{"salary_card_disable":[null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,12.5,13.1,13.1,11.7,10.7,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,8,6,5],"salary_card_on":{"139":12.5,"140":14.95,"141":13.4,"142":12.55,"143":8.9,"144":8.7,"145":9.1},"salary_card_off":{"139":12.3,"140":14.75,"141":13.2,"142":12.35,"143":8.7,"144":8.5,"145":8.9}}}},"terms":{"141":181,"163":730,"164":1095,"139":31,"162":550,"142":276,"143":367,"140":91},"sums":{"85":10000},"pdf_file":"21.pdf","pdf_file_path":"\/files\/deposit\/cmr_rus\/21.pdf","img_file":"21.jpg","img_file_path":"\/files\/deposit\/cmr_rus\/21.jpg"},"32":{"id":"32","name":"Вклад \"Доход на максимум\" для пенсионеров","type":"deposit","is_active":"1","max_term":0,"max_sum":0,"link":"https:\/\/online.cmrbank.ru\/auth\/login","dscr":"","annotation":"Вклад для клиентов, получающих пенсию на счет в ЦМРБанке","rates":{"101":{"replenish":null,"withdraw":null,"salary_card":null,"pct_at_month":{"salary_card_disable":{"185":13.6,"186":13.2,"187":11.7,"188":10.6,"189":8,"190":6.1,"191":5.1},"salary_card_on":[],"salary_card_off":[]},"pct_at_and":{"salary_card_disable":{"184":12.5,"185":13.8,"186":13.6,"187":12.2,"188":11.2,"189":8.5,"190":6.5,"191":5.5},"salary_card_on":[],"salary_card_off":[]}}},"terms":{"191":1095,"190":730,"189":550,"188":367,"187":276,"186":181,"185":91,"184":31},"sums":{"101":10000},"pdf_file":"32.pdf","pdf_file_path":"\/files\/deposit\/cmr_rus\/32.pdf","img_file":"32.jpg","img_file_path":"\/files\/deposit\/cmr_rus\/32.jpg"},"30":{"id":"30","name":"Вклад \"Доход на максимум+\"","type":"deposit","is_active":"1","max_term":0,"max_sum":0,"link":"https:\/\/online.cmrbank.ru\/auth\/login","dscr":"","annotation":"Вклад с повышенной ставкой для клиентов, размещающих «новые деньги»","rates":{"97":{"replenish":null,"withdraw":null,"salary_card":null,"pct_at_month":{"salary_card_disable":{"171":"","172":13.6,"173":13.3,"174":11.7,"175":10.6,"176":8,"177":6.1,"178":5.1},"salary_card_on":[],"salary_card_off":[]},"pct_at_and":{"salary_card_disable":{"171":12.7,"172":13.9,"173":13.7,"174":12.2,"175":11.2,"176":8.5,"177":6.5,"178":5.5},"salary_card_on":[],"salary_card_off":[]}}},"terms":{"178":1095,"177":730,"176":550,"175":367,"174":276,"173":181,"172":91,"171":31},"sums":{"97":50000},"pdf_file":"30.pdf","pdf_file_path":"\/files\/deposit\/cmr_rus\/30.pdf","img_file":"30.jpg","img_file_path":"\/files\/deposit\/cmr_rus\/30.jpg"},"34":{"id":"34","name":"Вклад \"ЦМР Резерв\"","type":"deposit","is_active":"1","max_term":0,"max_sum":0,"link":"https:\/\/online.cmrbank.ru\/auth\/login","dscr":"","annotation":"Уникальное сочетание: справедливая процентная ставка, привязанная к ключевой ставке, и возможность управления средствами.","rates":{"105":{"replenish":true,"withdraw":true,"salary_card":null,"pct_at_month":{"salary_card_disable":{"196":12,"197":12.4,"198":12.5,"199":12.6},"salary_card_on":[],"salary_card_off":[]},"pct_at_and":{"salary_card_disable":[],"salary_card_on":[],"salary_card_off":[]}},"106":{"replenish":true,"withdraw":true,"salary_card":null,"pct_at_month":{"salary_card_disable":{"196":12.2,"197":12.6,"198":12.7,"199":12.8},"salary_card_on":[],"salary_card_off":[]},"pct_at_and":{"salary_card_disable":[],"salary_card_on":[],"salary_card_off":[]}},"107":{"replenish":true,"withdraw":true,"salary_card":null,"pct_at_month":{"salary_card_disable":{"196":12.5,"197":12.9,"198":13,"199":13.1},"salary_card_on":[],"salary_card_off":[]},"pct_at_and":{"salary_card_disable":[],"salary_card_on":[],"salary_card_off":[]}}},"terms":{"199":550,"198":367,"197":181,"196":91},"sums":{"107":5000000,"106":1000000,"105":100000},"pdf_file":"34.pdf","pdf_file_path":"\/files\/deposit\/cmr_rus\/34.pdf","img_file":"34.jpg","img_file_path":"\/files\/deposit\/cmr_rus\/34.jpg"},"35":{"id":"35","name":"Вклад \"ЦМР Старт\"","type":"deposit","is_active":"1","max_term":31,"max_sum":500000,"link":"","dscr":"","annotation":"Повышенная ставка для новых клиентов при оформлении банковской карты ЦМРБанк (ООО)","rates":{"108":{"replenish":null,"withdraw":null,"salary_card":null,"pct_at_month":{"salary_card_disable":[],"salary_card_on":[],"salary_card_off":[]},"pct_at_and":{"salary_card_disable":{"200":15,"201":15,"202":15},"salary_card_on":[],"salary_card_off":[]}}},"terms":{"202":31},"sums":{"108":30000},"pdf_file":"35.pdf","pdf_file_path":"\/files\/deposit\/cmr_rus\/35.pdf","img_file":"35.jpg","img_file_path":"\/files\/deposit\/cmr_rus\/35.jpg"}},
+hide_params: {"at_end":false,"at_month_deposit":false,"at_month_account":false,"replenish":false,"withdraw":false,"salary_card":true,"retiree":true},
+})
+
+const respectiveDeposites = computed(() => {
+return Object.values(state.deposites).filter(deposit => !deposit.calculation.disabled).sort((a,b) => b.calculation.rate - a.calculation.rate)
+})
+
+const allDeposites = computed(() => {
+return Object.values(state.deposites).sort((a,b) => b.max_rate - a.max_rate)
+})
+
+watch(
+() => state.input.term,
+term => state.exclude_terms.includes(term) && (--state.input.term)
+)
+
+watch(
+() => state.input,
+input => {
+for (const id in state.deposites) {
+state.deposites[id].calculation = calculate(state.deposites[id])
+}
+},
+{ deep: true, immediate: true }
+)
+
+onBeforeMount(() => {
+for (const id in state.deposites) {
+if (!state.deposites[id].max_term) {
+state.deposites[id].is_fixed_term = true
+state.deposites[id].max_term = Math.max(...Object.values(state.deposites[id].terms))
+} else {
+state.deposites[id].is_fixed_term = false
+}
+state.deposites[id].min_term = Math.min(...Object.values(state.deposites[id].terms))
+state.deposites[id].min_sum = Math.min(...Object.values(state.deposites[id].sums))
+//state.deposites[id].max_sum = Math.max(...Object.values(state.deposites[id].sums))
+state.deposites[id].calculation = { disabled: true }
+state.deposites[id].max_rate = 0
+state.deposites[id].has_replenish = false
+state.deposites[id].max_withdraw = false
+state.deposites[id].pct_pay_at_month = false
+state.deposites[id].pct_pay_at_end = false
+for (const rates of Object.values(state.deposites[id].rates)) {
+if (rates.replenish) {
+state.deposites[id].has_replenish = true
+}
+if (rates.withdraw) {
+state.deposites[id].has_withdraw = true
+}
+if (rates.salary_card) {
+state.deposites[id].max_rate = Math.max(state.deposites[id].max_rate, ...Object.values(rates.pct_at_and.salary_card_off))
+state.deposites[id].max_rate = Math.max(state.deposites[id].max_rate, ...Object.values(rates.pct_at_and.salary_card_on))
+state.deposites[id].max_rate = Math.max(state.deposites[id].max_rate, ...Object.values(rates.pct_at_month.salary_card_off))
+state.deposites[id].max_rate = Math.max(state.deposites[id].max_rate, ...Object.values(rates.pct_at_month.salary_card_on))
+
+state.deposites[id].pct_pay_at_month = !!Object.values(rates.pct_at_month.salary_card_off).filter(item => item>0)?.length
+|| !!Object.values(rates.pct_at_month.salary_card_on).filter(item => item>0)?.length
+state.deposites[id].pct_pay_at_end = !!Object.values(rates.pct_at_and.salary_card_off).filter(item => item>0)?.length
+|| Object.values(rates.pct_at_and.salary_card_on).filter(item => item>0)?.length
+} else {
+state.deposites[id].max_rate = Math.max(state.deposites[id].max_rate, ...Object.values(rates.pct_at_and.salary_card_disable))
+state.deposites[id].max_rate = Math.max(state.deposites[id].max_rate, ...Object.values(rates.pct_at_month.salary_card_disable))
+
+state.deposites[id].pct_pay_at_month = !!Object.values(rates.pct_at_month.salary_card_disable).filter(item => item>0)?.length
+state.deposites[id].pct_pay_at_end = !!Object.values(rates.pct_at_and.salary_card_disable).filter(item => item>0)?.length
+}
+/*if ( !!Object.values(rates.pct_at_month.salary_card_off).filter(item => item>0)?.length
+|| !!Object.values(rates.pct_at_month.salary_card_on).filter(item => item>0)?.length
+|| !!Object.values(rates.pct_at_month.salary_card_disable).filter(item => item>0)?.length
+) {
+state.deposites[id].pct_pay_at_month = true
+}
+if ( !!Object.values(rates.pct_at_and.salary_card_off).filter(item => item>0)?.length
+|| !!Object.values(rates.pct_at_and.salary_card_on).filter(item => item>0)?.length
+|| !!Object.values(rates.pct_at_and.salary_card_disable).filter(item => item>0)?.length
+) {
+state.deposites[id].pct_at_and = true
+}*/
+
+}
+}
+state.input.loading = false
+})
+
+const onChangeTerm = debounce(() => {
+const max_term = Math.max( ...Object.values(state.deposites)//.filter(deposit => !deposit.calculation.disabled)
+.map(deposit => deposit.max_term))
+const min_term = Math.min( ...Object.values(state.deposites)//.filter(deposit => !deposit.calculation.disabled)
+.map(deposit => deposit.min_term))
+if (state.input.term > max_term) state.input.term = max_term
+if (state.input.term < min_term) state.input.term = min_term
+}, 1000)
+
+function calculate(deposit) {
+const ret = {
+sum: state.input.sum,
+term: state.input.term,
+rate: 0,
+profit_sum: 0,
+profit_pct: 0,
+replenish: false,
+withdraw: false,
+capitalization: 'at_month_deposit' == state.input.pct_pay,
+disabled: true,
+sum_id: false,
+term_id: false,
+pct_pay_at_month: false,
+pct_pay_at_end: false,
+}
+//if (ret.sum < deposit.min_sum) ret.sum = deposit.min_sum
+//if (ret.sum > deposit.max_sum) ret.sum = deposit.max_sum
+//if (ret.term < deposit.min_term) ret.term = deposit.min_term
+//if (ret.term > deposit.max_term) ret.term = deposit.max_term
+let sum_id, term_id, prev_term_id;
+if (ret.term >= deposit.min_term && ret.term <= deposit.max_term) {
+for (const key in deposit.sums) {
+if (ret.sum>=deposit.sums[key]) sum_id = key
+}
+for (const key in deposit.terms) {
+if (deposit.is_fixed_term) {
+if (ret.term == deposit.terms[key]) {
+term_id = key
+} else if (ret.term < deposit.terms[key] && !term_id && prev_term_id) {
+term_id = prev_term_id
+ret.term = deposit.terms[term_id]
+}
+} else {
+if (ret.term>=deposit.terms[key]) term_id = key
+}
+prev_term_id = key
+}
+}
+if (sum_id && term_id) {
+ret.sum_id = sum_id
+ret.term_id = term_id
+ret.replenish = deposit.rates[sum_id].replenish
+ret.withdraw = deposit.rates[sum_id].withdraw
+if ( (state.input.replenish && !deposit.rates[sum_id].replenish)
+|| (state.input.withdraw && !deposit.rates[sum_id].withdraw)
+) {
+ret.disabled = true
+} else {
+ret.disabled = false
+let pct_pay = 'pct_at_month'
+if ('at_end' == state.input.pct_pay ) {
+pct_pay = 'pct_at_and'
+}
+ret.pct_pay = pct_pay
+
+if (state.input.salary_card || state.input.retiree) {
+if (deposit.rates[sum_id].salary_card) {
+ret.rate = deposit.rates[sum_id][pct_pay].salary_card_on[term_id]
+ret.pct_pay_at_month = deposit.rates[sum_id].pct_at_month?.salary_card_on[term_id]>0
+ret.pct_pay_at_end = deposit.rates[sum_id].pct_at_and?.salary_card_on[term_id]>0
+} else {
+ret.rate = deposit.rates[sum_id][pct_pay].salary_card_disable[term_id]
+ret.pct_pay_at_month = deposit.rates[sum_id].pct_at_month?.salary_card_disable[term_id]>0
+ret.pct_pay_at_end = deposit.rates[sum_id].pct_at_and?.salary_card_disable[term_id]>0
+}
+} else {
+if (!deposit.rates[sum_id].salary_card) {
+ret.rate = deposit.rates[sum_id][pct_pay].salary_card_disable[term_id]
+ret.pct_pay_at_month = deposit.rates[sum_id].pct_at_month?.salary_card_disable[term_id]>0
+ret.pct_pay_at_end = deposit.rates[sum_id].pct_at_and?.salary_card_disable[term_id]>0
+} else {
+ret.rate = deposit.rates[sum_id][pct_pay].salary_card_off[term_id]
+ret.pct_pay_at_month = deposit.rates[sum_id].pct_at_month?.salary_card_off[term_id]>0
+ret.pct_pay_at_end = deposit.rates[sum_id].pct_at_and?.salary_card_off[term_id]>0
+}
+}
+if (ret.rate>0) {
+const res = calcProfit(ret.sum, ret.term, ret.rate, ret.capitalization)
+ret.profit_sum = res.profit_sum
+ret.profit_pct = res.profit_pct
+} else {
+ret.disabled = true
+}
+}
+}
+
+return ret
+}
+
+function calcProfit(sum, term, rate, capitalization) {
+let date = moment('2024-02-20')
+let profit = 0,
+total_days = 0,
+month_days = 0,
+d1 = 0,
+d2 = 0,
+_sum = sum,
+calc_day = date.get('date'),
+last_month_profit = 0;
+for (let i=0; i<term; i++) {
+total_days++
+month_days++
+date.add(1, 'days')
+let y4 = 0 == (date.get('year') % 4)
+let month_profit = 0, last_month_year = date.clone().endOf('year');
+if (calc_day == date.get('date') || date.isSame(last_month_year, 'day') || (total_days == term)) {
+if (capitalization) {
+month_profit = Math.round(_sum/100*rate/(y4 ? 366 : 365)*month_days * 100)/100
+profit += month_profit
+if (date.isSame(last_month_year, 'day')) {
+last_month_profit = month_profit
+} else {
+_sum += month_profit
+if (last_month_profit) {
+_sum += last_month_profit
+last_month_profit = 0
+}
+}
+} else {
+month_profit = Math.round(_sum/100*rate/(y4 ? 366 : 365)*month_days * 100)/100
+profit += month_profit
+}
+month_days = 0
+}
+y4 ? d2++ : d1++;
+}
+return {
+profit_sum: profit,
+profit_pct: capitalization ? profit/sum*((365*d1 + 366*d2)/(d1+d2))/term*100 : rate,
+}
+}
+
+function isNumber (evt) {
+!['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '.'].includes(evt.key) && evt.preventDefault()
+}
+
+function formatMoney(sum, show_decimal = true) {
+return new Intl.NumberFormat('ru-RU', {
+//style: 'currency',
+//currency: 'RUB',
+minimumFractionDigits: show_decimal ? 2 : 0,
+maximumFractionDigits: show_decimal ? 2 : 0,
+
+}).format(sum);
+}
+
+return {
+state,
+respectiveDeposites,
+allDeposites,
+isNumber,
+formatMoney,
+onChangeTerm,
+}
+}
+}).mount('#app')
+</script>
+<script>
+
+function get_browser() {
+var ua = navigator.userAgent, tem, M = ua.match(/(opera|chrome|safari|firefox|msie|trident(?=\/))\/?\s*(\d+)/i) || [];
+if (/trident/i.test(M[1])) {
+tem = /\brv[ :]+(\d+)/g.exec(ua) || [];
+return { name: 'IE', version: (tem[1] || '') };
+}
+if (M[1] === 'Chrome') {
+tem = ua.match(/\bOPR\/(\d+)/)
+if (tem != null) { return { name: 'Opera', version: tem[1] }; }
+}
+if (window.navigator.userAgent.indexOf("Edge") > -1) {
+tem = ua.match(/\Edge\/(\d+)/)
+if (tem != null) { return { name: 'Edge', version: tem[1] }; }
+}
+M = M[2] ? [M[1], M[2]] : [navigator.appName, navigator.appVersion, '-?'];
+if ((tem = ua.match(/version\/(\d+)/i)) != null) { M.splice(1, 1, tem[1]); }
+return {
+name: M[0],
+version: +M[1]
+};
+}
+
+function is_supported(browser) {
+let supported = true;
+if ((browser.name === "MSIE" || browser.name === "IE") && browser.version <= 11) {
+supported = false;
+}
+return supported;
+/*var supported = false;
+if (browser.name === "Chrome" && browser.version >= 48) {
+supported = true;
+} else if ((browser.name === "MSIE" || browser.name === "IE") && browser.version <= 11) {
+supported = false;
+} else if (browser.name === "Edge") {
+supported = true;
+} else if (browser.name === "Opera" && browser.version >= 38) {
+supported = true;
+}
+return supported;*/
+}
+
+(function () {
+//alert(typeof Object['__defineSetter__'] === 'function')
+if (!is_supported(get_browser())) {
+var s = document.getElementById('vueNotSupport').style;
+s.display = 'block';
+s.setAttribute('display-decoration', 'block');
+}
+})()
+</script>
+
+<h2>Документы</h2>
+<!--
+<p><a href="/docs/download/60/917/"><strong>Условия привлечения и пролонгации срочного банковского вклада<br />«Доход на максимум» (вступают в действие с 24.08.2026) –<br /> для новых и пролонгируемых вкладов</strong></a></p>
+<p><a href="/docs/download/60/916/"><strong>Условия привлечения и пролонгации срочного банковского вклада<br />«Доход на максимум+» (вступают в действие с 24.08.2026)–<br /> для новых и пролонгируемых вкладов</strong></a></p>
+<p><a href="/docs/download/60/738/"><strong>Условия привлечения и пролонгации срочного банковского вклада<br /> «Комфортный» (вступают в действие с 05.11.2025) –<br />для новых вкладов и пролонгируемых вкладов</strong></a></p>
+<p><a href="/docs/download/60/722/"><strong>Условия привлечения и пролонгации срочного банковского вклада<br /> «Ключевой» (вступают в действие с 30.10.2025) –<br />для новых вкладов</strong></a></p>
+<p><a href="/docs/download/60/626/"><strong>Условия привлечения и пролонгации срочного банковского вклада<br />«Доход на максимум+» (вступают в действие с 05.08.2025) –<br />для новых вкладов</strong></a></p>
+<p><a href="/docs/download/60/627/"><strong>Условия привлечения и пролонгации срочного банковского вклада<br />«Доход на максимум» (вступают в действие с 18.08.2025) –<br /> для новых и пролонгируемых вкладов</strong></a></p>
+<p><a href="/docs/download/60/613/"><strong>Условия привлечения и пролонгации срочного банковского вклада<br />«Доход на максимум+» (вступают в действие с 28.07.2025)<br />– для новых 
+и пролонгируемых вкладов</strong></a></p>
+<p><a href="/docs/download/60/614/"><strong>Условия привлечения и пролонгации срочного банковского вклада<br />«Доход на максимум» (вступают в действие с 28.07.2025)<br />– для новых и пролонгируемых вкладов</strong></a></p>
+<p><a href="/docs/download/60/615/"><strong>Условия привлечения и пролонгации срочного банковского вклада «Комфортный» (вступают в действие с 28.07.2025)<br />– для новых и пролонгируемых вкладов</strong></a></p>
+<p><a href="/docs/download/60/502/"><strong>Условия привлечения и пролонгации срочного банковского вклада Новогодний процент (вступают в действие с 02.12.2024)</strong></a></p>
+<p><a href="/docs/download/60/948/"><strong>Условия размещения физическими лицами банковских вкладов в ЦМРБанк (ООО)<br />(вступают в действие с 24.08.2026)</strong></a></p>
+-->
+<p><a href="/docs/download/60/646/"><strong>Условия размещения физическими лицами банковских вкладов в ЦМРБанк (ООО)</strong></a></p>
+<p><a href="/docs/download/60/950/"><strong>Условия привлечения срочного банковского вклада &laquo;ЦМР Онлайн&raquo;<br />(на финансовой платформе АО &laquo;Банки.ру Маркетплейс&raquo;)</strong></a></p>
+<p><a href="/docs/download/60/478/"><strong>Минимальные гарантированные ставки по вкладам с 28.09.2026</strong></a></p>
+
+
+
+
+
+
+</div>
+<div class="cl"></div>
+</div>
+
+
+
+<div class="buffer"></div>
+</div>
+<div class="footer">
+<div class="footer_inner">
+
+<div class="footer_inner_left">
+<div class="copyright">
+&copy; 2026 ЦМРБанк (ООО)<br> Универсальная лицензия Банка России №3531 от 17 ноября 2022 г.
+</div>
+
+<div class="footer_inner_info">
+<p><a href="/about/disclosure/">Раскрытие информации</a></p>
+<p><a href="/about/insider-information/">Перечень инсайдерской информации</a></p>
+<p><a href="/about/disclosure-regulatory-purposes/">Информация о процентных ставках по договорам банковского вклада с физическими лицами</a></p>
+</div>
+
+
+</div>
+<div class="footer_inner_center">
+<div class="footer_address">
+<span>Головной офис ЦМРБанк (ООО):</span><br>
+127055, г. Москва, ул. Палиха, 10, стр.7 <br>
+<b>Контактный центр:</b> <a href="tel:88002500922">8 (800) 25-00-922 </a>, <a href="tel:88002344300">8 (800) 23-44-300 </a><!--<a href="tel:88002344300">8-800-234-43-00</a>--> <br>
+<b>E-mail для обращений</b>: <a href="mailto:cmr@cmrbank.ru">cmr@cmrbank.ru</a><br>
+E-mail: <a href="mailto:CallCenter@cmrbank.ru">CallCenter@cmrbank.ru</a><br>
+E-mail пресс-службы:  <a href="mailto:press@cmrbank.ru">press@cmrbank.ru</a><br>
+Техническая поддержка сайта:  <a href="mailto:web@cmrbank.ru">web@cmrbank.ru</a><br>
+
+</div>
+<div class="footer_inner_info">
+<p><a href="/about/activity-securities-market/">Раскрытие информации профессиональным участником рынка ценных бумаг</a></p>
+</div>
+
+
+
+</div>
+<div class="footer_inner_right">
+<p><a href="/about/safety/">Безопасность</a></p>
+<p> </p>
+<a href="#" class="bvi-open" style="margin-top: 1rem;">
+<div style="display: flex;">
+<svg version="1.1" id="Capa_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px" width="30px" height="18px" viewBox="0 0 456.795 456.795" style="fill:#ffffff; enable-background:new 0 0 456.795 456.795;" xml:space="preserve">
+<g>
+<g>
+<path d="M448.947,218.475c-0.922-1.168-23.055-28.933-61-56.81c-50.705-37.253-105.877-56.944-159.551-56.944
+c-53.672,0-108.844,19.691-159.551,56.944c-37.944,27.876-60.077,55.642-61,56.81L0,228.397l7.846,9.923
+c0.923,1.168,23.056,28.934,61,56.811c50.707,37.252,105.879,56.943,159.551,56.943c53.673,0,108.845-19.691,159.55-56.943
+c37.945-27.877,60.078-55.643,61-56.811l7.848-9.923L448.947,218.475z M228.396,315.039c-47.774,0-86.642-38.867-86.642-86.642
+c0-7.485,0.954-14.751,2.747-21.684l-19.781-3.329c-1.938,8.025-2.966,16.401-2.966,25.013c0,30.86,13.182,58.696,34.204,78.187
+c-27.061-9.996-50.072-24.023-67.439-36.709c-21.516-15.715-37.641-31.609-46.834-41.478c9.197-9.872,25.32-25.764,46.834-41.478
+c17.367-12.686,40.379-26.713,67.439-36.71l13.27,14.958c15.498-14.512,36.312-23.412,59.168-23.412
+c47.774,0,86.641,38.867,86.641,86.642C315.037,276.172,276.17,315.039,228.396,315.039z M368.273,269.875
+c-17.369,12.686-40.379,26.713-67.439,36.709c21.021-19.49,34.203-47.326,34.203-78.188s-13.182-58.697-34.203-78.188
+c27.061,9.997,50.07,24.024,67.439,36.71c21.516,15.715,37.641,31.609,46.834,41.477
+C405.91,238.269,389.787,254.162,368.273,269.875z"/>
+<path d="M173.261,211.555c-1.626,5.329-2.507,10.982-2.507,16.843c0,31.834,25.807,57.642,57.642,57.642
+c31.834,0,57.641-25.807,57.641-57.642s-25.807-57.642-57.641-57.642c-15.506,0-29.571,6.134-39.932,16.094l28.432,32.048
+L173.261,211.555z"/>
+</g>
+</g>
+</svg>
+Версия для слабовидящих
+</div>
+</a>
+<p> </p>
+<div class="searchform">
+<form name="search" action="/search/" method="get">
+<input type="text" id="txtSerch" data-role="none" name="query" placeholder="Поиск по сайту" value="" class="inputsearch">
+<button type="submit" data-role="none" onclick="document.search.submit(); return false;">Найти</button>
+<input type="hidden" value="search" name="link">
+<input type="hidden" value="rus" name="lang">
+</form>
+<script>
+$('input[placeholder], textarea[placeholder]').placeholder();
+</script>
+</div>
+</div>
+<div class="cl"></div>
+</div>
+</div>
+<div id="cookie_notification" class="cookie-container">
+<div class="cookie-container__inner">
+<p class="cookie-text">
+ЦМРБанк (ООО) обрабатывает Ваши cookie файлы, с целью настройки персонализации сервисов и повышения удобства пользования веб-сайта Банка. Если Вы хотите запретить обработку сookie, отключите сookie в настройках вашего браузера.<br />Оставаясь на нашем сайте, Вы соглашаетесь с <a href="https://www.cmrbank.ru/about/disclosure/personal-data/">Правилами использования cookie</a>.
+</p>
+<button class="btn btn__blue cookie-button" onclick="onClickCookieAllowed()">Согласен</button>
+</div>
+</div>
+<script>
+async function onClickCookieAllowed() {
+const res = await (await fetch('/?xhr=1&module=pages&action=set_cookie_allowed&timezone='+Intl.DateTimeFormat().resolvedOptions().timeZone)).json()
+if (res.hash) {
+document.cookie = 'cookie_allowed='+res.hash+'; expires=Fri, 31 Dec 2099 23:59:59 GMT; path=/;';
+document.getElementById('cookie_notification').remove();
+}
+}
+</script>
+<style>
+.cookie-container {
+position: fixed;
+display: flex;
+justify-content: center;
+align-items: flex-end;
+left: 0;
+bottom: 40px;
+width: 100%;
+z-index: 500000;
+}
+
+.cookie-container__inner {
+display: flex;
+justify-content: space-between;
+align-items: center;
+background: #ffffff;
+border: 1px solid #3ab0ff;
+border-radius: 5px;
+padding: 1rem;
+width: 100%;
+max-width: 980px;
+flex-wrap: wrap;
+
+-webkit-animation: cookieFadeIn 2s;
+animation: cookieFadeIn 2s;
+}
+.cookie-text { font-size: .9em; padding: 0 1rem 0 0; margin: 0; }
+
+.cookie-button { font-size: 1.1em; width: 185px;}
+
+@media  screen and (min-width: 480px) {
+.cookie-container {
+bottom: 40px;
+}
+.cookie-container__inner {
+flex-wrap: nowrap;
+}
+}
+
+@-webkit-keyframes cookieFadeIn {
+from { opacity: 0; }
+to { opacity: 1; }
+}
+@keyframes cookieFadeIn {
+from { opacity: 0; }
+to { opacity: 1; }
+}
+</style>
+<script type="text/javascript" language="JavaScript">
+<!--
+document.write('<img src="/c.php?lang=rus&history='+escape(document.referrer)+'&resolution='+screen.width+'x'+screen.height+'&title='+document.title.replace( /"/g, '&quot;' )+'" width=1 height=1 border=0 alt="" style="position:absolute; top:0px; left:-9999px;">');
+-->
+</script>
+</body>
+</html>
