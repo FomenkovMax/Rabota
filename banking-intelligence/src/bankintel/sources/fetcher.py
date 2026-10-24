@@ -109,14 +109,20 @@ class HttpFetcher:
         def diag(outcome, status=None, error=None):
             return FetchDiagnostic(source.key, source.url, outcome, status, error, _ms(start))
 
-        try:
-            rp = await self._robots_for(source.url)
-            if rp is None or not rp.can_fetch(self._ua, source.url):
-                return None, diag(FetchOutcome.ROBOTS_DISALLOWED, error="robots.txt запрещает или недоступен (5xx)")
-            resp = await self._throttled_get(source.url)
-        except httpx.HTTPError as exc:
-            outcome = FetchOutcome.TLS_ERROR if _is_tls_error(exc) else FetchOutcome.NETWORK_ERROR
-            return None, diag(outcome, error=f"{type(exc).__name__}: {exc}"[:500])
+        resp = None
+        for attempt in (1, 2):  # одна повторная попытка только для сетевых сбоев
+            try:
+                rp = await self._robots_for(source.url)
+                if rp is None or not rp.can_fetch(self._ua, source.url):
+                    return None, diag(FetchOutcome.ROBOTS_DISALLOWED, error="robots.txt запрещает или недоступен (401/403/5xx)")
+                resp = await self._throttled_get(source.url)
+                break
+            except httpx.HTTPError as exc:
+                if _is_tls_error(exc):
+                    return None, diag(FetchOutcome.TLS_ERROR, error=f"{type(exc).__name__}: {exc!r}"[:500])
+                if attempt == 2:
+                    return None, diag(FetchOutcome.NETWORK_ERROR, error=f"{type(exc).__name__}: {exc!r} (попыток: 2)"[:500])
+                await asyncio.sleep(self._min_interval)
 
         body = resp.content
         if len(body) > self._max_bytes:

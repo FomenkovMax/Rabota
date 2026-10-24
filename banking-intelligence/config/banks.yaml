@@ -11,7 +11,7 @@ banks:
   - slug: psb
     name: ПСБ
     website: https://www.psbank.ru
-    adapter: generic
+    adapter: psb
   - slug: vtb
     name: ВТБ
     website: https://www.vtb.ru

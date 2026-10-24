@@ -114,3 +114,19 @@ def test_fetcher_accepts_extra_ca(tmp_path):
 
     ca = Path(__file__).parents[1] / "certs" / "russian_trusted_root_ca.pem"
     HttpFetcher(UA, extra_ca_bundle=ca)  # не падает при загрузке PEM
+
+
+async def test_network_error_retried_once():
+    calls = {"n": 0}
+
+    def handler(req):
+        if req.url.path == "/robots.txt":
+            return httpx.Response(404)
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise httpx.ConnectTimeout("")
+        return httpx.Response(200, content=b"ok", headers={"content-type": "text/html"})
+
+    f = HttpFetcher(UA, min_interval_s=0, transport=httpx.MockTransport(handler))
+    doc, diag = await f.fetch(SRC)
+    assert diag.outcome == FetchOutcome.OK and calls["n"] == 2

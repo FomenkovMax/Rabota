@@ -117,4 +117,6 @@ async def test_refresh_handler_reports_no_active_sources(seeded, tmp_path, monke
 async def test_refresh_handler_collects_active_sources(seeded, tmp_path, monkeypatch):
     text = await _run_refresh(seeded, tmp_path, monkeypatch)  # в конфиге активны ПСБ и ВТБ
     assert "Активных источников нет" not in text
-    assert "ПСБ: <b>ok</b>" in text and "ВТБ: <b>ok</b>" in text
+    # подменный документ не похож на страницу ПСБ -> честный failed, а не «ok без продуктов»
+    assert "ПСБ: <b>failed</b>" in text and "parse_error" in text
+    assert "ВТБ: <b>ok</b>" in text

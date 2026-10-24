@@ -104,8 +104,14 @@ class BankAdapter(ABC):
                 failed += 1
                 result.messages.append(f"{src.key}: {diag.outcome.value} {diag.error or ''}".strip())
                 continue
-            result.documents.append((src, doc))
-            for product in self.parse(src, doc):
+            result.documents.append((src, doc))  # документ сохраняем, даже если разбор не удался
+            try:
+                products = self.parse(src, doc)
+            except Exception as exc:  # вёрстка изменилась и т.п.: фиксируем, не роняем весь сбор
+                failed += 1
+                result.messages.append(f"{src.key}: parse_error {type(exc).__name__}: {exc}"[:500])
+                continue
+            for product in products:
                 result.products.append((src, doc, product))
 
         if failed == len(sources):
