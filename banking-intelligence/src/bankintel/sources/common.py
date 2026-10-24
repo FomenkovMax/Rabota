@@ -57,3 +57,29 @@ def rate_json(text: str) -> dict | None:
     if r is None:
         return None
     return {"min": str(r[0]) if r[0] is not None else None, "max": str(r[1]) if r[1] is not None else None}
+
+
+# Подпись на сайте -> устойчивое имя поля. Это сопоставление подписей, а не трактовка значений.
+CONDITION_LABELS = {
+    "payout": ("выплата процентов",),
+    "topup": ("пополнение",),
+    "withdrawal": ("расходные операции", "снятие"),
+    "early_termination": ("досрочное расторжение", "досрочное закрытие"),
+    "prolongation": ("пролонгация",),
+    "term": ("срок действия", "срок", "срок вклада"),
+    "currency": ("валюта", "валюта вклада", "валюта депозита"),
+    "min_amount": ("минимальная сумма", "минимальная сумма вклада", "сумма"),
+    "max_amount": ("максимальная сумма", "максимальная сумма вклада", "максимальный остаток", "максимальный остаток средств на счете"),
+    "channel": ("открытие", "где открыть"),
+}
+
+
+def index_conditions(rows) -> dict[str, str]:
+    """Первое вхождение каждой известной подписи -> {поле: сырой текст}."""
+    out: dict[str, str] = {}
+    for row in rows:
+        label = row.label.strip().lower()
+        for key, names in CONDITION_LABELS.items():
+            if label in names and key not in out:
+                out[key] = row.value
+    return out

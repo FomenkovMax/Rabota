@@ -17,8 +17,12 @@ async def _seed() -> None:
         await engine.dispose()
 
 
-async def _collect(include_todo: bool) -> None:
+async def _collect(include_todo: bool, with_details: bool = False) -> None:
+    from sqlalchemy import select
+
     from bankintel.collector import collect_all
+    from bankintel.db.models import Bank
+    from bankintel.details import collect_details
     from bankintel.sources.fetcher import build_fetcher
 
     settings = get_settings()
@@ -28,6 +32,11 @@ async def _collect(include_todo: bool) -> None:
         async with make_session_factory(engine)() as session:
             for bank, run in await collect_all(session, fetcher, settings.raw_storage_dir, include_todo=include_todo):
                 print(f"{bank.slug:8} {run.status:16} {run.message or ''}")
+            if with_details:
+                for bank in (await session.scalars(select(Bank).order_by(Bank.id))).all():
+                    if bank.adapter != "generic":
+                        run = await collect_details(session, bank, fetcher, settings.raw_storage_dir)
+                        print(f"{bank.slug:8} details {run.status:9} {run.message or ''}")
     finally:
         await fetcher.aclose()
         await engine.dispose()
@@ -97,7 +106,8 @@ def main() -> None:
     sub = parser.add_subparsers(dest="cmd", required=True)
     sub.add_parser("seed", help="загрузить реестр банков и источников из config/ в БД")
     sub.add_parser("probe", help="проверить доступность корня сайта каждого банка (сохраняет диагностику)")
-    sub.add_parser("refresh", help="собрать данные по активным (подтверждённым) источникам")
+    r = sub.add_parser("refresh", help="собрать данные по активным (подтверждённым) источникам")
+    r.add_argument("--details", action="store_true", help="дополнительно загрузить страницы продуктов и извлечь условия")
     d = sub.add_parser("discover", help="найти кандидатов продуктовых страниц на сайте банка")
     d.add_argument("bank")
     i = sub.add_parser("import-doc", help="внести вручную сохранённую страницу/PDF банка (если сайт недоступен загрузчику)")
@@ -115,7 +125,7 @@ def main() -> None:
     elif args.cmd == "probe":
         asyncio.run(_collect(include_todo=True))
     elif args.cmd == "refresh":
-        asyncio.run(_collect(include_todo=False))
+        asyncio.run(_collect(include_todo=False, with_details=args.details))
     elif args.cmd == "discover":
         asyncio.run(_discover(args.bank))
     elif args.cmd == "import-doc":

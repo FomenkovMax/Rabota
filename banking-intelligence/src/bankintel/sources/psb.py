@@ -14,6 +14,7 @@ from bs4 import BeautifulSoup, Tag
 from bankintel.domain.enums import AvailabilityStatus, ProductCategory
 from bankintel.sources.base import (
     BankAdapter,
+    ConditionRow,
     ExtractedProduct,
     FetchedDocument,
     SourceRef,
@@ -63,6 +64,23 @@ class PsbAdapter(BankAdapter):
                 products.append(product)
         return products
 
+    def parse_detail(self, source: SourceRef, doc: FetchedDocument) -> list[ConditionRow]:
+        """Страница продукта: таблица(ы) `.tariff-block__table`, строки «подпись | значение»."""
+        soup = BeautifulSoup(doc.content, "html.parser")
+        rows = []
+        for tr in soup.select(".tariff-block__table tr"):
+            cells = tr.find_all("td")
+            if len(cells) != 2:
+                continue
+            label = _clean(cells[0])
+            paragraphs = [_clean(p) for p in cells[1].find_all("p")] or [_clean(cells[1])]
+            value = "\n".join(p for p in paragraphs if p)
+            if label and value:
+                rows.append(ConditionRow(label, value))
+        if not rows:
+            raise ParseError(f"{source.key}: на странице продукта нет таблицы условий .tariff-block__table")
+        return rows
+
     def _parse_card(self, card: Tag, source: SourceRef, doc: FetchedDocument, default: ProductCategory):
         title_el = card.select_one(".product-card__title")
         title = _clean(title_el)
@@ -80,6 +98,7 @@ class PsbAdapter(BankAdapter):
             for a in card.select(".product-card__advantage")
         ]
         params: dict = {
+            "kind": "card",
             "page_key": source.key,
             "title": title,
             "product_url": urljoin(doc.url, href) if href else None,

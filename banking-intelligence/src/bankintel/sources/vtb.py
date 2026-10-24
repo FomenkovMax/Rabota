@@ -31,6 +31,10 @@ def _category(title: str, labels: list[str], description: str | None) -> Product
 class VtbAdapter(BankAdapter):
     SOURCE_KEYS = {"deposits"}
 
+    # parse_detail не переопределён намеренно: страницы продуктов ВТБ разнородны (маркетинг,
+    # ступенчатые ставки и условия в одной вёрстке, проверено на 12 страницах 24.10.2026),
+    # надёжно правилами не разбираются. Условия извлекаются на этапе 3 (AI + проверка цитат).
+
     def parse(self, source: SourceRef, doc: FetchedDocument) -> list[ExtractedProduct]:
         if source.key not in self.SOURCE_KEYS:
             return []
@@ -78,6 +82,7 @@ class VtbAdapter(BankAdapter):
 
         labels = [a["label"].lower() for a in advantages]
         params: dict = {
+            "kind": "card",
             "page_key": source.key,
             "title": title,
             "product_url": urljoin(doc.url, href) if href else None,

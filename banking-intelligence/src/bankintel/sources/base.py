@@ -58,6 +58,14 @@ class ExtractedProduct:
     lnr_quote: str | None = None
 
 
+@dataclass(frozen=True)
+class ConditionRow:
+    """Строка условий со страницы продукта: подпись и значение ДОСЛОВНО, без интерпретации."""
+
+    label: str
+    value: str
+
+
 @dataclass
 class CollectionResult:
     bank_slug: str
@@ -84,6 +92,10 @@ class BankAdapter(ABC):
     @abstractmethod
     def parse(self, source: SourceRef, doc: FetchedDocument) -> list[ExtractedProduct]:
         """Разбор одного документа. Не должен выдумывать значения: нет данных — нет поля."""
+
+    def parse_detail(self, source: SourceRef, doc: FetchedDocument) -> list[ConditionRow]:
+        """Условия со страницы отдельного продукта. По умолчанию — не умеем (пустой список)."""
+        return []
 
     async def collect(self, sources: list[SourceRef]) -> CollectionResult:
         """Шаблонный метод: загрузка -> разбор -> итоговый статус полноты."""
