@@ -22,7 +22,9 @@ def test_real_config_has_no_unverified_claims():
     """Этап 1: ничего не подтверждено человеком, и конфиг не должен делать вид, что это не так."""
     cfg = load_config(get_settings().config_dir)
     assert not any(b.domain_verified or b.lnr_presence_verified for b in cfg.banks)
-    assert all(s.status == "todo" for s in cfg.sources)
+    active = {(s.bank, s.key) for s in cfg.sources if s.status == "active"}
+    assert active == {("psb", "deposits"), ("psb", "savings_accounts"), ("psb", "savings_offers"), ("vtb", "deposits")}
+    assert all(s.notes and "Подтверждено" in s.notes for s in cfg.sources if s.status == "active")
 
 
 def test_foreign_domain_source_rejected():
@@ -67,7 +69,7 @@ async def test_sync_is_idempotent(session_factory):
         second = await sync_registry(s, cfg)
         assert first["banks_created"] == 5 and second["banks_created"] == 0
         assert len((await s.scalars(select(Bank))).all()) == 5
-        assert len((await s.scalars(select(Source))).all()) == 5
+        assert len((await s.scalars(select(Source))).all()) == 9
 
 
 async def test_sync_keeps_manual_verification(session_factory):

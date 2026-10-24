@@ -87,15 +87,34 @@ async def test_failure_keeps_diagnostics(seeded, tmp_path):
         assert "tls_error" in text
 
 
-async def test_refresh_handler_reports_no_active_sources(seeded, tmp_path, monkeypatch):
+class _Closable(FakeFetcher):
+    async def aclose(self):
+        pass
+
+
+async def _run_refresh(seeded, tmp_path, monkeypatch):
     from unittest.mock import AsyncMock
 
-    monkeypatch.setenv("RAW_STORAGE_DIR", str(tmp_path))
     from bankintel.config import get_settings
 
+    monkeypatch.setenv("RAW_STORAGE_DIR", str(tmp_path))
+    monkeypatch.setattr(handlers, "build_fetcher", lambda settings: _Closable())
     get_settings.cache_clear()
     m = AsyncMock()
     await handlers.cmd_refresh(m, session_factory=seeded)
-    last = m.answer.call_args.args[0]
-    assert "Активных источников нет" in last
     get_settings.cache_clear()
+    return m.answer.call_args.args[0]
+
+
+async def test_refresh_handler_reports_no_active_sources(seeded, tmp_path, monkeypatch):
+    async with seeded() as s:
+        for src in (await s.scalars(select(Source))).all():
+            src.status = "todo"
+        await s.commit()
+    assert "Активных источников нет" in await _run_refresh(seeded, tmp_path, monkeypatch)
+
+
+async def test_refresh_handler_collects_active_sources(seeded, tmp_path, monkeypatch):
+    text = await _run_refresh(seeded, tmp_path, monkeypatch)  # в конфиге активны ПСБ и ВТБ
+    assert "Активных источников нет" not in text
+    assert "ПСБ: <b>ok</b>" in text and "ВТБ: <b>ok</b>" in text

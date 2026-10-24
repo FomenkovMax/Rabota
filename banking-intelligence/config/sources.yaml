@@ -2,7 +2,8 @@
 #  - только официальные домены банка (проверяется валидатором при загрузке);
 #  - URL продуктовых страниц добавляются ТОЛЬКО после ручной проверки или
 #    автоматического обнаружения на официальном сайте (этап 2);
-#  - status: todo = URL ещё не подтверждён, сбор по нему не выполняется.
+#  - status: todo = URL ещё не подтверждён, сбор по нему не выполняется;
+#    active = URL подтверждён человеком (дата и кто — в notes).
 sources:
   - bank: sber
     key: site_root
@@ -14,11 +15,35 @@ sources:
     url: https://www.psbank.ru
     category: discovery
     status: todo
+  - bank: psb
+    key: deposits
+    url: https://www.psbank.ru/personal/saving
+    category: deposit
+    status: active
+    notes: Подтверждено владельцем проекта 24.10.2026 (кандидат из discover).
+  - bank: psb
+    key: savings_accounts
+    url: https://www.psbank.ru/personal/savingsaccount
+    category: savings
+    status: active
+    notes: Подтверждено владельцем проекта 24.10.2026 (кандидат из discover).
+  - bank: psb
+    key: savings_offers
+    url: https://www.psbank.ru/personal/savingsoffers
+    category: savings
+    status: active
+    notes: Подтверждено владельцем проекта 24.10.2026. Страница «Специальное предложение»; категория (savings/promo) уточнится при разборе содержимого.
   - bank: vtb
     key: site_root
     url: https://www.vtb.ru
     category: discovery
     status: todo
+  - bank: vtb
+    key: deposits
+    url: https://www.vtb.ru/personal/vklady-i-scheta/
+    category: deposit
+    status: active
+    notes: Подтверждено владельцем проекта 24.10.2026 (кандидат из discover).
   - bank: genbank
     key: site_root
     url: https://www.genbank.ru
