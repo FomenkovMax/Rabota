@@ -1,11 +1,12 @@
 from aiogram import Router
-from aiogram.filters import Command, CommandStart
+from aiogram.filters import Command, CommandObject, CommandStart
 from aiogram.types import Message
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 import asyncio
+from html import escape
 
-from bankintel.bot import views
+from bankintel.bot import compare_views, views
 from bankintel.collector import collect_all
 from bankintel.config import get_settings
 from bankintel.sources.fetcher import build_fetcher
@@ -28,6 +29,31 @@ async def cmd_banks(message: Message, session_factory: async_sessionmaker) -> No
 async def cmd_status(message: Message, session_factory: async_sessionmaker) -> None:
     async with session_factory() as session:
         await message.answer(await views.status_text(session))
+
+
+@router.message(Command("compare"))
+async def cmd_compare(message: Message, command: CommandObject, session_factory: async_sessionmaker) -> None:
+    try:
+        scenario = compare_views.parse_scenario(command.args)
+    except ValueError as exc:
+        await message.answer(escape(str(exc)))  # в тексте есть «<сумма>» — иначе Telegram отклонит HTML
+        return
+    async with session_factory() as session:
+        await message.answer(await compare_views.compare_for_bot(session, scenario))
+
+
+@router.message(Command("deposits"))
+async def cmd_deposits(message: Message, session_factory: async_sessionmaker) -> None:
+    async with session_factory() as session:
+        facts, _ = await compare_views.load_for_bot(session)
+    await message.answer(compare_views.deposits_text(facts))
+
+
+@router.message(Command("savings"))
+async def cmd_savings(message: Message, session_factory: async_sessionmaker) -> None:
+    async with session_factory() as session:
+        facts, _ = await compare_views.load_for_bot(session)
+    await message.answer(compare_views.savings_text(facts))
 
 
 _refresh_lock = asyncio.Lock()

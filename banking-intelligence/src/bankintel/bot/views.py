@@ -7,13 +7,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from bankintel.db.models import Bank, CollectionRun, Document, FetchAttempt, Product, Source
 
-DEMO_NOTICE = "⚠️ Демо-прототип. Данные ещё не собирались — цифр здесь нет намеренно."
+DEMO_NOTICE = "⚠️ Демо-прототип: данные только по ПСБ и ВТБ, Сбера (эталона) пока нет; доступность в ЛНР не подтверждена."
 
 # Команда -> (название, этап, в чём суть). Пока не реализовано — честно говорим об этом.
 PLANNED = {
-    "compare": ("Сравнение со Сбером", 4),
-    "deposits": ("Вклады", 2),
-    "savings": ("Накопительные счета", 2),
     "promo": ("Акции", 2),
     "changes": ("История изменений", 6),
     "report": ("Отчёты PDF/HTML/PPTX/XLSX", 5),
@@ -27,8 +24,10 @@ def start_text() -> str:
         f"{DEMO_NOTICE}\n\n"
         "/banks — реестр банков\n"
         "/status — состояние данных\n"
-        "/compare /deposits /savings /promo /changes /report /refresh — "
-        "в разработке (см. PLANS.md)"
+        "/deposits — вклады · /savings — накопительные счета\n"
+        "/compare [сумма] [мес.] — сравнение вкладов, напр. /compare 500000 12\n"
+        "/refresh — обновить данные\n"
+        "/promo /changes /report — в разработке (см. PLANS.md)"
     )
 
 
