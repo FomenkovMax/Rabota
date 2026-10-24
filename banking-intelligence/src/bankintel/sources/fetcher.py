@@ -16,6 +16,7 @@ from bankintel.sources.base import FetchDiagnostic, FetchedDocument, SourceRef
 BLOCK_MARKERS = (
     "captcha", "recaptcha", "hcaptcha", "вы не робот", "подтвердите, что вы не робот",
     "access denied", "ddos-guard", "just a moment", "cf-chl",
+    "user_blocked", "возникла проблема при открытии сайта",
 )
 
 

@@ -45,7 +45,8 @@ async def test_robots_unavailable_is_conservative(status):
     assert diag.outcome == FetchOutcome.ROBOTS_DISALLOWED
 
 
-@pytest.mark.parametrize("status,body", [(403, b"forbidden"), (429, b""), (200, b"<html>Please solve the CAPTCHA</html>")])
+@pytest.mark.parametrize("status,body", [(403, b"forbidden"), (429, b""), (200, b"<html>Please solve the CAPTCHA</html>"),
+    (200, "<script>{code:'user_blocked'}</script>Возникла проблема при открытии сайта".encode())])
 async def test_blocking_is_recorded_not_bypassed(status, body):
     f = make({"/page": (status, body)})
     doc, diag = await f.fetch(SRC)
