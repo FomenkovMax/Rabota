@@ -4,9 +4,9 @@ __pycache__/
 .env
 *.db
 *.sqlite3
-data/raw/
+/data/raw/
 .pytest_cache/
 *.egg-info/
-reports/
-build/
-dist/
+/reports/
+/build/
+/dist/
