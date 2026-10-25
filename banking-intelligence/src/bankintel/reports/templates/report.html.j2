@@ -1,11 +1,11 @@
 {% macro catalog_table(items, is_deposit) %}
-<table><tr><th>Банк</th><th>Продукт</th><th>Ставка (сайт)</th>{% if is_deposit %}<th>Срок</th>{% endif %}<th>Сумма</th><th>Пометки</th><th>ЛНР</th><th>Проверено</th></tr>
+<table><thead><tr><th>Банк</th><th>Продукт</th><th>Ставка (сайт)</th>{% if is_deposit %}<th>Срок</th>{% endif %}<th>Сумма</th><th>Пометки</th><th>ЛНР</th><th>Проверено</th></tr></thead><tbody>
 {% for p in items %}<tr><td>{{ p.bank }}</td><td>{% if p.product_url %}<a href="{{ p.product_url }}">{{ p.name }}</a>{% else %}{{ p.name }}{% endif %}</td>
 <td>{{ p.rate_text or '—' }}{% if p.base_rate_max %}<br><span class="muted">базовая {{ p.base_rate_max | pct }}</span>{% endif %}</td>
 {% if is_deposit %}<td>{{ p.term_text or '—' }}</td>{% endif %}
-<td>{% if p.amount_min %}от {{ p.amount_min | money }}{% endif %}{% if p.amount_max %} до {{ p.amount_max | money }}{% endif %}{% if p.currency and p.currency != 'RUB' %} ({{ p.currency }}){% endif %}{% if not p.amount_min and not p.amount_max %}—{% endif %}</td>
+<td>{% if p.amount_min %}от {{ p.amount_min | money }}{% endif %}{% if p.amount_max %} до {{ p.amount_max | money }}{% endif %}{% if not p.amount_min and not p.amount_max %}—{% endif %}{% if p.currency and p.currency != 'RUB' %} ({{ p.currency }}){% endif %}</td>
 <td>{% if 'restricted_audience' in p.flags %}<span class="chip">особые условия</span>{% endif %}{% if 'floating_rate' in p.flags %}<span class="chip">плавающая</span>{% endif %}{% if 'limited_time' in p.flags %}<span class="chip">ограничено по времени</span>{% endif %}{% if 'ai_assisted' in p.flags %}<span class="chip">часть данных — AI (цитата проверена)</span>{% endif %}{% if 'sources_conflict' in p.flags %}<span class="chip">источники расходятся</span>{% endif %}</td>
-<td>{{ {'confirmed':'подтверждена','unavailable':'недоступен','not_confirmed':'не подтверждена','unknown':'неизвестно'}[p.lnr_status] }}</td><td>{{ p.checked_at | date }}</td></tr>{% endfor %}</table>
+<td>{{ {'confirmed':'подтверждена','unavailable':'недоступен','not_confirmed':'не подтверждена','unknown':'неизвестно'}[p.lnr_status] }}</td><td>{{ p.checked_at | date }}</td></tr>{% endfor %}</tbody></table>
 {% endmacro %}
 <!doctype html>
 <html lang="ru">
@@ -40,7 +40,7 @@
   @page { size: A4 landscape; margin: 14mm 12mm 16mm; @bottom-left { content: "Banking Intelligence AI · набор данных {{ ds.meta.dataset_id }} · демо-прототип"; font-size: 8pt; color: #6d6c68; }
           @bottom-right { content: "стр. " counter(page) " из " counter(pages); font-size: 8pt; color: #6d6c68; } }
   body { font-size: 10.5pt; } main { max-width: none; padding: 0; } h2 { break-after: avoid; } h3 { break-after: avoid; }
-  .chart, .kpi, tr { break-inside: avoid; } .scenario { break-before: page; } a { word-break: break-all; }
+  .chart, .kpi, tr { break-inside: avoid; } .scenario + .scenario { break-before: page; } .keep-next, .legend { break-after: avoid; } a { word-break: break-all; }
   {% endif %}
 </style>
 </head>
@@ -64,15 +64,15 @@
   <p class="muted">Это сравнение верхних границ дохода по данным сайтов; ставка для конкретного клиента зависит от условий. Ограничения — в конце отчёта.</p>
 
   <h2>Охват данных</h2>
-  <table><tr><th>Банк</th><th>Статус</th><th class="num">Вклады</th><th class="num">Счета</th><th>Причина / последняя загрузка</th></tr>
+  <table><thead><tr><th>Банк</th><th>Статус</th><th class="num">Вклады</th><th class="num">Счета</th><th>Причина / последняя загрузка</th></tr></thead><tbody>
   {% for c in ds.coverage %}<tr>
     <td>{{ c.name }}{% if c.is_benchmark %} <span class="chip">эталон</span>{% endif %}</td>
     <td>{{ 'есть данные' if c.status == 'data' else 'нет данных' }}</td><td class="num">{{ c.deposits }}</td><td class="num">{{ c.savings }}</td>
     <td>{% if c.reason %}{{ c.reason }}{% endif %}{% if c.last_fetch %}<br><span class="muted">загрузка {{ c.last_fetch.at | dt }}: {{ c.last_fetch.outcome }}</span>{% endif %}</td>
-  </tr>{% endfor %}</table>
+  </tr>{% endfor %}</tbody></table>
 
   <h2>Сценарии: доход за срок</h2>
-  <p class="muted">Простой процент по номинальной ставке сайта, до налогов, без капитализации. Интервал: от минимальной до максимальной ставки сайта; «до» — нижняя граница не указана.
+  <p class="muted keep-next">Простой процент по номинальной ставке сайта, до налогов, без капитализации. Интервал: от минимальной до максимальной ставки сайта; «до» — нижняя граница не указана.
     Штриховка — предложение не для всех клиентов.</p>
   {% for s in ds.scenarios %}
   <section class="scenario">
@@ -82,11 +82,11 @@
       <span><svg width="12" height="12" viewBox="0 0 12 12" style="vertical-align:-2px;margin-right:5px"><rect width="12" height="12" rx="2" fill="#fcfcfb" stroke="#8a8984"/><path d="M0 12L12 0M-3 9L9 -3M3 15L15 3" stroke="#8a8984" stroke-width="1.6"/></svg>особые условия</span><span>● верхняя граница (○ — особые условия)</span></div>
     <div class="chart">{{ charts[loop.index0].html | safe }}</div>
     {% else %}<p>Подходящих продуктов в этом сценарии нет.</p>{% endif %}
-    <table><tr><th>Банк</th><th>Продукт</th><th>Ставка (сайт)</th><th>Срок</th><th class="num">Доход, ₽</th><th>Пометки</th></tr>
+    <table><thead><tr><th>Банк</th><th>Продукт</th><th>Ставка (сайт)</th><th>Срок</th><th class="num">Доход, ₽</th><th>Пометки</th></tr></thead><tbody>
     {% for r in s.open + s.restricted %}{% if loop.index <= 12 %}<tr>
       <td>{{ r.bank }}</td><td>{{ r.name }}</td><td>{{ r.rate_text or '—' }}</td><td>{{ r.term_text or '—' }}</td>
       <td class="num">{% if r.income_min and r.income_min != r.income_max %}{{ r.income_min | money }} – {% elif not r.income_min %}до {% endif %}{{ r.income_max | money }}{% if r.rate_applied %}<br><span class="muted">точная ставка {{ r.rate_applied | pct }}</span>{% endif %}</td>
-      <td>{% if r in s.restricted %}<span class="chip">особые условия</span>{% endif %}{% if 'floating_rate' in r.flags %}<span class="chip">плавающая</span>{% endif %}{% if 'limited_time' in r.flags %}<span class="chip">ограничено по времени</span>{% endif %}</td></tr>{% endif %}{% endfor %}</table>
+      <td>{% if r in s.restricted %}<span class="chip">особые условия</span>{% endif %}{% if 'floating_rate' in r.flags %}<span class="chip">плавающая</span>{% endif %}{% if 'limited_time' in r.flags %}<span class="chip">ограничено по времени</span>{% endif %}</td></tr>{% endif %}{% endfor %}</tbody></table>
     {% for n in s.banks_without_data %}{% if loop.first %}<p class="muted">Нет данных по банкам: {% endif %}{{ n }}{% if not loop.last %}, {% else %}.</p>{% endif %}{% endfor %}
     {% if s.excluded %}<details {{ 'open' if mode == 'pdf' }}><summary>Исключено из сценария: {{ s.excluded | length }}</summary>
       <ul>{% for e in s.excluded %}<li>{{ e.bank }} · {{ e.name }} — {{ e.reason }}</li>{% endfor %}</ul></details>{% endif %}
@@ -97,10 +97,10 @@
   <p class="muted">Наблюдение ведётся с {{ ds.changes.monitoring.since | dt }}; сравнений с предыдущим запуском: {{ ds.changes.monitoring.comparisons }}.
     {% if not ds.changes.monitoring.comparisons %}Пока это базовая линия (первый сбор) — изменения появятся после следующего запуска.{% endif %}</p>
   {% if ds.changes['items'] %}
-  <table><tr><th>Когда</th><th>Банк</th><th>Продукт</th><th>Тип</th><th>Значимость</th><th>Что изменилось</th></tr>
+  <table><thead><tr><th>Когда</th><th>Банк</th><th>Продукт</th><th>Тип</th><th>Значимость</th><th>Что изменилось</th></tr></thead><tbody>
   {% for c in ds.changes['items'] %}<tr><td>{{ c.detected_at | dt }}</td><td>{{ c.bank }}</td><td>{{ c.product }}</td>
     <td>{{ {'new':'новый','removed':'исчез','changed':'изменён'}[c.type] }}</td>
-    <td>{{ {'rate':'ставка/срок/сумма','conditions':'условия','info':'прочее'}[c.severity] }}</td><td>{{ c.text }}</td></tr>{% endfor %}</table>
+    <td>{{ {'rate':'ставка/срок/сумма','conditions':'условия','info':'прочее'}[c.severity] }}</td><td>{{ c.text }}</td></tr>{% endfor %}</tbody></table>
   {% else %}<p>Изменений за период не обнаружено.</p>{% endif %}
 
   <h2>Каталог вкладов</h2>
@@ -110,9 +110,9 @@
   <p class="muted">«До X%» у счетов — максимум при выполнении условий банка (бонусы, временные периоды). Доход по счетам не рассчитывается.</p>
 
   <h2>Источники</h2>
-  <table><tr><th>Банк</th><th>Документ</th><th>Получен</th><th>Происхождение</th><th>SHA-256</th></tr>
+  <table><thead><tr><th>Банк</th><th>Документ</th><th>Получен</th><th>Происхождение</th><th>SHA-256</th></tr></thead><tbody>
   {% for d in ds.sources %}<tr><td>{{ d.bank }}</td><td><a href="{{ d.url }}">{{ d.url }}</a></td><td>{{ d.fetched_at | dt }}</td>
-    <td>{{ 'загружен автоматически' if d.origin == 'fetched' else 'внесён вручную' }}</td><td><code>{{ d.sha256[:12] }}</code></td></tr>{% endfor %}</table>
+    <td>{{ 'загружен автоматически' if d.origin == 'fetched' else 'внесён вручную' }}</td><td><code>{{ d.sha256[:12] }}</code></td></tr>{% endfor %}</tbody></table>
 
   <h2>Методика</h2><ul>{% for t in ds.methodology %}<li>{{ t }}</li>{% endfor %}</ul>
   <h2>Ограничения</h2><ul>{% for t in ds.limitations %}<li>{{ t }}</li>{% endfor %}</ul>
