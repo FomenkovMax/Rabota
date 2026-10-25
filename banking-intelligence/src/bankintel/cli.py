@@ -190,6 +190,65 @@ async def _import_doc(args) -> None:
         await engine.dispose()
 
 
+async def _import_dir(args) -> None:
+    from pathlib import Path
+
+    from sqlalchemy import select
+
+    from bankintel.db.models import Bank
+    from bankintel.sources.manual_batch import (
+        MANIFEST_NAME,
+        ManifestError,
+        import_directory,
+        load_manifest,
+        write_manifest_template,
+    )
+
+    directory = Path(args.dir)
+    if not await asyncio.to_thread(directory.is_dir):
+        raise SystemExit(f"Папка не найдена: {directory}")
+    if args.init:
+        try:
+            path, n = await asyncio.to_thread(write_manifest_template, directory, category=args.category)
+        except ManifestError as exc:
+            raise SystemExit(str(exc)) from None
+        print(f"Создан {path} ({n} файл.). Заполните пропуски (url, category) и запустите импорт без --init.")
+        return
+    settings = get_settings()
+    cfg = next((b for b in load_config(settings.config_dir).banks if b.slug == args.bank), None)
+    if cfg is None:
+        raise SystemExit(f"Банк {args.bank!r} не найден в config/banks.yaml")
+    try:
+        manifest = await asyncio.to_thread(load_manifest, Path(args.manifest) if args.manifest else directory / MANIFEST_NAME)
+    except ManifestError as exc:
+        raise SystemExit(str(exc)) from None
+    engine = make_engine(settings.database_url)
+    try:
+        async with make_session_factory(engine)() as session:
+            bank = await session.scalar(select(Bank).where(Bank.slug == args.bank))
+            if bank is None:
+                raise SystemExit("Банка нет в БД: выполните bankintel seed")
+            rep = await import_directory(
+                session, bank, directory, manifest, official_hosts=cfg.official_hosts,
+                raw_root=settings.raw_storage_dir, dry_run=args.dry_run,
+            )
+    finally:
+        await engine.dispose()
+    icons = {"imported": "OK ", "unchanged": "-- ", "rejected": "ERR"}
+    for r in rep.results:
+        print(f"{icons[r.status]} {r.file}: {r.detail}")
+    for name in rep.unlisted:
+        print(f"!! {name}: лежит в папке, но не указан в манифесте — пропущен")
+    print(f"\n{'ПРОБНЫЙ ЗАПУСК (ничего не записано). ' if args.dry_run else ''}"
+          f"принято {rep.imported}, без изменений {sum(r.status == 'unchanged' for r in rep.results)}, отклонено {rep.rejected}")
+    if rep.new_sources and not args.dry_run:
+        print("\nДобавьте в config/sources.yaml (mode: manual, status: active), чтобы источники не потерялись при seed:")
+        for p in rep.new_sources:
+            print(f"  - bank: {args.bank}\n    key: {p.source_key}\n    url: {p.url}\n    category: {p.category}\n    status: active\n    mode: manual")
+    if rep.rejected:
+        raise SystemExit(1)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="bankintel")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -207,6 +266,13 @@ def main() -> None:
     i.add_argument("--file", required=True)
     i.add_argument("--captured-at", required=True, help="когда сохранено, ISO с часовым поясом: 2026-10-24T12:00+03:00")
     i.add_argument("--note")
+    idr = sub.add_parser("import-dir", help="пакетный ручной импорт: папка сохранённых страниц + manifest.yaml")
+    idr.add_argument("--bank", help="slug банка (обязателен, кроме --init)")
+    idr.add_argument("--dir", required=True, help="папка с сохранёнными .html/.pdf")
+    idr.add_argument("--manifest", help="путь к манифесту (по умолчанию <dir>/manifest.yaml)")
+    idr.add_argument("--init", action="store_true", help="создать шаблон манифеста по файлам папки")
+    idr.add_argument("--category", choices=["deposit", "savings", "promo"], help="категория по умолчанию для шаблона (--init)")
+    idr.add_argument("--dry-run", action="store_true", help="только проверить, ничего не записывать")
     rp = sub.add_parser("report", help="сформировать отчёты PDF/HTML/PPTX/XLSX из единого набора данных")
     rp.add_argument("--out", default="reports", help="каталог для файлов (по умолчанию ./reports)")
     sub.add_parser("monitor", help="один цикл мониторинга: сбор, страницы продуктов, поиск изменений, уведомления")
@@ -236,6 +302,10 @@ def main() -> None:
         asyncio.run(_discover(args.bank))
     elif args.cmd == "import-doc":
         asyncio.run(_import_doc(args))
+    elif args.cmd == "import-dir":
+        if not args.init and not args.bank:
+            parser.error("import-dir: нужен --bank (кроме --init)")
+        asyncio.run(_import_dir(args))
     elif args.cmd == "report":
         asyncio.run(_report(args.out))
     elif args.cmd == "monitor":
