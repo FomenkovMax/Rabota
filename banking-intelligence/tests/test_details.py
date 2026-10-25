@@ -33,7 +33,8 @@ def test_index_conditions_maps_labels_without_interpretation():
 def test_psb_detail_without_table_is_error_and_vtb_detail_is_empty():
     with pytest.raises(ParseError):
         get_adapter("psb")("psb").parse_detail(REF, FetchedDocument(REF.url, b"<html>new</html>"))
-    assert get_adapter("vtb")("vtb").parse_detail(REF, FetchedDocument(REF.url, b"<html/>")) == []
+    with pytest.raises(ParseError):  # у ВТБ тоже: пустая страница — это смена вёрстки, а не «нет условий»
+        get_adapter("vtb")("vtb").parse_detail(REF, FetchedDocument(REF.url, b"<html/>"))
 
 
 class DetailFetcher:
@@ -91,11 +92,34 @@ async def test_collect_details_partial_and_foreign_link(seeded, tmp_path):
         assert {a.outcome for a in attempts} == {"ok", "blocked"}
 
 
-async def test_vtb_details_stored_but_flagged_incomplete(seeded, tmp_path):
+VTB_FIX = Path(__file__).parent / "fixtures" / "vtb_detail_faq.html"
+
+
+class VtbDetailFetcher(DetailFetcher):
+    def __init__(self, content):
+        super().__init__()
+        self.content = content
+
+    async def fetch(self, source):
+        return FetchedDocument(source.url, self.content, "text/html"), FetchDiagnostic(source.key, source.url, FetchOutcome.OK, 200)
+
+
+async def test_vtb_details_faq_rows_stored_without_invented_fields(seeded, tmp_path):
     async with seeded() as s:
         bank = await _seed_products(s, "vtb", ["https://www.vtb.ru/personal/vklady-i-scheta/x/"])
-        run = await collect_details(s, bank, DetailFetcher(), tmp_path)
-        assert run.status == "partial" and "нужен этап 3" in run.message
-        assert len((await s.scalars(select(Document).where(Document.url.like("%vtb.ru%")))).all()) == 1
-        kinds = [x.params["kind"] for x in (await s.scalars(select(ProductSnapshot))).all()]
-        assert "conditions" not in kinds  # условия ВТБ правилами не извлекаем — не выдумываем
+        run = await collect_details(s, bank, VtbDetailFetcher(VTB_FIX.read_bytes()), tmp_path)
+        assert run.status == "ok" and not run.message  # прежняя пометка «нужен этап 3» больше не нужна
+        (cond,) = [x for x in (await s.scalars(select(ProductSnapshot))).all() if x.params["kind"] == "conditions"]
+        assert cond.extractor == "rules"
+        assert cond.params["conditions"] == {}  # в поля (срок, сумма, пополнение…) не разбираем — это этап 3
+        raw = cond.params["conditions_raw"]
+        assert len(raw) == 5 and all(r["label"].startswith("Вопрос: ") for r in raw)
+
+
+async def test_vtb_details_layout_change_is_failure_not_empty_success(seeded, tmp_path):
+    async with seeded() as s:
+        bank = await _seed_products(s, "vtb", ["https://www.vtb.ru/personal/vklady-i-scheta/x/"])
+        run = await collect_details(s, bank, VtbDetailFetcher(b"<html><body>new layout</body></html>"), tmp_path)
+        # страница загружена и сохранена, но не разобрана: не «ok» и не пустой успех
+        assert run.status == "partial" and "parse_error" in run.message and "вёрстка изменилась" in run.message
+        assert "conditions" not in [x.params["kind"] for x in (await s.scalars(select(ProductSnapshot))).all()]

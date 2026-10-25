@@ -266,3 +266,31 @@ async def test_products_without_rule_extracted_conditions_go_first(seeded, tmp_p
         rep = await run_extraction(s, settings(tmp_path), client, dry_run=False, limit=3)
         sent = [c["user"].split("\n")[0] for c in client.calls]
         assert rep.stored == 3 and all("(ВТБ)" in line for line in sent)
+
+
+async def test_ai_queue_puts_products_without_parsed_fields_first(seeded, tmp_path):
+    """Дословный текст FAQ (ВТБ) разобранных полей не даёт — AI нужен таким продуктам раньше, чем тем,
+    у кого правила уже дали поля (ПСБ). Данные синтетические."""
+    from bankintel.ai.extractor import _candidates
+    from bankintel.db.models import Source
+
+    async with seeded() as s:
+        psb = await s.scalar(select(Bank).where(Bank.slug == "psb"))
+        vtb = await s.scalar(select(Bank).where(Bank.slug == "vtb"))
+        made = {}
+        for bank, conditions in ((psb, {"term": "91 – 731 дней"}), (vtb, {})):
+            p = Product(bank_id=bank.id, category="deposit", name=f"P-{bank.slug}")
+            s.add(p)
+            await s.flush()
+            src = Source(bank_id=bank.id, key=f"detail:{p.id}", url="https://example.invalid/x", category="deposit", status="active", mode="fetch")
+            s.add(src)
+            await s.flush()
+            doc = Document(source_id=src.id, url=src.url, sha256=bank.slug, storage_path="x", size_bytes=1)
+            s.add(doc)
+            await s.flush()
+            s.add(ProductSnapshot(product_id=p.id, document_id=doc.id, extractor="rules",
+                                  params={"kind": "conditions", "conditions": conditions, "conditions_raw": [{"label": "Вопрос: x", "value": "y"}]}))
+            made[bank.slug] = p.id
+        await s.commit()
+        order = [row[2].slug for row in await _candidates(s)]
+    assert order == ["vtb", "psb"]  # банк ПСБ создан раньше (меньший id), но у него поля уже есть

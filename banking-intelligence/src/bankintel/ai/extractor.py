@@ -51,9 +51,11 @@ async def _candidates(session: AsyncSession):
             .where(Document.id.in_(latest)).order_by(Bank.id, Document.id)
         )
     ).all()
-    # Приоритет: продукты, у которых правилами условия НЕ извлечены (там AI нужнее всего); внутри группы — порядок банков
+    # Приоритет: продукты, у которых правилами условия НЕ извлечены (там AI нужнее всего); внутри группы — порядок банков.
+    # «Извлечены» = есть разобранные поля; сохранённый дословный текст (FAQ ВТБ) полей не даёт и AI не заменяет.
     conditions = {
-        r[0] for r in (await session.execute(select(ProductSnapshot.product_id, ProductSnapshot.params))).all() if r[1].get("kind") == "conditions"
+        r[0] for r in (await session.execute(select(ProductSnapshot.product_id, ProductSnapshot.params))).all()
+        if r[1].get("kind") == "conditions" and r[1].get("conditions")
     }
 
     def has_rule_conditions(row) -> bool:

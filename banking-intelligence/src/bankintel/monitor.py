@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from bankintel.db.models import Bank, ChangeEvent, CollectionRun, Document, Product, ProductSnapshot, Source
 from bankintel.domain.enums import ChangeType
+from bankintel.sources.common import FAQ_PREFIX
 
 SEVERITY_ORDER = {"info": 0, "conditions": 1, "rate": 2}
 # поле params карточки -> (подпись, значимость)
@@ -62,7 +63,10 @@ def diff_conditions(old: dict, new: dict) -> list[FieldChange]:
     out = []
     for label in list(dict.fromkeys([*o, *n])):
         if o.get(label) != n.get(label):
-            sev = "rate" if label.lower().startswith(("ставка", "базовая ставка")) else "conditions"
+            if label.startswith(FAQ_PREFIX):
+                sev = "info"  # свободный текст FAQ без разбора: правки формулировок не считаем изменением условий
+            else:
+                sev = "rate" if label.lower().startswith(("ставка", "базовая ставка")) else "conditions"
             out.append(FieldChange(f"Условие «{label}»", o.get(label), n.get(label), sev))
     return out
 

@@ -12,11 +12,41 @@ from urllib.parse import urljoin
 from bs4 import BeautifulSoup, Tag
 
 from bankintel.domain.enums import AvailabilityStatus, ProductCategory
-from bankintel.sources.base import BankAdapter, ExtractedProduct, FetchedDocument, SourceRef, register_adapter
-from bankintel.sources.common import ParseError, canonical_name, clean_text, detect_currency, rate_json
+from bankintel.sources.base import (
+    BankAdapter,
+    ConditionRow,
+    ExtractedProduct,
+    FetchedDocument,
+    SourceRef,
+    register_adapter,
+)
+from bankintel.sources.common import FAQ_PREFIX, ParseError, canonical_name, clean_text, detect_currency, rate_json
 
 _PRODUCT_PATH = "/personal/vklady-i-scheta/"
 _ACCOUNT_RE = re.compile(r"сч[её]т", re.I)
+_QUESTION = '[itemtype$="schema.org/Question"]'
+# Блок с таким «вопросом» — навигация по продуктам банка, а не условия.
+_NOT_CONDITIONS = {"вам может быть интересно"}
+# Листовые текстовые блоки ответа: абзацы markdown и пункты списков.
+_BLOCKS = 'li, [class*="markdown-paragraph"], p'
+
+
+def _text(node: Tag) -> str:
+    """Текст блока как на странице: узлы склеиваются без добавленных пробелов (иначе «На сайте :»,
+    «легко» ) — проверено на 1438 блоках), а перенос строки <br> заменяется пробелом."""
+    for br in node.find_all("br"):
+        br.replace_with(" ")
+    return " ".join(node.get_text("").replace("\xa0", " ").split())
+
+
+def _answer_lines(answer: Tag) -> list[str]:
+    lines = []
+    for block in answer.select(_BLOCKS):
+        if block.select(_BLOCKS):
+            continue  # вложенный блок: берём листья, чтобы не дублировать текст
+        if text := _text(block):
+            lines.append(text)
+    return lines or ([_text(answer)] if _text(answer) else [])
 
 
 def _category(title: str, labels: list[str], description: str | None) -> ProductCategory:
@@ -31,9 +61,39 @@ def _category(title: str, labels: list[str], description: str | None) -> Product
 class VtbAdapter(BankAdapter):
     SOURCE_KEYS = {"deposits"}
 
-    # parse_detail не переопределён намеренно: страницы продуктов ВТБ разнородны (маркетинг,
-    # ступенчатые ставки и условия в одной вёрстке, проверено на 12 страницах 24.10.2026),
-    # надёжно правилами не разбираются. Условия извлекаются на этапе 3 (AI + проверка цитат).
+    def parse_detail(self, source: SourceRef, doc: FetchedDocument) -> list[ConditionRow]:
+        """Страница продукта: блоки «вопрос — ответ» (schema.org/Question), дословно.
+
+        Страницы ВТБ разнородны (проверено на 12 страницах 24.10.2026): условия — свободный текст в
+        FAQ, общих заголовков нет. Поэтому правила только сохраняют пары «вопрос → ответ» как есть, без
+        разбора на поля (срок, сумма, пополнение и т.п. извлекает этап 3: AI + проверка цитат).
+        Подпись начинается с «Вопрос: » — мониторинг считает их изменения справочными.
+        """
+        soup = BeautifulSoup(doc.content, "html.parser")
+        items = soup.select(_QUESTION)
+        if not items:
+            raise ParseError(f"{source.key}: на странице продукта нет блоков «вопрос — ответ» (вёрстка изменилась?)")
+        rows: list[ConditionRow] = []
+        seen: dict[str, str] = {}
+        for item in items:
+            question = clean_text(item.select_one('[itemprop="name"]'))
+            answer = item.select_one('[itemprop="text"]')
+            if not question or answer is None or question.lower() in _NOT_CONDITIONS:
+                continue
+            value = "\n".join(_answer_lines(answer))
+            if not value:
+                continue
+            label = FAQ_PREFIX + question
+            if seen.get(label) == value:
+                continue  # тот же блок повторён на странице (например, для другой версии вёрстки)
+            if label in seen:  # одинаковый вопрос с разным ответом: сохраняем оба, ключ различаем номером
+                n = sum(1 for r in rows if r.label == label or r.label.startswith(label + " (")) + 1
+                label = f"{label} ({n})"
+            seen[label] = value
+            rows.append(ConditionRow(label, value))
+        if not rows:
+            raise ParseError(f"{source.key}: блоки «вопрос — ответ» есть, но ни одного с текстом ответа")
+        return rows
 
     def parse(self, source: SourceRef, doc: FetchedDocument) -> list[ExtractedProduct]:
         if source.key not in self.SOURCE_KEYS:
