@@ -11,7 +11,7 @@ from bankintel.collector import collect_bank
 from bankintel.db.models import Bank, ChangeEvent, Product
 from bankintel.details import collect_details
 from bankintel.domain.enums import FetchOutcome
-from bankintel.monitor import detect_changes, monitoring_status, recent_changes
+from bankintel.monitor import detect_changes, diff_conditions, monitoring_status, recent_changes
 from bankintel.sources.base import FetchDiagnostic, FetchedDocument
 
 FIX = Path(__file__).parent / "fixtures"
@@ -201,3 +201,14 @@ async def test_recent_changes_window_and_severity_filter(seeded, tmp_path):
         assert len(everything) >= 1
         assert await recent_changes(s, datetime.now(UTC) + timedelta(days=1)) == []
         assert all(c["severity"] == "rate" for c in await recent_changes(s, EPOCH, min_severity="rate"))
+
+
+def test_faq_condition_changes_are_info_not_conditions():
+    def snap(*rows):
+        return {"conditions_raw": [{"label": a, "value": b} for a, b in rows]}
+
+    old = snap(("Вопрос: Можно ли пополнять вклад?", "Да"), ("Пополнение", "Да"), ("Ставка", "10%"))
+    new = snap(("Вопрос: Можно ли пополнять вклад?", "Да, в течение 30 дней"), ("Пополнение", "Нет"), ("Ставка", "9%"))
+    sev = {c.label: c.severity for c in diff_conditions(old, new)}
+    assert sev == {"Условие «Вопрос: Можно ли пополнять вклад?»": "info", "Условие «Пополнение»": "conditions",
+                   "Условие «Ставка»": "rate"}
