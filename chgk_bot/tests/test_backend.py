@@ -42,7 +42,7 @@ def test_init_data_ok_forged_expired():
 
 def test_token_roundtrip():
     t = auth.create_token(5, "A", "s" * 32, 60)
-    assert auth.decode_token(t, "s" * 32) == {"id": 5, "name": "A"}
+    assert auth.decode_token(t, "s" * 32) == {"id": 5, "name": "A", "photo": ""}
     with pytest.raises(auth.AuthError):
         auth.decode_token(t, "o" * 32)
     with pytest.raises(auth.AuthError):
@@ -274,3 +274,25 @@ def test_ws_start_clamps_bad_params(tmp_path):
         while not st["game"]:
             st = recv_state(a)
         assert st["game"]["tour"] == [1, 1] and st["game"]["total"] >= 1
+
+
+def test_photo_url_flows_to_token_room_and_season(tmp_path):
+    _, f, c = make(tmp_path)
+    flds = fields(7)
+    import json as _j
+    u = _j.loads(flds["user"]); u["photo_url"] = "https://t.me/i/userpic/320/abc.jpg"; flds["user"] = _j.dumps(u)
+    r = c.post("/api/auth/telegram", json={"init_data": auth.sign_init_data(flds, BOT)}).json()
+    assert r["user"]["photo"].endswith("abc.jpg")
+    tok = r["token"]
+    with c.websocket_connect(f"/api/ws?token={tok}") as a:
+        st = recv_state(a)
+        assert st["players"][0]["photo"].endswith("abc.jpg")
+    # небезопасная ссылка игнорируется
+    u["photo_url"] = "javascript:alert(1)"; flds["user"] = _j.dumps(u)
+    r2 = c.post("/api/auth/telegram", json={"init_data": auth.sign_init_data(flds, BOT)}).json()
+    assert r2["user"]["photo"] == ""
+    from core.repo import StatsRepo
+    q = QuestionRepo(f).choose(1, set())[0]
+    StatsRepo(f).record(7, q["id"], 1.0, "x")
+    h = {"Authorization": "Bearer " + tok}
+    assert c.get("/api/season", headers=h).json()["standings"][0]["photo"].endswith("abc.jpg")   # прежняя https-аватарка сохранилась

@@ -65,7 +65,9 @@ def team_extra(factory, team_id: int, limit: int = 10) -> dict:
     with factory() as s:
         games = s.scalars(select(Game).where(Game.team_id == team_id, Game.status == "finished")
                           .order_by(Game.updated_at.desc()).limit(limit)).all()
-        names = {u.tg_id: u.name for u in s.scalars(select(User))}
+        users = {u.tg_id: u for u in s.scalars(select(User))}
+        names = {k: u.name for k, u in users.items()}
+        photos = {k: u.photo_url or "" for k, u in users.items()}
         solo = s.execute(select(Attempt.actor_id, func.count()).where(Attempt.actor_id > 0)
                          .group_by(Attempt.actor_id)).all()
         solo_ok = dict(s.execute(select(Attempt.actor_id, func.count()).where(Attempt.actor_id > 0, Attempt.score >= 1)
@@ -80,7 +82,7 @@ def team_extra(factory, team_id: int, limit: int = 10) -> dict:
                 a = answered.setdefault(r["by"], [0, 0])
                 a[0] += 1
                 a[1] += 1 if r["level"] == "correct" else 0
-    players = [{"id": uid, "name": names.get(uid, str(uid)), "solo_played": n, "solo_correct": solo_ok.get(uid, 0),
+    players = [{"id": uid, "name": names.get(uid, str(uid)), "photo": photos.get(uid, ""), "solo_played": n, "solo_correct": solo_ok.get(uid, 0),
                 "as_captain": answered.get(uid, [0, 0])[0], "captain_correct": answered.get(uid, [0, 0])[1]}
                for uid, n in solo]
     players.sort(key=lambda p: -(p["solo_played"] + p["as_captain"]))

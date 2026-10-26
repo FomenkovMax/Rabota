@@ -19,6 +19,7 @@ class User(Base):
     tg_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=False)
     name: Mapped[str] = mapped_column(String(200), default="")
     username: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    photo_url: Mapped[str | None] = mapped_column(Text, nullable=True)      # аватарка из Telegram (initData.user.photo_url)
     created_at: Mapped[float] = mapped_column(Float, default=time.time)
     last_seen: Mapped[float] = mapped_column(Float, default=time.time)
 

@@ -4,6 +4,8 @@ import { BarChart } from "../components/BarChart";
 import { Button } from "../components/Button";
 import { MenuButton } from "../components/MenuButton";
 import { Card } from "../components/Card";
+import { EmptyState } from "../components/EmptyState";
+import { Skeleton } from "../components/Skeleton";
 import { CountUp } from "../components/CountUp";
 import { useApp } from "../store";
 import s from "./Screen.module.css";
@@ -30,8 +32,15 @@ export function Stats() {
         <Button variant={scope === "team" ? "primary" : "ghost"} onClick={() => setScope("team")}>Команда</Button>
       </div>
       {msg && <Card accent="bad">{msg}</Card>}
-      {!data && !msg && <p className={s.dim}>Считаю…</p>}
-      {data && (
+      {!data && !msg && <Skeleton blocks={[96, 150, 110]} />}
+      {data && data.played === 0 && (
+        <Card>
+          <EmptyState asset="tile.stats" fallback="📊" title={scope === "me" ? "Здесь появится твой прогресс" : "Команда ещё не играла"}
+            text={scope === "me" ? "Ответь на первый вопрос — и графики оживут." : "Начните командную игру за столом знатоков."}
+            action={<Button onClick={() => go(scope === "me" ? "solo" : "team")}>{scope === "me" ? "Сыграть соло" : "К столу"}</Button>} />
+        </Card>
+      )}
+      {data && data.played > 0 && (
         <>
           <Card>
             <div className={s.stats}>

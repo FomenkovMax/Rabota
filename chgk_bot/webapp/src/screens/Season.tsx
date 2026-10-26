@@ -4,6 +4,9 @@ import { Asset } from "../components/Asset";
 import { Button } from "../components/Button";
 import { MenuButton } from "../components/MenuButton";
 import { Card } from "../components/Card";
+import { EmptyState } from "../components/EmptyState";
+import { Podium } from "../components/Podium";
+import { Skeleton } from "../components/Skeleton";
 import { CountUp } from "../components/CountUp";
 import { Ceremony } from "../components/Ceremony";
 import { useApp } from "../store";
@@ -37,7 +40,7 @@ export function Season() {
     <div className={s.wrap}>
       {show && <Ceremony title={show.title} subtitle={show.sub} onClose={() => setShow(null)} />}
       {err && <Card accent="bad">{err}</Card>}
-      {!d && !err && <p className={s.dim}>Загружаю сезон…</p>}
+      {!d && !err && <Skeleton blocks={[190, 260, 120]} />}
       {d && (
         <>
           <Card>
@@ -55,8 +58,9 @@ export function Season() {
 
           <Card>
             <p className={s.dim}>Рейтинг сезона</p>
-            {d.standings.length === 0 && <p className={s.step}>Пока никто не играл — стань первым!</p>}
-            {d.standings.map((r) => (
+            {d.standings.length === 0 && <EmptyState title="Пока никто не играл" text="Сыграй соло-вопрос — и откроешь рейтинг сезона первым." action={<Button onClick={() => go("solo")}>Сыграть</Button>} />}
+            {d.standings.length > 0 && <Podium rows={d.standings} meId={me?.user.id} />}
+            {d.standings.slice(3).map((r) => (
               <p key={r.user_id} className={s.step}>
                 <b>{r.rank}.</b> {r.name} — {r.points} очк. <span className={s.dim}>({Math.round(r.accuracy * 100)}%, {r.played} в.)</span>
               </p>
@@ -65,7 +69,7 @@ export function Season() {
 
           <Card>
             <p className={s.dim}>Награды сезонов</p>
-            {d.awards.length === 0 && <p className={s.step}>Первые награды выдадим по итогам месяца.</p>}
+            {d.awards.length === 0 && <EmptyState asset="award.owl" fallback="🦉" title="Сова ещё не вручена" text={`Первую награду получит победитель сезона «${pretty(d.season)}» — через ${d.days_left} дн.`} />}
             {d.awards.map((a, i) => {
               const info = brand?.awards?.[a.kind];
               return (

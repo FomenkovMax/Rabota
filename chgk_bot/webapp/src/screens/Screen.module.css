@@ -23,3 +23,4 @@
 .strip i { width: 1px; height: 26px; background: rgba(255, 255, 255, .12); }
 .chips { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
 .chip { border: 1px solid rgba(255, 255, 255, .12); background: rgba(18, 27, 58, .6); color: var(--text-dim); border-radius: 999px; padding: 8px 14px; font: 14px var(--font); cursor: pointer; }
+.avatars { display: flex; gap: 10px; padding: 14px 4px 2px; overflow-x: auto; justify-content: center; }

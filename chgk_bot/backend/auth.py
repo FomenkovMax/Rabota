@@ -42,15 +42,15 @@ def validate_init_data(init_data: str, bot_token: str, max_age: int = 86400, now
     return {"user": user, "auth_date": auth_date}
 
 
-def create_token(user_id: int, name: str, secret: str, ttl: int, now: float | None = None) -> str:
+def create_token(user_id: int, name: str, secret: str, ttl: int, now: float | None = None, photo: str = "") -> str:
     t = int(now or time.time())
-    return jwt.encode({"sub": str(user_id), "name": name, "iat": t, "exp": t + ttl}, secret, algorithm="HS256")
+    return jwt.encode({"sub": str(user_id), "name": name, "photo": photo, "iat": t, "exp": t + ttl}, secret, algorithm="HS256")
 
 
 def decode_token(token: str, secret: str) -> dict:
     try:
         data = jwt.decode(token, secret, algorithms=["HS256"])
-        return {"id": int(data["sub"]), "name": data.get("name", "")}
+        return {"id": int(data["sub"]), "name": data.get("name", ""), "photo": data.get("photo", "")}
     except (jwt.PyJWTError, KeyError, ValueError):
         raise AuthError("Сессия недействительна, откройте игру заново")
 

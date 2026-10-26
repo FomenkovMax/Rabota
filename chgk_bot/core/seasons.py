@@ -44,8 +44,10 @@ def standings(factory, key: str, tz_h: int = TZ_H) -> list[dict]:
         ok = dict(s.execute(select(Attempt.actor_id, func.count()).where(
             Attempt.actor_id > 0, Attempt.mode == "solo", Attempt.ts >= a, Attempt.ts < b, Attempt.score >= 1)
             .group_by(Attempt.actor_id)).all())
-        names = {u.tg_id: u.name for u in s.scalars(select(User))}
-    out = [{"user_id": uid, "name": names.get(uid, str(uid)), "played": n, "points": float(pts or 0),
+        users = {u.tg_id: u for u in s.scalars(select(User))}
+    names = {k: u.name for k, u in users.items()}
+    out = [{"user_id": uid, "name": names.get(uid, str(uid)), "photo": (users[uid].photo_url or "") if uid in users else "",
+            "played": n, "points": float(pts or 0),
             "correct": ok.get(uid, 0), "accuracy": round(ok.get(uid, 0) / n, 3) if n else 0.0} for uid, n, pts in rows]
     out.sort(key=lambda r: (-r["points"], -r["accuracy"], r["user_id"]))
     for i, r in enumerate(out):

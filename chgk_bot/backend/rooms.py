@@ -24,6 +24,7 @@ class Room:
         self.game_id: str | None = None
         self.conns: dict[int, WebSocket] = {}
         self.names: dict[int, str] = {}
+        self.photos: dict[int, str] = {}
         self.lock = asyncio.Lock()
         self.timer: asyncio.Task | None = None
         self.notice = ""
@@ -55,7 +56,7 @@ class Room:
         now = time.time()
         g = self.game
         out = {"server_now_ms": int(now * 1000), "notice": self.notice,
-               "players": [{"id": u, "name": n} for u, n in self.names.items() if u in self.conns],
+               "players": [{"id": u, "name": n, "photo": self.photos.get(u, "")} for u, n in self.names.items() if u in self.conns],
                "game": None}
         if not g:
             return out
@@ -112,10 +113,10 @@ class Room:
             await self.changed()
 
     # ---------- действия игроков ----------
-    async def connect(self, uid: int, name: str, ws: WebSocket) -> None:
+    async def connect(self, uid: int, name: str, ws: WebSocket, photo: str = "") -> None:
         async with self.lock:
             old = self.conns.get(uid)
-            self.conns[uid], self.names[uid] = ws, name
+            self.conns[uid], self.names[uid], self.photos[uid] = ws, name, photo
             if old and old is not ws:
                 try:
                     await old.close()

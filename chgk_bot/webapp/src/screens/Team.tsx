@@ -10,6 +10,8 @@ import { useApp } from "../store";
 import { sound } from "../sound";
 import { tg } from "../tg";
 import { Asset } from "../components/Asset";
+import { Avatar } from "../components/Avatar";
+import { TableLobby } from "../components/TableLobby";
 import { Confetti } from "../components/Confetti";
 import { QuestionCard } from "../components/QuestionCard";
 import { Scoreboard } from "../components/Scoreboard";
@@ -63,7 +65,17 @@ export function Team() {
 
   return (
     <div className={s.wrap}>
-      <p className={s.dim}>В комнате: {room?.players.map((p) => p.name).join(", ") || "…"}</p>
+      {(!g || g.status === "finished") ? (
+        <div className={s.center} style={{ gap: 4 }}>
+          <h2 className="gold-text">Стол знатоков</h2>
+          <p className={s.dim}>{room ? `За столом: ${room.players.length}` : "Подключаюсь…"}</p>
+          <TableLobby players={room?.players ?? []} meId={me?.user.id} />
+        </div>
+      ) : (
+        <div className={s.avatars}>
+          {room?.players.map((p) => <Avatar key={p.id} id={p.id} name={p.name} photo={p.photo} size={36} crown={p.id === g.captain_id} />)}
+        </div>
+      )}
       {err && <Card accent="bad">{err}</Card>}
 
       {!g || g.status === "finished" ? (

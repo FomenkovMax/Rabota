@@ -49,3 +49,9 @@ h1 { font-size: var(--fs-xl); line-height: 1.15; } h2 { font-size: var(--fs-l); 
 }
 @keyframes sway { from { transform: translateX(-6%); opacity: .6; } to { transform: translateX(6%); opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .studio::after { animation: none; } * { scroll-behavior: auto; } }
+
+/* скелетон: мягкое мерцание слева направо (только background-position — дёшево для GPU) */
+.skeleton { border-radius: var(--radius); background: linear-gradient(90deg, rgba(31,45,94,.55) 25%, rgba(56,74,140,.6) 37%, rgba(31,45,94,.55) 63%);
+  background-size: 400% 100%; animation: shimmer 1.4s ease infinite; }
+@keyframes shimmer { 0% { background-position: 100% 50%; } 100% { background-position: 0 50%; } }
+@media (prefers-reduced-motion: reduce) { .skeleton { animation: none; } }

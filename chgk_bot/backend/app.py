@@ -104,10 +104,10 @@ def create_app(settings: Settings, factory=None, llm_client=None, http: httpx.As
             raise HTTPException(403, "Игра только для участников команды")
         return user
 
-    def issue(uid: int, name: str, username: str | None) -> dict:
-        users.touch(uid, name, username)
-        return {"token": create_token(uid, name, settings.jwt_secret, settings.token_ttl),
-                "user": {"id": uid, "name": name}}
+    def issue(uid: int, name: str, username: str | None, photo: str = "") -> dict:
+        users.touch(uid, name, username, photo or None)
+        return {"token": create_token(uid, name, settings.jwt_secret, settings.token_ttl, photo=photo),
+                "user": {"id": uid, "name": name, "photo": photo}}
 
     @app.get("/api/health")
     def health():
@@ -124,7 +124,9 @@ def create_app(settings: Settings, factory=None, llm_client=None, http: httpx.As
         if not await access.allowed(uid):
             raise HTTPException(403, "Игра только для участников команды")
         name = " ".join(x for x in (u.get("first_name"), u.get("last_name")) if x) or u.get("username") or str(uid)
-        return issue(uid, name, u.get("username"))
+        photo = str(u.get("photo_url") or "")
+        photo = photo if photo.startswith("https://") and len(photo) < 500 else ""   # только https-ссылки Telegram
+        return issue(uid, name, u.get("username"), photo)
 
     if settings.dev_auth:
         @app.post("/api/auth/dev")
@@ -324,7 +326,7 @@ def create_app(settings: Settings, factory=None, llm_client=None, http: httpx.As
             await ws.close(code=4403)
             return
         await ws.accept()
-        await room.connect(user["id"], user["name"], ws)
+        await room.connect(user["id"], user["name"], ws, user.get("photo", ""))
         try:
             while True:
                 msg = await ws.receive_json()

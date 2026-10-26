@@ -75,7 +75,14 @@ export function Solo() {
   const showCard = round && (phase === "think" || phase === "judging" || phase === "result");
   return (
     <div className={s.wrap}>
-      {phase === "loading" && <p className={s.dim} style={{ textAlign: "center" }}>Достаю конверт…</p>}
+      {phase === "loading" && (
+        <div className={s.center} style={{ minHeight: "50vh", justifyContent: "center" }}>
+          <motion.div animate={{ y: [0, -10, 0], rotate: [0, -4, 4, 0] }} transition={{ duration: 1.4, repeat: Infinity, ease: "easeInOut" }}>
+            <Asset id="wheel.envelope.closed" fallback="✉️" size={120} />
+          </motion.div>
+          <p className={s.dim}>Достаю конверт…</p>
+        </div>
+      )}
       {phase === "error" && (<><Card accent="bad">{err}</Card><Button onClick={() => go("home")}>В меню</Button></>)}
 
       {showCard && (

@@ -21,7 +21,7 @@ async function call<T>(path: string, body?: unknown): Promise<T> {
 
 export interface Stats { played: number; points: number; correct: number; close: number }
 export interface Me {
-  user: { id: number; name: string };
+  user: { id: number; name: string; photo?: string };
   is_admin: boolean;
   stats: Stats;
   brand: { game_name: string };
@@ -50,13 +50,13 @@ export interface ActorStats {
 }
 export interface TeamStats extends ActorStats {
   games: { date: string; mode: string; score: number | null; total: number; experts: number | null; viewers: number | null }[];
-  players: { id: number; name: string; solo_played: number; solo_correct: number; as_captain: number; captain_correct: number }[];
+  players: { id: number; name: string; photo?: string; solo_played: number; solo_correct: number; as_captain: number; captain_correct: number }[];
 }
 
 export interface League { id: string; name: string; min_points: number; icon: string }
 export interface Season {
   season: string; days_left: number;
-  standings: { user_id: number; name: string; rank: number; points: number; played: number; accuracy: number }[];
+  standings: { user_id: number; name: string; photo?: string; rank: number; points: number; played: number; accuracy: number }[];
   me: { points: number; rank: number | null; league: League; next_league: League | null; to_next: number };
   awards: { user_id: number; name: string; season: string; kind: string; points: number }[];
   achievements: Ach[];
@@ -111,7 +111,7 @@ export interface GameView {
   log: { qid: string; answer: string | null; level: string; score: number }[] | null;
 }
 export interface RoomState {
-  server_now_ms: number; notice: string; players: { id: number; name: string }[]; game: GameView | null;
+  server_now_ms: number; notice: string; players: { id: number; name: string; photo?: string }[]; game: GameView | null;
 }
 
 export function openRoom(onState: (s: RoomState) => void, onError: (m: string) => void) {

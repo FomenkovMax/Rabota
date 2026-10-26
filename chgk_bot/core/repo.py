@@ -249,12 +249,14 @@ class UserRepo:
     def __init__(self, factory: sessionmaker[Session]):
         self.f = factory
 
-    def touch(self, tg_id: int, name: str, username: str | None) -> None:
-        """Создаёт игрока при первом входе и обновляет имя/время последнего визита."""
+    def touch(self, tg_id: int, name: str, username: str | None, photo_url: str | None = None) -> None:
+        """Создаёт игрока при первом входе и обновляет имя, аватарку и время последнего визита."""
         with self.f() as s:
             u = s.get(User, tg_id)
             if u is None:
-                s.add(User(tg_id=tg_id, name=name, username=username))
+                s.add(User(tg_id=tg_id, name=name, username=username, photo_url=photo_url))
             else:
                 u.name, u.username, u.last_seen = name, username, time.time()
+                if photo_url:
+                    u.photo_url = photo_url
             s.commit()
