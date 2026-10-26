@@ -40,7 +40,7 @@ export function TimerRing({ deadlineMs, offsetMs, totalSec, onEnd }: Props) {
     if (hot && sec > 0 && sec !== lastTick.current) { lastTick.current = sec; sound.play(sec === 10 ? "timer10" : "tick"); if (sec <= 3) tg.haptic("medium"); }
   }, [sec, hot]);
   return (
-    <svg width="132" height="132" viewBox="0 0 132 132" aria-label={`Осталось ${sec} с`}>
+    <svg className="timer-ring" width="132" height="132" viewBox="0 0 132 132" aria-label={`Осталось ${sec} с`}>
       <circle cx="66" cy="66" r={R} fill="none" stroke="rgba(255,255,255,.1)" strokeWidth="10" />
       <circle
         cx="66" cy="66" r={R} fill="none" strokeWidth="10" strokeLinecap="round"

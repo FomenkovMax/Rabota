@@ -19,6 +19,8 @@ export function App() {
   useEffect(() => { tg.init(); void boot(); }, [boot]);
   // «Назад» в шапке Telegram: на любом экране, кроме главного
   useEffect(() => tg.backButton(screen === "home" ? null : () => go("home")), [screen, go]);
+  // новый экран всегда открывается сверху (иначе в Telegram Desktop окно оставалось прокрученным)
+  useEffect(() => { window.scrollTo(0, 0); }, [screen]);
 
   let body;
   if (error) body = <div style={{ padding: 16 }}><Card accent="bad">{error}</Card></div>;

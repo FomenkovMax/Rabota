@@ -8,7 +8,7 @@ export function OwlHero({ size = 132 }: { size?: number }) {
   const still = useReducedMotion();
   const [poke, setPoke] = useState(0);
   return (
-    <div style={{ position: "relative", width: size * 1.9, height: size * 1.35, display: "flex", alignItems: "center", justifyContent: "center" }}>
+    <div className="owl-hero" style={{ position: "relative", width: size * 1.9, height: size * 1.35, display: "flex", alignItems: "center", justifyContent: "center" }}>
       <motion.div aria-hidden
         animate={still ? {} : { rotate: 360 }} transition={{ duration: 40, repeat: Infinity, ease: "linear" }}
         style={{ position: "absolute", width: size * 1.8, height: size * 1.8, borderRadius: "50%", opacity: 0.55,
