@@ -1,5 +1,6 @@
 import { motion } from "framer-motion";
 import { useState } from "react";
+import { CountUp } from "../components/CountUp";
 import { OwlHero } from "../components/OwlHero";
 import { Tile } from "../components/Tile";
 import { sound } from "../sound";
@@ -23,11 +24,11 @@ export function Home() {
       </div>
 
       <motion.div className={s.strip} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.15 }}>
-        <div><b>{st.played}</b><span>вопросов</span></div>
+        <div><b><CountUp value={st.played} /></b><span>вопросов</span></div>
         <i />
-        <div><b>{st.correct}</b><span>взято</span></div>
+        <div><b><CountUp value={st.correct} /></b><span>взято</span></div>
         <i />
-        <div><b>{acc}%</b><span>точность</span></div>
+        <div><b><CountUp value={acc} suffix="%" /></b><span>точность</span></div>
       </motion.div>
 
       <div className={s.grid}>

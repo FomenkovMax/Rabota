@@ -11,6 +11,9 @@ import { sound } from "../sound";
 import { tg } from "../tg";
 import { Asset } from "../components/Asset";
 import { Confetti } from "../components/Confetti";
+import { QuestionCard } from "../components/QuestionCard";
+import { Scoreboard } from "../components/Scoreboard";
+import { VerdictBadge } from "../components/VerdictBadge";
 import { Envelope } from "../components/Envelope";
 import s from "./Screen.module.css";
 
@@ -48,15 +51,14 @@ export function Team() {
   }, [g]);
   const wheelWait = g?.mode === "wheel" && !opened && (g.phase === "think");
 
-  const header = (
-    <Card>
-      {g?.mode === "wheel" ? (
-        <div className={s.stats}><div><b>{g.experts}</b><span>знатоки</span></div><div><b>{g.viewers}</b><span>телезрители</span></div></div>
-      ) : g ? (
-        <div className={s.stats}><div><b>{g.score}</b><span>очков</span></div><div><b>{g.tour ? `${g.tour[0]}·${g.tour[1]}` : "—"}</b><span>тур·вопрос</span></div><div><b>{g.idx + 1}/{g.total}</b><span>всего</span></div></div>
-      ) : null}
-      {g && <p className={s.dim} style={{ marginTop: 8 }}>Капитан: {nameOf(g.captain_id)}{isCaptain ? " (ты)" : ""}</p>}
-    </Card>
+  const header = g && (
+    g.mode === "wheel" ? (
+      <Scoreboard sep=":" caption={`Капитан: ${nameOf(g.captain_id)}${isCaptain ? " (ты)" : ""} · игра до 6`}
+        cells={[{ label: "знатоки", value: g.experts, hot: g.experts > g.viewers }, { label: "телезрители", value: g.viewers, hot: g.viewers > g.experts }]} />
+    ) : (
+      <Scoreboard caption={`Капитан: ${nameOf(g.captain_id)}${isCaptain ? " (ты)" : ""}`}
+        cells={[{ label: "очков", value: g.score, hot: true }, { label: "тур", value: g.tour ? g.tour[0] : "—" }, { label: "вопрос", value: `${g.idx + 1}/${g.total}` }]} />
+    )
   );
 
   return (
@@ -90,15 +92,32 @@ export function Team() {
             </div>
           )}
           {wheelWait && g.spin && <div className={s.center}><Envelope sector={g.spin.sector} open={false} /></div>}
+          {!wheelWait && (g.phase === "think" || g.phase === "answer") && (
+            <div className={s.center}>
+              <TimerRing deadlineMs={g.deadline_ms} offsetMs={offset} totalSec={g.phase === "think" ? g.think : 20} />
+              <p className={s.dim}>{g.phase === "think" ? "Обсуждаем" : "Время сдавать ответ!"}</p>
+            </div>
+          )}
+          {g.phase === "review" && g.verdict && (
+            <Card accent={ACCENT[g.verdict.level]}>
+              <VerdictBadge level={g.verdict.level} timeout={g.verdict.source === "timeout"}
+                comment={`Ответ команды: ${g.answer ?? "— не успели"}. ${g.verdict.comment}`}
+                extra={g.verdict.disputed ? "⚠️ Судья не ответил — решает капитан." : g.verdict.overridden ? "Решение капитана" : undefined} />
+            </Card>
+          )}
+          {g.question && !wheelWait && (
+            <QuestionCard key={g.idx} text={g.question.text} label={g.mode === "wheel" && g.spin ? `Сектор ${g.spin.sector + 1}` : "Вопрос"}
+              flipped={g.phase === "review" && !!g.reveal}
+              back={g.reveal && (
+                <div>
+                  <div style={{ fontFamily: "var(--font-display)", fontSize: 13, letterSpacing: ".14em", textTransform: "uppercase", color: "var(--gold)", textAlign: "center" }}>Ответ</div>
+                  <h2 className="gold-text" style={{ textAlign: "center", margin: "8px 0 4px", fontSize: 28 }}>{g.reveal.answer}</h2>
+                  <p className={s.explain}>{g.reveal.explanation}</p>
+                </div>
+              )} />
+          )}
           <AnimatePresence mode="wait">
             <motion.div key={g.phase + g.idx} className={s.col} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
-              {!wheelWait && (g.phase === "think" || g.phase === "answer") && (
-                <div className={s.center}>
-                  <TimerRing deadlineMs={g.deadline_ms} offsetMs={offset} totalSec={g.phase === "think" ? g.think : 20} />
-                  <p className={s.dim}>{g.phase === "think" ? "Обсуждаем" : "Время сдавать ответ!"}</p>
-                </div>
-              )}
-              {g.question && !wheelWait && <Card><p className={s.question}>{g.question.text}</p></Card>}
 
               {!wheelWait && (g.phase === "think" || g.phase === "answer") && (isCaptain ? (
                 <>
@@ -111,13 +130,6 @@ export function Team() {
 
               {g.phase === "review" && g.verdict && (
                 <>
-                  <Card accent={ACCENT[g.verdict.level]}>
-                    <h2>{g.verdict.level === "correct" ? "Верно! 🎉" : g.verdict.level === "close" ? "Почти 🤏" : "Мимо"}</h2>
-                    <p className={s.dim}>Ответ команды: {g.answer ?? "— не успели"}</p>
-                    <p className={s.dim}>{g.verdict.comment}</p>
-                    {g.verdict.disputed && <p className={s.dim}>⚠️ Судья не ответил — решает капитан.</p>}
-                  </Card>
-                  {g.reveal && <Card><p className={s.dim}>Ответ</p><h2>{g.reveal.answer}</h2><p className={s.explain}>{g.reveal.explanation}</p></Card>}
                   {isCaptain && (
                     <>
                       <Button variant="ghost" onClick={() => send({ type: "override", correct: g.verdict!.level !== "correct" })}>

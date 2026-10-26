@@ -4,6 +4,7 @@ import { Asset } from "../components/Asset";
 import { Button } from "../components/Button";
 import { MenuButton } from "../components/MenuButton";
 import { Card } from "../components/Card";
+import { CountUp } from "../components/CountUp";
 import { Ceremony } from "../components/Ceremony";
 import { useApp } from "../store";
 import s from "./Screen.module.css";
@@ -46,7 +47,7 @@ export function Season() {
               <p className={s.dim}>Сезон: {pretty(d.season)} · осталось дней: {d.days_left}</p>
             </div>
             <div className={s.stats} style={{ marginTop: 12 }}>
-              <div><b>{d.me.points}</b><span>очков</span></div>
+              <div><b><CountUp value={d.me.points} decimals={1} /></b><span>очков</span></div>
               <div><b>{d.me.rank ?? "—"}</b><span>место</span></div>
             </div>
             {d.me.next_league && <p className={s.dim} style={{ marginTop: 10 }}>До «{d.me.next_league.name}» {d.me.next_league.icon}: ещё {d.me.to_next} очк.</p>}

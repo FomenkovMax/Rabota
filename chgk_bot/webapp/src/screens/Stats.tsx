@@ -4,6 +4,7 @@ import { BarChart } from "../components/BarChart";
 import { Button } from "../components/Button";
 import { MenuButton } from "../components/MenuButton";
 import { Card } from "../components/Card";
+import { CountUp } from "../components/CountUp";
 import { useApp } from "../store";
 import s from "./Screen.module.css";
 
@@ -34,9 +35,9 @@ export function Stats() {
         <>
           <Card>
             <div className={s.stats}>
-              <div><b>{data.played}</b><span>вопросов</span></div>
-              <div><b>{data.played ? Math.round(data.accuracy * 100) : 0}%</b><span>точность</span></div>
-              <div><b>{data.best_streak}</b><span>лучшая серия</span></div>
+              <div><b><CountUp value={data.played} /></b><span>вопросов</span></div>
+              <div><b><CountUp value={data.played ? Math.round(data.accuracy * 100) : 0} suffix="%" /></b><span>точность</span></div>
+              <div><b><CountUp value={data.best_streak} /></b><span>лучшая серия</span></div>
             </div>
             <p className={s.dim} style={{ marginTop: 10 }}>
               Взято {data.correct}, почти {data.close}, очков {data.points}

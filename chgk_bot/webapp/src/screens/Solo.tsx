@@ -10,10 +10,11 @@ import { useApp } from "../store";
 import { sound } from "../sound";
 import { tg } from "../tg";
 import { Confetti } from "../components/Confetti";
+import { QuestionCard } from "../components/QuestionCard";
+import { VerdictBadge } from "../components/VerdictBadge";
 import s from "./Screen.module.css";
 
 type Phase = "loading" | "think" | "judging" | "result" | "error";
-const LABEL = { correct: "Верно! 🎉", close: "Почти 🤏", wrong: "Мимо" } as const;
 const ACCENT = { correct: "ok", close: "half", wrong: "bad" } as const;
 
 export function Solo() {
@@ -71,21 +72,43 @@ export function Solo() {
     try { setSteps((await api.steps(round.question.id)).steps); } catch { setSteps(undefined); }
   }
 
+  const showCard = round && (phase === "think" || phase === "judging" || phase === "result");
   return (
     <div className={s.wrap}>
-      <AnimatePresence mode="wait">
-        <motion.div key={phase + (round?.round_id ?? "")} className={s.col}
-          initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
-          {phase === "loading" && <p className={s.dim}>Достаю вопрос…</p>}
-          {phase === "error" && (<><Card accent="bad">{err}</Card><Button onClick={() => go("home")}>В меню</Button></>)}
+      {phase === "loading" && <p className={s.dim} style={{ textAlign: "center" }}>Достаю конверт…</p>}
+      {phase === "error" && (<><Card accent="bad">{err}</Card><Button onClick={() => go("home")}>В меню</Button></>)}
 
-          {(phase === "think" || phase === "judging") && round && (
-            <>
-              <div className={s.center}>
-                <TimerRing deadlineMs={round.deadline_ms} offsetMs={offset} totalSec={round.think_seconds}
-                  onEnd={() => { if (phase === "think") tg.haptic("heavy"); }} />
+      {showCard && (
+        <>
+          {phase !== "result" ? (
+            <div className={s.center}>
+              <TimerRing deadlineMs={round.deadline_ms} offsetMs={offset} totalSec={round.think_seconds}
+                onEnd={() => { if (phase === "think") tg.haptic("heavy"); }} />
+            </div>
+          ) : res && (
+            <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}>
+              {res.verdict.level === "correct" && <Confetti />}
+              <Card accent={ACCENT[res.verdict.level]}>
+                <VerdictBadge level={res.verdict.level} timeout={res.timeout} comment={res.verdict.comment}
+                  extra={res.verdict.disputed ? "⚠️ Судья не ответил — решение спорное." : undefined} />
+              </Card>
+            </motion.div>
+          )}
+
+          {/* карточка остаётся на месте между фазами — поэтому переворот анимируется */}
+          <QuestionCard key={round.round_id} text={round.question.text} label="Вопрос" flipped={phase === "result"}
+            back={res && (
+              <div>
+                <div style={{ fontFamily: "var(--font-display)", fontSize: 13, letterSpacing: ".14em", textTransform: "uppercase", color: "var(--gold)", textAlign: "center" }}>Ответ</div>
+                <h2 className="gold-text" style={{ textAlign: "center", margin: "8px 0 4px", fontSize: 28 }}>{res.reveal.answer}</h2>
+                {res.reveal.accept_note && <p className={s.dim} style={{ textAlign: "center" }}>{res.reveal.accept_note}</p>}
+                <p className={s.explain}>{res.reveal.explanation}</p>
+                {res.reveal.source && <p className={s.dim} style={{ marginTop: 10, fontSize: 13 }}>Источник: {res.reveal.source}</p>}
               </div>
-              <Card><p className={s.question}>{round.question.text}</p></Card>
+            )} />
+
+          {phase !== "result" ? (
+            <>
               <input className={s.input} value={text} placeholder="Твой ответ" disabled={phase === "judging"}
                 onChange={(e) => setText(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Enter" && text.trim()) void send(text); }} />
@@ -94,46 +117,33 @@ export function Solo() {
               </Button>
               <Button variant="ghost" disabled={phase === "judging"} onClick={() => void skip()}>Не знаю</Button>
             </>
+          ) : res && (
+            <AnimatePresence>
+              <motion.div className={s.col} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.5 }}>
+                {res.new_achievements?.map((a) => (
+                  <motion.div key={a.code} initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}>
+                    <Card accent="ok"><div className={s.row}><Asset id={`ach.${a.code}`} fallback={a.icon} size={52} /><div><b>Ачивка: {a.name}</b><p className={s.dim}>{a.desc}</p></div></div></Card>
+                  </motion.div>
+                ))}
+                {steps === undefined && <Button variant="ghost" onClick={() => void loadSteps()}>🧩 Разбор по шагам</Button>}
+                {steps === null && <p className={s.dim}>Составляю разбор…</p>}
+                {steps && (
+                  <Card>
+                    {steps.steps.map((st, i) => (
+                      <motion.p key={i} className={s.step} initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.12 }}>
+                        <b>{i + 1}.</b> {st.clue && <i>«{st.clue}» → </i>}{st.inference}
+                      </motion.p>
+                    ))}
+                    {steps.lesson && <p className={s.explain}>💡 {steps.lesson}</p>}
+                  </Card>
+                )}
+                <Button onClick={() => void next()}>Следующий вопрос</Button>
+                <MenuButton variant="ghost" />
+              </motion.div>
+            </AnimatePresence>
           )}
-
-          {phase === "result" && res && (
-            <>
-              {res.verdict.level === "correct" && <Confetti />}
-              {res.new_achievements?.map((a) => (
-                <motion.div key={a.code} initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}>
-                  <Card accent="ok"><div className={s.row}><Asset id={`ach.${a.code}`} fallback={a.icon} size={52} /><div><b>Ачивка: {a.name}</b><p className={s.dim}>{a.desc}</p></div></div></Card>
-                </motion.div>
-              ))}
-              <Card accent={ACCENT[res.verdict.level]}>
-                <h2>{res.timeout ? "Время вышло ⏰" : LABEL[res.verdict.level]}</h2>
-                <p className={s.dim}>{res.verdict.comment}</p>
-                {res.verdict.disputed && <p className={s.dim}>⚠️ Судья не ответил — решение спорное.</p>}
-              </Card>
-              <Card>
-                <p className={s.dim}>Ответ</p>
-                <h2>{res.reveal.answer}</h2>
-                {res.reveal.accept_note && <p className={s.dim}>{res.reveal.accept_note}</p>}
-                <p className={s.explain}>{res.reveal.explanation}</p>
-                {res.reveal.source && <p className={s.dim}>Источник: {res.reveal.source}</p>}
-              </Card>
-              {steps === undefined && <Button variant="ghost" onClick={() => void loadSteps()}>🧩 Разбор по шагам</Button>}
-              {steps === null && <p className={s.dim}>Составляю разбор…</p>}
-              {steps && (
-                <Card>
-                  {steps.steps.map((st, i) => (
-                    <p key={i} className={s.step}>
-                      <b>{i + 1}.</b> {st.clue && <i>«{st.clue}» → </i>}{st.inference}
-                    </p>
-                  ))}
-                  {steps.lesson && <p className={s.explain}>💡 {steps.lesson}</p>}
-                </Card>
-              )}
-              <Button onClick={() => void next()}>Следующий вопрос</Button>
-              <MenuButton variant="ghost" />
-            </>
-          )}
-        </motion.div>
-      </AnimatePresence>
+        </>
+      )}
     </div>
   );
 }

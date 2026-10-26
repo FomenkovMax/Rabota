@@ -28,6 +28,7 @@
 - Новый ассет = новая строка в таблице + одноимённый файл.
 
 | `tile.solo` `tile.team` `tile.season` `tile.stats` | Главная (плитки) | иллюстрации, прозрачный фон | ≤320 px webp | — | Owl on books with magnifier / quiz table with chairs / podium with owl / golden bar chart | `…/tile.<имя>.webp` |
+| `card.paper` `card.back` | Карточка вопроса (лицо/оборот) | фактура 3:4, рамка режется border-image | 717×960 webp | — | Ivory paper with gold foil border / navy linen with gold border and owl emblem | `…/card.<имя>.webp` |
 
 ## Статус (набор 1 готов)
 Сделаны (Nano Banana 2 / Pro + вырезание фона, стиль-референс — `art_src/welcome.png`): `home.logo`, `bg.studio`, `wheel.table`, `wheel.arrow`, `wheel.envelope.closed`, `wheel.envelope.open`, `award.owl`, `award.owl.diamond`, `result.win`, `result.lose`, `loader`.
@@ -37,3 +38,4 @@
 Примечания: у стола `wheel.table` секторов нарисовано не 13, поэтому сектора и цифры рисует код внутри золотого кольца, а картинка даёт только раму.
 
 Шаг А UI: `tile.solo`, `tile.team`, `tile.season`, `tile.stats` — готовы.
+Шаг Б UI: `card.paper`, `card.back` — готовы.
