@@ -1,9 +1,9 @@
+import { motion } from "framer-motion";
 import { useState } from "react";
+import { OwlHero } from "../components/OwlHero";
+import { Tile } from "../components/Tile";
 import { sound } from "../sound";
 import { useApp } from "../store";
-import { Asset } from "../components/Asset";
-import { Button } from "../components/Button";
-import { Card } from "../components/Card";
 import s from "./Screen.module.css";
 
 export function Home() {
@@ -11,26 +11,36 @@ export function Home() {
   const [muted, setMuted] = useState(sound.isMuted());
   if (!me) return null;
   const st = me.stats;
+  const acc = st.played ? Math.round((100 * st.correct) / st.played) : 0;
   return (
     <div className={s.wrap}>
-      <div className={s.center}>
-        <Asset id="home.logo" fallback="🦉" size={110} />
-        <h1>{me.brand.game_name}</h1>
-        <p className={s.dim}>Привет, {me.user.name}!</p>
+      <div className={s.center} style={{ gap: 2 }}>
+        <OwlHero />
+        <motion.h1 className="gold-text" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} style={{ textAlign: "center" }}>
+          Что? Где? Когда?
+        </motion.h1>
+        <p className={s.dim}>Тренировка знатоков · привет, {me.user.name}!</p>
       </div>
-      <Card>
-        <div className={s.stats}>
-          <div><b>{st.played}</b><span>вопросов</span></div>
-          <div><b>{st.correct}</b><span>взято</span></div>
-          <div><b>{st.points}</b><span>очков</span></div>
-        </div>
-      </Card>
-      <Button onClick={() => go("solo")}>Играть соло</Button>
-      <Button variant="ghost" onClick={() => go("team")}>Командная игра</Button>
-      <Button variant="ghost" onClick={() => go("season")}>🏆 Сезон и награды</Button>
-      <Button variant="ghost" onClick={() => go("stats")}>📊 Статистика</Button>
-      {me.is_admin && <Button variant="ghost" onClick={() => go("admin")}>🛠 Вопросы (админ)</Button>}
-      <Button variant="ghost" onClick={() => setMuted(sound.toggle())}>{muted ? "🔇 Звук выключен" : "🔊 Звук включён"}</Button>
+
+      <motion.div className={s.strip} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.15 }}>
+        <div><b>{st.played}</b><span>вопросов</span></div>
+        <i />
+        <div><b>{st.correct}</b><span>взято</span></div>
+        <i />
+        <div><b>{acc}%</b><span>точность</span></div>
+      </motion.div>
+
+      <div className={s.grid}>
+        <Tile id="tile.solo" fallback="🧠" title="Соло" sub="минута на вопрос" accent delay={0.05} onClick={() => go("solo")} />
+        <Tile id="tile.team" fallback="🎡" title="Команда" sub="волчок и туры" delay={0.1} onClick={() => go("team")} />
+        <Tile id="tile.season" fallback="🏆" title="Сезон" sub="лиги и совы" delay={0.15} onClick={() => go("season")} />
+        <Tile id="tile.stats" fallback="📊" title="Статистика" sub="прогресс и итоги" delay={0.2} onClick={() => go("stats")} />
+      </div>
+
+      <div className={s.chips}>
+        <button className={s.chip} onClick={() => setMuted(sound.toggle())}>{muted ? "🔇 Звук выкл." : "🔊 Звук вкл."}</button>
+        {me.is_admin && <button className={s.chip} onClick={() => go("admin")}>🛠 Вопросы</button>}
+      </div>
     </div>
   );
 }

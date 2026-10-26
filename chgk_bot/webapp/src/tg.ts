@@ -6,6 +6,7 @@ interface TgWebApp {
   ready(): void;
   expand(): void;
   disableVerticalSwipes?(): void;
+  BackButton?: { show(): void; hide(): void; onClick(cb: () => void): void; offClick(cb: () => void): void };
   HapticFeedback?: {
     impactOccurred(s: string): void;
     notificationOccurred(s: string): void;
@@ -22,6 +23,15 @@ export const tg = {
     w?.ready();
     w?.expand();
     w?.disableVerticalSwipes?.();
+  },
+  /** Системная кнопка «Назад» в шапке Telegram. Возвращает функцию отписки. */
+  backButton(cb: (() => void) | null): () => void {
+    const b = wa()?.BackButton;
+    if (!b) return () => {};
+    if (!cb) { b.hide(); return () => {}; }
+    b.onClick(cb);
+    b.show();
+    return () => { b.offClick(cb); };
   },
   haptic(kind: Haptic) {
     const h = wa()?.HapticFeedback;

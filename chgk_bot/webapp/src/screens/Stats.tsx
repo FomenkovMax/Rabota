@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api, type ActorStats, type TeamStats } from "../api";
 import { BarChart } from "../components/BarChart";
 import { Button } from "../components/Button";
+import { MenuButton } from "../components/MenuButton";
 import { Card } from "../components/Card";
 import { useApp } from "../store";
 import s from "./Screen.module.css";
@@ -80,7 +81,7 @@ export function Stats() {
           </Button>
         </>
       )}
-      <Button onClick={() => go("home")}>В меню</Button>
+      <MenuButton />
     </div>
   );
 }

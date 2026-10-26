@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api, type Season as SeasonT } from "../api";
 import { Asset } from "../components/Asset";
 import { Button } from "../components/Button";
+import { MenuButton } from "../components/MenuButton";
 import { Card } from "../components/Card";
 import { Ceremony } from "../components/Ceremony";
 import { useApp } from "../store";
@@ -85,7 +86,7 @@ export function Season() {
           </Card>
         </>
       )}
-      <Button onClick={() => go("home")}>В меню</Button>
+      <MenuButton />
     </div>
   );
 }

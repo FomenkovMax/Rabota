@@ -14,3 +14,12 @@
 .textarea { width: 100%; min-height: 120px; padding: 12px; border-radius: var(--radius-s); border: 1px solid rgba(255,255,255,.12); background: var(--bg-2); color: var(--text); font: 14px/1.4 ui-monospace, monospace; outline: none; resize: vertical; }
 .row { display: flex; gap: 8px; align-items: center; }
 .small { font-size: 13px; color: var(--text-dim); }
+.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.strip { display: flex; align-items: center; justify-content: space-around; padding: 10px 6px; border-radius: 999px;
+  background: rgba(18, 27, 58, .72); border: 1px solid rgba(242, 184, 75, .22); backdrop-filter: blur(6px); }
+.strip div { display: flex; flex-direction: column; align-items: center; }
+.strip b { font-size: 20px; color: var(--gold-2); }
+.strip span { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: .06em; }
+.strip i { width: 1px; height: 26px; background: rgba(255, 255, 255, .12); }
+.chips { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+.chip { border: 1px solid rgba(255, 255, 255, .12); background: rgba(18, 27, 58, .6); color: var(--text-dim); border-radius: 999px; padding: 8px 14px; font: 14px var(--font); cursor: pointer; }

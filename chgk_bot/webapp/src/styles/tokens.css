@@ -17,6 +17,8 @@
   --shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
   --glow-gold: 0 0 28px rgba(242, 184, 75, 0.35);
   --font: -apple-system, "SF Pro Text", "Segoe UI", Roboto, system-ui, sans-serif;
+  --font-display: "Prata", Georgia, "Times New Roman", serif;   /* заголовки «как на ТВ» */
+  --gold-grad: linear-gradient(180deg, #fff1c4 0%, #ffd982 35%, #f2b84b 60%, #b9832a 100%);
   /* шкала типографики */
   --fs-xs: 13px; --fs-s: 15px; --fs-m: 17px; --fs-l: 22px; --fs-xl: 30px;
   /* длительности анимаций */
@@ -32,7 +34,10 @@ body {
   overscroll-behavior: none;
 }
 h1, h2, h3, p { margin: 0; }
-h1 { font-size: var(--fs-xl); } h2 { font-size: var(--fs-l); }
+h1, h2 { font-family: var(--font-display); font-weight: 400; letter-spacing: .01em; }
+h1 { font-size: var(--fs-xl); line-height: 1.15; } h2 { font-size: var(--fs-l); line-height: 1.2; }
+/* золотое тиснение для крупных заголовков */
+.gold-text { background: var(--gold-grad); -webkit-background-clip: text; background-clip: text; color: transparent; filter: drop-shadow(0 2px 6px rgba(0,0,0,.45)); }
 
 /* Студийный фон: слой со своей картинкой bg.studio (если есть) + мягкий «прожектор». Анимируем только opacity/transform. */
 .studio { position: fixed; inset: 0; z-index: -1; background: radial-gradient(120% 80% at 50% 0%, var(--bg-2), var(--bg)); overflow: hidden; }

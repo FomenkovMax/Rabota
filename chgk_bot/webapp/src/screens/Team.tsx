@@ -2,6 +2,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useRef, useState } from "react";
 import { openRoom, type RoomState } from "../api";
 import { Button } from "../components/Button";
+import { MenuButton } from "../components/MenuButton";
 import { Card } from "../components/Card";
 import { TimerRing } from "../components/TimerRing";
 import { Wheel } from "../components/Wheel";
@@ -78,7 +79,7 @@ export function Team() {
           <Button onClick={() => send({ type: "start", mode: "sport", tours: 3, per_tour: 12 })}>Спортивное ЧГК · 3 тура по 12</Button>
           <Button variant="ghost" onClick={() => send({ type: "start", mode: "sport", tours: 1, per_tour: 6 })}>Короткая · 6 вопросов</Button>
           <Button variant="ghost" onClick={() => send({ type: "start", mode: "wheel" })}>🎡 Классический волчок</Button>
-          <Button variant="ghost" onClick={() => go("home")}>В меню</Button>
+          <MenuButton variant="ghost" />
         </>
       ) : (
         <>

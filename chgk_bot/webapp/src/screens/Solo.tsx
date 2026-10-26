@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { api, type AnswerResult, type Round, type Steps } from "../api";
 import { Asset } from "../components/Asset";
 import { Button } from "../components/Button";
+import { MenuButton } from "../components/MenuButton";
 import { Card } from "../components/Card";
 import { TimerRing } from "../components/TimerRing";
 import { useApp } from "../store";
@@ -128,7 +129,7 @@ export function Solo() {
                 </Card>
               )}
               <Button onClick={() => void next()}>Следующий вопрос</Button>
-              <Button variant="ghost" onClick={() => go("home")}>В меню</Button>
+              <MenuButton variant="ghost" />
             </>
           )}
         </motion.div>
