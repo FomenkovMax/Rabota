@@ -83,7 +83,8 @@ fi
 
 # Ежедневный бэкап базы в 04:15 (хранится 7 последних копий)
 CRON="15 4 * * * bash $DIR/chgk_bot/deploy/backup.sh >> /var/log/chgk-backup.log 2>&1"
-( crontab -l 2>/dev/null | grep -v 'deploy/backup.sh'; echo "$CRON" ) | crontab -
+# «|| true»: при set -e -o pipefail пустой crontab (код 1) иначе обрывал скрипт на этой строке
+{ crontab -l 2>/dev/null | grep -v 'deploy/backup.sh' || true; echo "$CRON"; } | crontab -
 echo "==> Ежедневный бэкап включён (04:15), копии: /opt/rabota/backups"
 
 echo
