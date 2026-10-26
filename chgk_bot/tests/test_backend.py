@@ -296,3 +296,11 @@ def test_photo_url_flows_to_token_room_and_season(tmp_path):
     StatsRepo(f).record(7, q["id"], 1.0, "x")
     h = {"Authorization": "Bearer " + tok}
     assert c.get("/api/season", headers=h).json()["standings"][0]["photo"].endswith("abc.jpg")   # прежняя https-аватарка сохранилась
+
+
+def test_requirements_include_websocket_library():
+    """Без websockets/wsproto uvicorn в Docker не принимает WebSocket — командная комната не подключается."""
+    from pathlib import Path
+    req = (Path(__file__).resolve().parent.parent / "requirements.txt").read_text(encoding="utf-8").lower()
+    lines = [l.split("#")[0].strip() for l in req.splitlines()]
+    assert any(l.startswith(("websockets", "wsproto", "uvicorn[standard]")) for l in lines)

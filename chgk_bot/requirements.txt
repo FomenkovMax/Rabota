@@ -4,6 +4,8 @@ pillow>=10
 python-dotenv>=1.0
 fastapi>=0.115
 uvicorn>=0.30
+# без websockets uvicorn молча не принимает WebSocket (командная комната висит на «Подключаюсь…»)
+websockets>=13
 sqlalchemy>=2.0
 alembic>=1.13
 psycopg[binary]>=3.2

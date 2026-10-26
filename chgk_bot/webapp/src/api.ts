@@ -114,18 +114,19 @@ export interface RoomState {
   server_now_ms: number; notice: string; players: { id: number; name: string; photo?: string }[]; game: GameView | null;
 }
 
-export function openRoom(onState: (s: RoomState) => void, onError: (m: string) => void) {
+export function openRoom(onState: (s: RoomState) => void, onError: (m: string) => void, onStatus?: (up: boolean) => void) {
   let ws: WebSocket | null = null;
   let closed = false;
   const connect = () => {
     const proto = location.protocol === "https:" ? "wss" : "ws";
     ws = new WebSocket(`${proto}://${location.host}/api/ws?token=${encodeURIComponent(token)}`);
+    ws.onopen = () => onStatus?.(true);
     ws.onmessage = (e) => {
       const m = JSON.parse(e.data);
       if (m.type === "state") onState(m);
       else if (m.type === "error") onError(m.message);
     };
-    ws.onclose = () => { if (!closed) setTimeout(connect, 1500); };   // переподключение; сервер пришлёт актуальное состояние
+    ws.onclose = () => { onStatus?.(false); if (!closed) setTimeout(connect, 1500); };   // переподключение; сервер пришлёт актуальное состояние
   };
   connect();
   return {

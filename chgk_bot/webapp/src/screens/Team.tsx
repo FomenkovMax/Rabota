@@ -26,6 +26,8 @@ export function Team() {
   const [room, setRoom] = useState<RoomState | null>(null);
   const [offset, setOffset] = useState(0);
   const [err, setErr] = useState("");
+  const [online, setOnline] = useState(false);
+  const [slow, setSlow] = useState(false);   // долго нет связи — показываем подсказку вместо вечного «Подключаюсь…»
   const [text, setText] = useState("");
   const conn = useRef<ReturnType<typeof openRoom> | null>(null);
   const lastIdx = useRef(-2);
@@ -36,10 +38,16 @@ export function Team() {
     conn.current = openRoom(
       (st) => { setRoom(st); setOffset(st.server_now_ms - Date.now()); setErr(""); },
       (m) => { setErr(m); tg.haptic("error"); },
+      (up) => setOnline(up),
     );
     return () => conn.current?.close();
   }, []);
 
+  useEffect(() => {
+    if (online) { setSlow(false); return; }
+    const t = setTimeout(() => setSlow(true), 5000);
+    return () => clearTimeout(t);
+  }, [online]);
   const send = (msg: Record<string, unknown>) => conn.current?.send(msg);
   const g = room?.game ?? null;
   const isCaptain = !!g && g.captain_id === me?.user.id;
@@ -68,7 +76,7 @@ export function Team() {
       {(!g || g.status === "finished") ? (
         <div className={s.center} style={{ gap: 4 }}>
           <h2 className="gold-text">Стол знатоков</h2>
-          <p className={s.dim}>{room ? `За столом: ${room.players.length}` : "Подключаюсь…"}</p>
+          <p className={s.dim}>{online && room ? `За столом: ${room.players.length}` : slow ? "Нет связи с комнатой — пробую снова…" : "Подключаюсь…"}</p>
           <TableLobby players={room?.players ?? []} meId={me?.user.id} />
         </div>
       ) : (
@@ -89,10 +97,10 @@ export function Team() {
               {g.log?.map((r, i) => <p key={i} className={s.step}>{i + 1}. {r.level === "correct" ? "✅" : r.level === "close" ? "🟡" : "❌"} {r.answer ?? "— нет ответа"}</p>)}
             </Card>
           )}
-          <Card><h2>Новая игра</h2><p className={s.dim}>Кто нажмёт «Начать» — становится капитаном.</p></Card>
-          <Button onClick={() => send({ type: "start", mode: "sport", tours: 3, per_tour: 12 })}>Спортивное ЧГК · 3 тура по 12</Button>
-          <Button variant="ghost" onClick={() => send({ type: "start", mode: "sport", tours: 1, per_tour: 6 })}>Короткая · 6 вопросов</Button>
-          <Button variant="ghost" onClick={() => send({ type: "start", mode: "wheel" })}>🎡 Классический волчок</Button>
+          <Card><h2>Новая игра</h2><p className={s.dim}>Выбери формат ниже — кто запустит игру, тот и капитан.</p></Card>
+          <Button disabled={!online} onClick={() => send({ type: "start", mode: "sport", tours: 3, per_tour: 12 })}>Спортивное ЧГК · 3 тура по 12</Button>
+          <Button disabled={!online} variant="ghost" onClick={() => send({ type: "start", mode: "sport", tours: 1, per_tour: 6 })}>Короткая · 6 вопросов</Button>
+          <Button disabled={!online} variant="ghost" onClick={() => send({ type: "start", mode: "wheel" })}>🎡 Классический волчок</Button>
           <MenuButton variant="ghost" />
         </>
       ) : (
