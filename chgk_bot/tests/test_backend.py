@@ -304,3 +304,33 @@ def test_requirements_include_websocket_library():
     req = (Path(__file__).resolve().parent.parent / "requirements.txt").read_text(encoding="utf-8").lower()
     lines = [l.split("#")[0].strip() for l in req.splitlines()]
     assert any(l.startswith(("websockets", "wsproto", "uvicorn[standard]")) for l in lines)
+
+
+def test_ws_superblitz_pick_and_only_answerer_submits(tmp_path):
+    s, f, c = make(tmp_path)
+    QuestionRepo(f).add([{"text": f"Доп вопрос {i}?", "answer": f"доп{i}", "explanation": "р"} for i in range(20)])
+    t1, t2 = ws_token(c, 7), ws_token(c, 8)
+    with c.websocket_connect(f"/api/ws?token={t1}") as a, c.websocket_connect(f"/api/ws?token={t2}") as b:
+        recv_state(a); recv_state(b)
+        a.send_json({"type": "start", "mode": "wheel"})
+        st = recv_state(a)
+        while not st["game"]:
+            st = recv_state(a)
+        assert st["game"]["kinds"].count("blitz") == 1 and st["game"]["kinds"].count("superblitz") == 1
+        room = c.app.state.room                   # переводим текущий раунд в суперблиц (как будто стрелка выпала на него)
+        g = room.game
+        sb = g["kinds"].index("superblitz")
+        g["current"] = {"qid": g["blitz_q"][str(sb)][0], "sector": sb, "kind": "superblitz", "sub": 0, "of": 3, "answerer": None}
+        g["phase"], g["deadline"] = "pick", 0.0
+        a.send_json({"type": "pick", "user_id": 999})            # такого игрока нет за столом
+        while (m := a.receive_json())["type"] != "error":
+            pass
+        a.send_json({"type": "pick", "user_id": 8})
+        st = recv_state(a)
+        while st["game"]["phase"] != "think":
+            st = recv_state(a)
+        assert st["game"]["answerer_id"] == 8 and st["game"]["question"] and st["game"]["kind"] == "superblitz"
+        a.send_json({"type": "answer", "text": "капитан подсказывает"})
+        while (m := a.receive_json())["type"] != "error":
+            pass
+        assert "выбранный" in m["message"]

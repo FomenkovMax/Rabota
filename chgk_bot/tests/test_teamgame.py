@@ -67,13 +67,16 @@ def test_timers_idempotent_and_captain_only():
 
 
 def test_wheel_game_to_six_points():
-    g = T.new_game("wheel", QS, 1, 0)
+    g = T.new_game("wheel", QS, 1, 0, rng=random.Random(5))
     rng = random.Random(3)
     T.start_round(g, 0, rng)
     seen = set()
     while g["status"] == "active":
-        assert g["current"]["sector"] not in seen
-        seen.add(g["current"]["sector"])
+        if g["current"]["sub"] == 0:                 # новый сектор (вопросы блица идут в том же секторе)
+            assert g["current"]["sector"] not in seen
+            seen.add(g["current"]["sector"])
+        if g["phase"] == "pick":
+            T.pick_answerer(g, 1, 1, 0)
         T.submit(g, 1, "а", 0)
         T.set_verdict(g, {"level": "correct", "score": 1.0, "comment": "", "source": "exact", "disputed": False}, 0)
         T.advance(g, 1, 0, rng)
@@ -87,3 +90,76 @@ def test_commit_only_once():
     T.set_verdict(g, {"level": "correct", "score": 1.0, "comment": "", "source": "exact", "disputed": False}, 0)
     T.commit_round(g); T.commit_round(g)
     assert g["score"] == 1.0
+
+
+def ok(g, user=1, level="correct"):
+    T.submit(g, user, "ответ", 0)
+    T.set_verdict(g, {"level": level, "score": 1.0 if level == "correct" else 0.0, "comment": "", "source": "exact", "disputed": False}, 0)
+
+
+def wheel_at(kind):
+    """Волчок, где стрелка выпала на нужный особый сектор."""
+    g = T.new_game("wheel", QS, 1, 0, rng=random.Random(1))
+    sector = g["kinds"].index(kind)
+    class R(random.Random):
+        def randrange(self, n): return sector
+        def randint(self, a, b): return a
+        def uniform(self, a, b): return 0.0
+    T.start_round(g, 0, R())
+    assert g["current"]["kind"] == kind and g["current"]["sector"] == sector
+    return g
+
+
+def test_specials_assigned_once_and_use_extra_questions():
+    g = T.new_game("wheel", QS, 1, 0, rng=random.Random(9))
+    assert g["kinds"].count("blitz") == 1 and g["kinds"].count("superblitz") == 1 and len(g["kinds"]) == 13
+    for sector, qs in g["blitz_q"].items():
+        assert len(qs) == 3 and qs[0] == g["questions"][int(sector)]
+        assert len(set(qs)) == 3
+    used = [q for qs in g["blitz_q"].values() for q in qs[1:]]
+    assert not set(used) & set(g["questions"])          # дополнительные вопросы не пересекаются с секторами
+    few = T.new_game("wheel", QS[:13], 1, 0)            # вопросов мало — обычный волчок без особых секторов
+    assert set(few["kinds"]) == {"normal"}
+
+
+def test_blitz_all_three_correct_gives_experts_point():
+    g = wheel_at("blitz")
+    assert g["phase"] == "think" and g["deadline"] == T.BLITZ_THINK + T.SPIN_DELAY
+    first = g["current"]["qid"]
+    for i in range(3):
+        assert g["current"]["sub"] == i
+        ok(g)
+        T.advance(g, 1, 100 + i)
+        if i < 2:
+            assert g["current"]["kind"] == "blitz" and g["experts"] == 0 and g["current"]["qid"] != first
+            assert g["deadline"] == 100 + i + T.BLITZ_THINK      # без повторного вращения стрелки
+    assert g["experts"] == 1 and g["viewers"] == 0
+    assert g["current"]["kind"] != "blitz" or g["current"]["sub"] == 0     # перешли к следующему сектору
+
+
+def test_blitz_first_error_gives_viewers_point_and_ends_round():
+    g = wheel_at("blitz")
+    ok(g)
+    T.advance(g, 1, 1)
+    ok(g, level="close")                      # «почти» в волчке — не взят
+    T.advance(g, 1, 2)
+    assert g["viewers"] == 1 and g["experts"] == 0
+    assert g["current"]["sub"] == 0            # блиц закончен, крутим дальше
+    assert len(g["log"]) == 2
+
+
+def test_superblitz_only_chosen_player_answers():
+    g = wheel_at("superblitz")
+    assert g["phase"] == "pick" and g["deadline"] == 0.0
+    with pytest.raises(T.GameError):
+        T.submit(g, 1, "x", 0)                # пока игрок не выбран, ответить нельзя
+    with pytest.raises(T.GameError):
+        T.pick_answerer(g, 2, 2, 0)           # выбирает только капитан
+    T.pick_answerer(g, 1, 7, 50)
+    assert g["phase"] == "think" and g["deadline"] == 50 + T.BLITZ_THINK
+    with pytest.raises(T.GameError, match="выбранный"):
+        T.submit(g, 1, "капитан не помогает", 51)
+    for i in range(3):
+        ok(g, user=7)
+        T.advance(g, 1, 60 + i)              # «дальше» по-прежнему жмёт капитан
+    assert g["experts"] == 1

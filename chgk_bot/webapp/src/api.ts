@@ -101,11 +101,12 @@ export const api = {
 // ---------- командная игра ----------
 export interface Verdict2 extends Verdict { overridden?: boolean }
 export interface GameView {
-  mode: "sport" | "wheel"; status: string; phase: "idle" | "think" | "answer" | "judging" | "review" | "finished";
+  mode: "sport" | "wheel"; status: string; phase: "idle" | "pick" | "think" | "answer" | "judging" | "review" | "finished";
   captain_id: number; deadline_ms: number; idx: number; total: number; tour: [number, number] | null;
   score: number; experts: number; viewers: number; played: number[];
   spin: { sector: number; turns: number; duration_ms: number; offset: number; n: number } | null;
-  answer: string | null; verdict: Verdict2 | null; think: number;
+  answer: string | null; verdict: Verdict2 | null; think: number; think_now: number;
+  kind: "normal" | "blitz" | "superblitz"; sub: number; of: number; answerer_id: number | null; kinds: string[];
   question: { id: string; text: string; media: unknown[] } | null;
   reveal: Reveal | null;
   log: { qid: string; answer: string | null; level: string; score: number }[] | null;

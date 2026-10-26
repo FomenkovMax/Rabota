@@ -8,10 +8,11 @@ interface Props {
   spin: { sector: number; turns: number; duration_ms: number; offset: number } | null;
   spinKey: number;           // меняется на каждый новый бросок
   onSettled?: () => void;
+  kinds?: string[];          // "blitz" | "superblitz" | "normal" по секторам — особые подписываем значком
 }
 
 /** Волчок: стрелка вращается к сектору, который выбрал СЕРВЕР; клиент только рисует. Игра: ID wheel.table / wheel.arrow подменят графику. */
-export function Wheel({ n, played, spin, spinKey, onSettled }: Props) {
+export function Wheel({ n, played, spin, spinKey, onSettled, kinds = [] }: Props) {
   const [angle, setAngle] = useState(0);
   const [settled, setSettled] = useState(true);
   const [skin, setSkin] = useState(true);   // есть ли картинка wheel.table.webp
@@ -57,6 +58,11 @@ export function Wheel({ n, played, spin, spinKey, onSettled }: Props) {
               stroke="var(--bg)" strokeWidth="2" />
             <text x={tx} y={ty} textAnchor="middle" dominantBaseline="central" fontSize="16" fontWeight="700"
               fill={hot ? "#2a1d00" : done ? "#3a4670" : "var(--text)"}>{i + 1}</text>
+            {(kinds[i] === "blitz" || kinds[i] === "superblitz") && (() => {
+              const [mx, my] = pt((i + 0.5) * step, R * 0.45);
+              return <text x={mx} y={my} textAnchor="middle" dominantBaseline="central" fontSize="13" opacity={done ? 0.35 : 1}>
+                {kinds[i] === "blitz" ? "⚡" : "🔥"}</text>;
+            })()}
           </g>
         );
       })}

@@ -53,13 +53,23 @@ export function Team() {
   const isCaptain = !!g && g.captain_id === me?.user.id;
   const nameOf = (id: number) => room?.players.find((p) => p.id === id)?.name ?? "—";
 
-  useEffect(() => { if (g && g.idx !== lastIdx.current) { lastIdx.current = g.idx; setText(""); setOpened(false); } }, [g]);
+  const lastKey = useRef("");
+  useEffect(() => {
+    if (!g) return;
+    if (g.idx !== lastIdx.current) { lastIdx.current = g.idx; setOpened(false); }   // новый сектор — снова ждём стрелку
+    const key = `${g.idx}-${g.sub}`;
+    if (key !== lastKey.current) { lastKey.current = key; setText(""); }           // новый вопрос (в т. ч. внутри блица)
+  }, [g]);
   useEffect(() => {
     const key = g?.phase === "review" && g.verdict ? `${g.idx}:${g.verdict.level}` : "";
     if (key && key !== lastVerdict.current) { sound.play(g!.verdict!.level === "wrong" ? "fail" : "ok"); tg.haptic(g!.verdict!.level === "wrong" ? "error" : "success"); }
     lastVerdict.current = key;
   }, [g]);
-  const wheelWait = g?.mode === "wheel" && !opened && (g.phase === "think");
+  const wheelWait = g?.mode === "wheel" && !opened && g.sub === 0 && (g.phase === "think" || g.phase === "pick");
+  const blitz = g?.kind === "blitz" || g?.kind === "superblitz";
+  const iAnswer = !!g && g.answerer_id === me?.user.id;
+  const answererName = g?.answerer_id ? nameOf(g.answerer_id) : "";
+  const blitzLabel = g?.kind === "blitz" ? `⚡ Блиц · вопрос ${g.sub + 1}/${g.of}` : g?.kind === "superblitz" ? `🔥 Суперблиц · вопрос ${(g?.sub ?? 0) + 1}/${g?.of}` : "";
 
   const header = g && (
     g.mode === "wheel" ? (
@@ -108,13 +118,37 @@ export function Team() {
           {header}
           {g.mode === "wheel" && (
             <div className={s.center}>
-              <Wheel n={g.total} played={g.played} spin={g.spin} spinKey={g.idx} onSettled={() => setOpened(true)} />
+              <Wheel n={g.total} played={g.played} spin={g.spin} spinKey={g.idx} onSettled={() => setOpened(true)} kinds={g.kinds} />
             </div>
           )}
           {wheelWait && g.spin && <div className={s.center}><Envelope sector={g.spin.sector} open={false} /></div>}
+          {!wheelWait && blitz && g.sub === 0 && (g.phase === "think" || g.phase === "pick") && (
+            <Card accent="half">
+              <h2>{g.kind === "blitz" ? "⚡ Блиц!" : "🔥 Суперблиц!"}</h2>
+              <p className={s.dim}>
+                {g.kind === "blitz"
+                  ? "Три вопроса подряд по 20 секунд. Очко знатокам — только если взяты все три; первая ошибка — очко телезрителям."
+                  : "Играет один знаток, команда не подсказывает. Три вопроса по 20 секунд; очко — только за все три верных."}
+              </p>
+            </Card>
+          )}
+          {!wheelWait && g.phase === "pick" && (
+            isCaptain ? (
+              <Card>
+                <p className={s.dim}>Кто играет суперблиц? Выбери знатока:</p>
+                <div className={s.avatars} style={{ flexWrap: "wrap" }}>
+                  {room?.players.map((p) => (
+                    <button key={p.id} className={s.chip} onClick={() => send({ type: "pick", user_id: p.id })} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <Avatar id={p.id} name={p.name} photo={p.photo} size={28} /> {p.id === me?.user.id ? "Я" : p.name}
+                    </button>
+                  ))}
+                </div>
+              </Card>
+            ) : <p className={s.dim} style={{ textAlign: "center" }}>Капитан выбирает знатока для суперблица…</p>
+          )}
           {!wheelWait && (g.phase === "think" || g.phase === "answer") && (
             <div className={s.center}>
-              <TimerRing deadlineMs={g.deadline_ms} offsetMs={offset} totalSec={g.phase === "think" ? g.think : 20} />
+              <TimerRing deadlineMs={g.deadline_ms} offsetMs={offset} totalSec={g.phase === "think" ? (g.think_now ?? g.think) : 20} />
               <p className={s.dim}>{g.phase === "think" ? "Обсуждаем" : "Время сдавать ответ!"}</p>
             </div>
           )}
@@ -126,7 +160,8 @@ export function Team() {
             </Card>
           )}
           {g.question && !wheelWait && (
-            <QuestionCard key={g.idx} text={g.question.text} label={g.mode === "wheel" && g.spin ? `Сектор ${g.spin.sector + 1}` : "Вопрос"}
+            <QuestionCard key={`${g.idx}-${g.sub}`} text={g.question.text}
+              label={blitzLabel || (g.mode === "wheel" && g.spin ? `Сектор ${g.spin.sector + 1}` : "Вопрос")}
               flipped={g.phase === "review" && !!g.reveal}
               back={g.reveal && (
                 <div>
@@ -137,14 +172,15 @@ export function Team() {
               )} />
           )}
           <AnimatePresence mode="wait">
-            <motion.div key={g.phase + g.idx} className={s.col} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
+            <motion.div key={`${g.phase}${g.idx}-${g.sub}`} className={s.col} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
 
-              {!wheelWait && (g.phase === "think" || g.phase === "answer") && (isCaptain ? (
+              {!wheelWait && (g.phase === "think" || g.phase === "answer") && (iAnswer ? (
                 <>
-                  <input className={s.input} value={text} placeholder="Ответ команды" onChange={(e) => setText(e.target.value)} />
+                  <input className={s.input} value={text} placeholder={g.kind === "superblitz" ? "Твой ответ (без подсказок команды)" : "Ответ команды"}
+                    onChange={(e) => setText(e.target.value)} />
                   <Button disabled={!text.trim()} onClick={() => send({ type: "answer", text })}>Сдать ответ</Button>
                 </>
-              ) : <p className={s.dim}>Ответ сдаёт капитан.</p>)}
+              ) : <p className={s.dim}>{g.kind === "superblitz" ? `Суперблиц играет ${answererName}. Команда не подсказывает 🤐` : "Ответ сдаёт капитан."}</p>)}
 
               {g.phase === "judging" && <p className={s.dim}>Ответ «{g.answer}» — судья думает…</p>}
 
@@ -155,7 +191,10 @@ export function Team() {
                       <Button variant="ghost" onClick={() => send({ type: "override", correct: g.verdict!.level !== "correct" })}>
                         {g.verdict.level === "correct" ? "Не засчитывать" : "Засчитать"}
                       </Button>
-                      <Button onClick={() => send({ type: "next" })}>{g.idx + 1 >= g.total ? "Завершить" : "Дальше"}</Button>
+                      <Button onClick={() => send({ type: "next" })}>
+                        {blitz && g.verdict.level === "correct" && g.sub < g.of - 1 ? `Следующий вопрос ${g.kind === "blitz" ? "блица" : "суперблица"} →`
+                          : g.idx + 1 >= g.total ? "Завершить" : "Дальше"}
+                      </Button>
                     </>
                   )}
                 </>

@@ -70,7 +70,12 @@ class Room:
             "tour": T.tour_of(g), "score": g["score"], "experts": g["experts"], "viewers": g["viewers"],
             "played": g["played"], "spin": g["spin"] if g["mode"] == T.WHEEL else None,
             "answer": g["answer"], "verdict": v, "think": g["think"],
-            "question": {"id": q["id"], "text": q["text"], "media": q.get("media", [])} if q and g["phase"] != "finished" else None,
+            "think_now": T.BLITZ_THINK if T.kind_of(g) in T.BLITZ_KINDS else g["think"],
+            "question": ({"id": q["id"], "text": q["text"], "media": q.get("media", [])}
+                         if q and g["phase"] not in ("finished", "pick") else None),
+            "kind": T.kind_of(g), "sub": (cur or {}).get("sub", 0), "of": (cur or {}).get("of", 1),
+            "answerer_id": T.answerer_of(g) if cur else None,
+            "kinds": g.get("kinds") or [],
             "reveal": ({"answer": q["answer"], "accepted": q.get("accepted", []), "accept_note": q.get("accept_note", ""),
                         "explanation": q.get("explanation", ""), "source": q.get("source", ""), "author": q.get("author", "")}
                        if q and review and g["phase"] == "review" else None),
@@ -147,7 +152,7 @@ class Room:
                     mode = msg.get("mode", T.SPORT)
                     tours = max(1, min(int(msg.get("tours", 3)), 5))        # границы: иначе per_tour=0 ломает нумерацию туров
                     per_tour = max(1, min(int(msg.get("per_tour", 12)), 20))
-                    n = T.wheel.N_SECTORS if mode == T.WHEEL else tours * per_tour
+                    n = T.wheel.N_SECTORS + T.EXTRA_FOR_SPECIALS if mode == T.WHEEL else tours * per_tour
                     seen = self.stats.seen(self.team_id)
                     hidden = self.stats.hidden_ids(self.s.hide_min_answers, self.s.hide_lo, self.s.hide_hi)
                     qs = self.questions.choose(max(1, min(n, 60)), seen, hidden)
@@ -161,6 +166,11 @@ class Room:
                     T.submit(g, uid, str(msg.get("text", "")), time.time())
                     await self.changed()          # показываем «судья думает»
                     await self._judge()
+                elif kind == "pick":
+                    pid = int(msg["user_id"])
+                    if pid not in self.conns:
+                        raise T.GameError("Этого игрока нет за столом")
+                    T.pick_answerer(g, uid, pid, time.time())
                 elif kind == "override":
                     T.override(g, uid, bool(msg.get("correct")))
                 elif kind == "next":
