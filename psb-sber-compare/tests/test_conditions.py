@@ -128,3 +128,21 @@ def test_salary_block_above_general_takes_general_rate():
         category="Кредиты", region="", collected_at="")
     assert (product.rate_min, product.apr_min, product.apr_max) == (20.4, 20.4, 50.2)
     assert conditions.kind_of(product)[0] == conditions.BASE
+
+
+def test_refinance_salary_heading_far_above_rate():
+    """Рефинансирование Сбера (27.10.2026): в зарплатном блоке больше строк,
+    заголовок «Получаю зарплату» дальше 7 строк от ставки 17,4 %."""
+    page = _page("Рефинансирование", "Ставки по кредиту",
+                 "Получаю зарплату или пенсию в Сбере", "Сумма кредита", "От 30 000 ₽",
+                 "Срок кредита", "До 5 лет", "Дополнительные деньги", "Да",
+                 "Полная стоимость кредита1", "17,400% – 48,200%", "Ставка", "От 17,4%",
+                 "Общие условия", "Сумма кредита", "От 30 000 ₽", "Срок кредита", "До 5 лет",
+                 "Дополнительные деньги", "Да",
+                 "Полная стоимость кредита1", "19,400% – 50,200%", "Ставка", "От 19,4%",
+                 "Требования к заёмщику")
+    product = crawl.product_from_page(
+        page, bank="Сбер", url="https://www.sberbank.ru/ru/person/credits/money/consumer_refinance",
+        category="Кредиты", region="", collected_at="")
+    assert (product.rate_min, product.apr_min, product.apr_max) == (19.4, 19.4, 50.2)
+    assert conditions.kind_of(product)[0] == conditions.BASE

@@ -259,7 +259,7 @@ def describe_page(data: dict[str, Any]) -> tuple[str, list[str]]:
 _BONUS = re.compile(r"^\s*(?:до\s*)?\+\s?\d", re.I)
 
 
-def _own_window(body: list[str], index: int, *, before: int = 7, after: int = 8) -> list[str]:
+def _own_window(body: list[str], index: int, *, before: int = 12, after: int = 8) -> list[str]:
     """Строки вокруг ставки, которые относятся к ней, а не к соседней ставке.
 
     Таблица Сбера: «Ставка / От 20,4% / Получаю зарплату или пенсию в Сбере /
