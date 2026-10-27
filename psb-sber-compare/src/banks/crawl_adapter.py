@@ -615,6 +615,8 @@ class CrawlAdapter(BankAdapter):
                             region=region_label, collected_at=now)
                         if product is not None:
                             products.setdefault(normalize_title(product.title), product)
+                            if product.rate_min is None and product.apr_min is None:
+                                self._save_missing(url, data)
 
                     for link in links:
                         popularity[link] = popularity.get(link, 0) + 1
@@ -707,6 +709,27 @@ class CrawlAdapter(BankAdapter):
                 data.get("text") or ""]
         (folder / f"{number:03d}-{name or 'root'}.txt").write_text(
             "\n".join(body), encoding="utf-8")
+
+    def _save_missing(self, url: str, data: dict[str, Any]) -> None:
+        """Страница продукта, где ставка не нашлась, — в data/pages-missing.
+
+        Пишется при каждом сборе: по этим текстам дорабатывается разбор, и
+        не нужно ни ручных скриншотов, ни отдельных проверок страниц, от
+        которых сайт банка включает защиту.
+        """
+        try:
+            root = Path(self.settings.get("missing_dir") or "data/pages-missing")
+            if not root.is_absolute():
+                root = Path(__file__).resolve().parents[2] / root
+            folder = root / self.code
+            folder.mkdir(parents=True, exist_ok=True)
+            name = re.sub(r"[^a-z0-9]+", "-", urlsplit(url).path.lower()).strip("-")[:80]
+            (folder / f"{name or 'page'}.txt").write_text(
+                f"URL: {url}\nH1: {data.get('h1', '')}\nВКЛАДОК НАЖАТО: "
+                f"{data.get('expanded', 0)}\nСОБРАНО: {datetime.now():%d.%m.%Y %H:%M}\n\n"
+                + (data.get("text") or ""), encoding="utf-8")
+        except OSError as exc:
+            log.debug("Страница без ставки не сохранилась: %s", exc)
 
     def _save_summary(self, visited: int, queue: Any, failures: list[str]) -> None:
         folder = self._pages_dir()

@@ -159,6 +159,8 @@ def audit_menu() -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="Автоаудит + независимый LLM-аудит",
                               callback_data="audit:llm")],
         [InlineKeyboardButton(text="Последний отчёт аудита", callback_data="audit:last")],
+        [InlineKeyboardButton(text="Страницы без ставки (для доработки)",
+                              callback_data="audit:missing")],
         [InlineKeyboardButton(text="Назад", callback_data="menu")],
     ])
 

@@ -362,6 +362,21 @@ _EXPAND_JS = """
     if (Array.from(el.children).some(c => re.test((c.innerText || '').trim()))) continue;
     try { el.click(); clicked++; } catch (e) {}
   }
+  // Второй проход: вкладки и раскрывашки, где условия названы иначе
+  // («Условия ипотеки», «Ставки и платежи», «Тарифы»). Только элементы,
+  // которые сами по себе вкладки или кнопки, и только свёрнутые.
+  const loose = /(услови|ставк|тариф)/i;
+  const tabs = document.querySelectorAll(
+    '[role="tab"]:not([aria-selected="true"]), [aria-expanded="false"], summary, button');
+  for (const el of tabs) {
+    if (clicked >= 10) break;
+    const text = (el.innerText || '').trim();
+    if (!text || text.length > 40 || !loose.test(text) || re.test(text)) continue;
+    const link = el.closest('a[href]');
+    if (link && !link.getAttribute('href').startsWith('#')) continue;
+    if (/заявк|оформить|рассчитать|подать/i.test(text)) continue;
+    try { el.click(); clicked++; } catch (e) {}
+  }
   return clicked;
 }
 """

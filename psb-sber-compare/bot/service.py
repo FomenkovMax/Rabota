@@ -396,3 +396,18 @@ def audit_summary(returncode: int, tail: list[str]) -> str:
         return f"⚠️ Аудит завершился с ошибкой (код {returncode}).\n<pre>{last}</pre>"
     keep = [line for line in tail if line.strip().startswith(("Автоаудит", "  "))]
     return "🧪 <b>Аудит готов</b>\n<pre>" + _esc("\n".join(keep[-12:])) + "</pre>"
+
+
+def missing_pages_archive() -> Path | None:
+    """Архив страниц продуктов, где ставка не нашлась при последних сборах."""
+    import zipfile
+
+    folder = ROOT / "data" / "pages-missing"
+    files = sorted(folder.rglob("*.txt")) if folder.exists() else []
+    if not files:
+        return None
+    archive = ROOT / "data" / "pages-missing.zip"
+    with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as out:
+        for path in files:
+            out.write(path, path.relative_to(folder))
+    return archive
