@@ -67,7 +67,7 @@ def evaluate(facts: ProductFacts, sc: Scenario, now: datetime | None = None) -> 
     if facts.rate_max is None:
         return excluded("ставка не распознана")
     if facts.term is None:
-        return excluded(f"срок «{facts.term_text or 'не указан'}» не распознан")
+        return excluded(f"срок «{facts.term_text}» не распознан" if facts.term_text else "срок на сайте не указан")
     if not facts.term.allows(sc.days):
         return excluded(f"срок {sc.months} мес. не подходит под «{facts.term_text}»")
 

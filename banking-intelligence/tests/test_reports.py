@@ -174,3 +174,37 @@ async def test_stale_data_flagged_when_last_fetch_failed(loaded):
     assert psb["status"] == "data" and "устаревшими" in psb["reason"] and "tls_error" in psb["reason"]
     vtb = next(c for c in ds["coverage"] if c["slug"] == "vtb")
     assert vtb["reason"] is None
+
+
+async def test_report_does_not_claim_owner_confirmation_and_flags_unconfirmed_sources(loaded):
+    from bankintel.db.models import Source
+
+    async with loaded() as s:
+        ds = await build_dataset(s, NOW)
+        assert not any("подтверждена владельцем" in t for t in ds["methodology"])
+        flagged = [t for t in ds["limitations"] if "не подтверждены" in t]
+        assert len(flagged) == 1 and "ЦМР банк" in flagged[0]  # страницы ЦМР в конфиге помечены «требует подтверждения»
+        # владелец подтвердил страницы (заметку сняли) — предупреждение исчезает
+        for src in (await s.scalars(select(Source).where(Source.notes.like("%требует подтверждения%")))).all():
+            src.notes = "Подтверждено владельцем."
+        await s.commit()
+        ds2 = await build_dataset(s, NOW)
+        assert not any("не подтверждены" in t for t in ds2["limitations"])
+
+
+async def test_html_layout_rules(loaded):
+    import re
+
+    from bankintel.reports import charts
+    from bankintel.reports.render_html import _render
+
+    async with loaded() as s:
+        ds = await build_dataset(s, NOW)
+    html = _render(ds, "pdf", lambda rows, uid: charts.svg_range_chart(rows, uid=uid))
+    # шапка у каждой таблицы — thead (в PDF повторяется на каждой странице), строки данных — в tbody
+    assert html.count("<thead>") >= 4 and html.count("<thead>") == html.count("</thead><tbody>")
+    # разрыв страницы только между сценариями: заголовок «Сценарии» не остаётся один на странице
+    assert ".scenario + .scenario { break-before: page; }" in html
+    assert re.search(r"(?<!\+ )\.scenario \{\s*break-before", html) is None  # принудительного разрыва перед первым сценарием нет
+    # счёт без суммы в валюте: прочерк, затем валюта (а не «(CNY)—»)
+    assert "(CNY)—" not in html and re.search(r"—\s*\(CNY\)", html)

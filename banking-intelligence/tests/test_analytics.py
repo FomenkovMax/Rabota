@@ -105,11 +105,11 @@ def test_exclusions_have_reasons():
     assert "валюта CNY" in evaluate(psb["В юанях"], Scenario(D(100_000), 12), NOW).exclusion
     no_term = facts_from_params(bank={"slug": "psb", "name": "ПСБ"}, product={"name": "Мой доход", "category": "deposit"},
                                 card=_card("Мой доход"))  # на карточке срока нет, страница продукта не загружена
-    assert "не распознан" in evaluate(no_term, Scenario(D(100_000), 12), NOW).exclusion
+    assert "срок на сайте не указан" in evaluate(no_term, Scenario(D(100_000), 12), NOW).exclusion
     assert evaluate(psb["Стабильный доход"], Scenario(D(100_000), 12), NOW).eligible
     vtb = by(_vtb_facts())
     assert "сумма меньше минимальной" in evaluate(vtb["Выгодное начало"], Scenario(D(5_000), 3), NOW).exclusion
-    assert "срок «не указан»" in evaluate(vtb["Ключевой"], Scenario(D(1_000_000), 12), NOW).exclusion  # срока нет на карточке ВТБ
+    assert "срок на сайте не указан" in evaluate(vtb["Ключевой"], Scenario(D(1_000_000), 12), NOW).exclusion  # срока нет на карточке ВТБ
     assert "не подходит" in evaluate(vtb["Выгодное начало"], Scenario(D(100_000), 12), NOW).exclusion  # только 3 мес.
 
 
@@ -164,3 +164,12 @@ def test_limited_time_flag_from_real_description():
     f = facts_from_params(bank={"slug": "psb", "name": "ПСБ"}, product={"name": "Вклад в Победу", "category": "deposit"},
                           card={"title": "Вклад «Вклад в Победу»", "description": d})
     assert "limited_time" in f.flags and "restricted_audience" not in f.flags
+
+
+def test_exclusion_wording_for_unparsed_vs_missing_term():
+    unparsed = facts_from_params(bank={"slug": "psb", "name": "ПСБ"}, product={"name": "X", "category": "deposit"},
+                                 card={**_card("Мой доход"), "term_text": "уточняйте у менеджера"})
+    reason = evaluate(unparsed, Scenario(D(100_000), 12), NOW).exclusion
+    assert reason == "срок «уточняйте у менеджера» не распознан"
+    missing = facts_from_params(bank={"slug": "psb", "name": "ПСБ"}, product={"name": "Y", "category": "deposit"}, card=_card("Мой доход"))
+    assert evaluate(missing, Scenario(D(100_000), 12), NOW).exclusion == "срок на сайте не указан"
