@@ -13,7 +13,8 @@ CREATE TABLE IF NOT EXISTS runs (
   started_at TEXT NOT NULL, finished_at TEXT, status TEXT,
   posts_new INTEGER DEFAULT 0, events_n INTEGER DEFAULT 0,
   tokens_in INTEGER DEFAULT 0, tokens_out INTEGER DEFAULT 0, cost_usd REAL,
-  channel_errors TEXT DEFAULT '{}'      -- JSON {channel: ошибка}
+  channel_errors TEXT DEFAULT '{}',     -- JSON {channel: ошибка}
+  tokens_spent INTEGER, tokens_left INTEGER   -- расход/остаток токенов у LLM-сервиса по данным баланса
 );
 CREATE TABLE IF NOT EXISTS posts (
   channel TEXT NOT NULL, post_id INTEGER NOT NULL,
@@ -23,7 +24,12 @@ CREATE TABLE IF NOT EXISTS posts (
 );
 CREATE TABLE IF NOT EXISTS events (
   id INTEGER PRIMARY KEY AUTOINCREMENT, run_id INTEGER, created_at TEXT,
-  category INTEGER, score INTEGER, title TEXT, data TEXT   -- data = JSON события целиком
+  category INTEGER, score INTEGER, title TEXT, data TEXT,  -- data = JSON события целиком
+  sent_at TEXT                                              -- когда показано в ежедневном дайджесте (NULL = ещё нет)
+);
+CREATE TABLE IF NOT EXISTS feedback (          -- оценки полезности новостей от коллег (кнопки 1–5)
+  event_id INTEGER NOT NULL, user_id INTEGER NOT NULL, score INTEGER NOT NULL, created_at TEXT,
+  PRIMARY KEY (event_id, user_id)              -- один голос на человека; можно переголосовать
 );
 CREATE TABLE IF NOT EXISTS organizations (
   key TEXT PRIMARY KEY,                  -- ИНН или нормализованное название
@@ -48,6 +54,15 @@ class DB:
             # миграция для баз, созданных до появления event_id
             if "event_id" not in {r["name"] for r in c.execute("PRAGMA table_info(posts)")}:
                 c.execute("ALTER TABLE posts ADD COLUMN event_id INTEGER")
+            # sent_at: все уже существующие события считаем показанными (иначе при обновлении в дайджест
+            # хлынет вся старая лента)
+            if "sent_at" not in {r["name"] for r in c.execute("PRAGMA table_info(events)")}:
+                c.execute("ALTER TABLE events ADD COLUMN sent_at TEXT")
+                c.execute("UPDATE events SET sent_at = COALESCE(created_at, ?)", (now_iso(),))
+            run_cols = {r["name"] for r in c.execute("PRAGMA table_info(runs)")}
+            for col in ("tokens_spent", "tokens_left"):
+                if col not in run_cols:
+                    c.execute(f"ALTER TABLE runs ADD COLUMN {col} INTEGER")
 
     @contextmanager
     def conn(self):
@@ -68,10 +83,10 @@ class DB:
         with self.conn() as c:
             c.execute(
                 "UPDATE runs SET finished_at=?, status=?, posts_new=?, events_n=?, tokens_in=?, tokens_out=?,"
-                " cost_usd=?, channel_errors=? WHERE id=?",
+                " cost_usd=?, channel_errors=?, tokens_spent=?, tokens_left=? WHERE id=?",
                 (now_iso(), status, f.get("posts_new", 0), f.get("events_n", 0), f.get("tokens_in", 0),
                  f.get("tokens_out", 0), f.get("cost_usd"), json.dumps(f.get("channel_errors", {}), ensure_ascii=False),
-                 run_id))
+                 f.get("tokens_spent"), f.get("tokens_left"), run_id))
 
     def last_success(self) -> datetime | None:
         """Время начала последнего успешного запуска — от него берём новые посты."""
@@ -140,6 +155,64 @@ class DB:
                 "INSERT INTO events(run_id, created_at, category, score, title, data) VALUES (?,?,?,?,?,?)",
                 (run_id, now_iso(), ev.get("category"), ev.get("relevance_score"), ev.get("title"),
                  json.dumps(ev, ensure_ascii=False))).lastrowid
+
+    # ---- ежедневный дайджест: что ещё не показывали ----
+    def unsent_events(self) -> list[dict]:
+        with self.conn() as c:
+            rows = c.execute("SELECT id, data FROM events WHERE sent_at IS NULL ORDER BY id").fetchall()
+        return [{**json.loads(r["data"]), "id": r["id"]} for r in rows]
+
+    def mark_sent(self, event_ids: list[int]) -> None:
+        if event_ids:
+            with self.conn() as c:
+                c.executemany("UPDATE events SET sent_at=? WHERE id=?", [(now_iso(), i) for i in event_ids])
+
+    def spent_since(self, ts_iso: str) -> int | None:
+        """Сколько токенов списано запусками с момента ts (по данным баланса). None — данных баланса нет."""
+        with self.conn() as c:
+            r = c.execute("SELECT SUM(tokens_spent) AS s, COUNT(tokens_spent) AS n FROM runs"
+                          " WHERE started_at >= ? AND status='ok'", (ts_iso,)).fetchone()
+        return int(r["s"]) if r["n"] else None
+
+    def channel_errors_since(self, ts_iso: str) -> dict:
+        """Каналы, не читавшиеся в запусках с момента ts (объединение по запускам)."""
+        with self.conn() as c:
+            rows = c.execute("SELECT channel_errors FROM runs WHERE started_at >= ?", (ts_iso,)).fetchall()
+        out: dict = {}
+        for r in rows:
+            try:
+                out.update(json.loads(r["channel_errors"] or "{}"))
+            except ValueError:
+                pass
+        return out
+
+    # ---- оценки полезности (кнопки под новостями) ----
+    def set_vote(self, event_id: int, user_id: int, score: int) -> None:
+        if not 1 <= score <= 5:
+            raise ValueError("оценка должна быть от 1 до 5")
+        with self.conn() as c:
+            c.execute("INSERT INTO feedback(event_id, user_id, score, created_at) VALUES (?,?,?,?)"
+                      " ON CONFLICT(event_id, user_id) DO UPDATE SET score=excluded.score, created_at=excluded.created_at",
+                      (event_id, user_id, score, now_iso()))
+
+    def vote_stats(self, event_id: int) -> tuple[float | None, int]:
+        """(средняя оценка, число голосов) по новости."""
+        with self.conn() as c:
+            r = c.execute("SELECT AVG(score) AS a, COUNT(*) AS n FROM feedback WHERE event_id=?", (event_id,)).fetchone()
+        return (float(r["a"]) if r["n"] else None), int(r["n"])
+
+    def feedback_rows(self) -> list[dict]:
+        """Новости, получившие хотя бы один голос: оценка модели, средняя оценка коллег, число голосов."""
+        with self.conn() as c:
+            rows = c.execute(
+                "SELECT e.id, e.category, e.score AS llm, e.title, e.data, AVG(f.score) AS avg, COUNT(f.score) AS n"
+                " FROM events e JOIN feedback f ON f.event_id = e.id GROUP BY e.id ORDER BY e.id").fetchall()
+        out = []
+        for r in rows:
+            d = json.loads(r["data"])
+            out.append({"id": r["id"], "category": r["category"], "llm": r["llm"], "title": r["title"],
+                        "avg": float(r["avg"]), "n": int(r["n"]), "channels": d.get("channels") or []})
+        return out
 
     # ---- organizations (кэш обогащения) ----
     def cache_get(self, key: str, ttl_days: int) -> dict | None:

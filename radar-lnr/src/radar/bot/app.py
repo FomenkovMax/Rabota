@@ -9,7 +9,7 @@ from aiogram import Bot, Dispatcher, F, Router
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.filters import Command, CommandObject
-from aiogram.types import BufferedInputFile, Message
+from aiogram.types import BufferedInputFile, CallbackQuery, Message
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.date import DateTrigger
@@ -19,7 +19,11 @@ from ..config import get_env, get_settings, load_channels, setup_logging
 from ..db import DB
 from ..llm.client import LLMAuthError, LLMBalanceError, LLMError, make_client
 from ..enrichment.service import Enricher, build_adapters
+from ..daily import card_text, header_text, keyboard, pick_events, send_cards, tokens_line_for_day
 from ..pipeline import run_once
+from ..report.export import export_files
+from ..report.feedback import feedback_report, parse_vote
+from ..report.pdf import make_onepager
 from ..report.excel import cards_workbook
 from .auth import WhitelistMiddleware
 from .inn_file import MAX_INNS, SUPPORTED, parse_inn_file
@@ -57,6 +61,98 @@ async def alert_once(key: str, hours: float, text: str) -> None:
         return
     ctx.db.set_meta(key, datetime.now(timezone.utc).isoformat(timespec="seconds"))
     await notify_admin(text)
+
+
+async def _run_guarded(hours: float | None, build_outputs: bool):
+    """run_once с понятной реакцией на ошибки. -> (результат | None, текст-ошибка | None)."""
+    try:
+        return await run_once(ctx.db, hours=hours, build_outputs=build_outputs), None
+    except LLMBalanceError as e:
+        log.error("токены закончились: %s", e)
+        await alert_once("alert_balance_empty", 12, f"💳 <b>Токены закончились</b>: {escape(str(e))}\n"
+                         "Сбор новостей остановлен. Пополни баланс у продавца — запуски возобновятся сами.")
+        return None, "Токены закончились — сбор не выполнен"
+    except LLMAuthError as e:
+        msg = f"🔑 Проблема с LLM-ключом: {escape(str(e))}\nПроверь .env и запусти scripts/check_llm.py"
+        log.error(msg)
+        await notify_admin(msg)
+        return None, "Ошибка доступа к LLM"
+    except Exception as e:
+        log.exception("запуск упал")
+        await notify_admin(f"❌ Запуск упал: {escape(repr(e))[:500]}")
+        return None, "Запуск упал, подробности админу"
+
+
+async def _after_run(res) -> None:
+    """Служебные сообщения админу после любого запуска: недоступные каналы и низкий баланс."""
+    if res.channel_errors:
+        lines = "\n".join(f"• {k}: {escape(v)}" for k, v in list(res.channel_errors.items())[:20])
+        await alert_once("alert_channels", 24, f"⚠️ Недоступно каналов: {len(res.channel_errors)}\n{lines}")
+    warn = get_settings()["llm"].get("low_balance_warn")
+    if res.tokens_left is not None and warn and res.tokens_left < warn:
+        await alert_once("alert_low_balance", 24, f"⚠️ Токенов мало: осталось {res.tokens_left:,}".replace(",", " ")
+                         + ". Пополни баланс, иначе сбор остановится.")
+
+
+def _today(tz: str) -> str:
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    return datetime.now(ZoneInfo(tz)).date().isoformat()
+
+
+async def do_collect(scheduled: bool = True) -> str:
+    """Фоновый тихий сбор: новости попадают в базу, получателям ничего не уходит (отправка — раз в день)."""
+    if _run_lock.locked() and not scheduled:
+        return "Запуск уже идёт, подожди."
+    async with _run_lock:
+        res, err = await _run_guarded(None, build_outputs=False)
+    if res is None:
+        return err
+    await _after_run(res)
+    return f"Сбор: событий {len(res.events)}, постов {res.posts_new}. {res.cost.summary() if res.cost else ''}"
+
+
+async def do_daily(preview: bool = False) -> str:
+    """Ежедневная рассылка (15:00 МСК): сначала свежий сбор, затем всё, что ещё не отправляли, одним заходом.
+    preview=True — только админу и без пометки «отправлено» (для проверки)."""
+    from datetime import datetime, timedelta, timezone
+    env, cfg = get_env(), get_settings()
+    d = cfg["digest"]
+    async with _run_lock:
+        res, err = await _run_guarded(None, build_outputs=False)
+        if res is not None:
+            await _after_run(res)
+        elif not ctx.db.unsent_events():
+            return err
+        until = datetime.now(timezone.utc)
+        events = ctx.db.unsent_events()
+        # окно «с» — самое раннее неотправленное событие (но не больше 3 суток назад)
+        since = until - timedelta(hours=24)
+        left = res.tokens_left if res else None
+        dash_min = d.get("dashboard_min_score", 2)
+        pool = [e for e in events if e["relevance_score"] >= dash_min]
+        cards, _rest = pick_events(pool, d["min_score"], d.get("daily_max_cards", 15))
+        failed = len(ctx.db.channel_errors_since((until - timedelta(hours=24)).isoformat(timespec="seconds")))
+        head = header_text(cards, len(pool), since, until, d["timezone"], failed,
+                           tokens_line_for_day(ctx.db, left, cfg["llm"].get("low_balance_warn")), d["min_score"])
+        files: list = []
+        exports = env.data_path / "exports"
+        if pool:
+            files = export_files(pool, since, until, exports, d["timezone"])
+            try:
+                if (pdf := await make_onepager(pool, since, until, exports, d["min_score"], d["timezone"])):
+                    files.insert(0, pdf)
+            except Exception as e:
+                log.warning("PDF «Главное» не создан: %s: %s", type(e).__name__, e)
+    dm_ids = env.allowed_ids if d.get("send_dm", True) else set()
+    chats = [env.admin_user_id] if preview else recipients(env.chat_ids, dm_ids, ctx.db.dm_muted())
+    delivered = await broadcast(ctx.bot, chats, head, files)
+    ok_chats = [c for c, v in delivered.items() if v]
+    await send_cards(ctx.bot, ok_chats, cards)
+    if not preview and ok_chats:       # помечаем отправленным только если хоть кто-то получил
+        ctx.db.mark_sent([e["id"] for e in events])
+        ctx.db.set_meta("last_daily_date", _today(d["timezone"]))
+    return f"Дайджест дня: карточек {len(cards)}, в дашборде {len(pool)}, доставлено {len(ok_chats)}/{len(chats)}"
 
 
 async def do_digest(hours: float | None = None, to_admin_only: bool = False, scheduled: bool = False) -> str:
@@ -106,11 +202,12 @@ async def do_digest(hours: float | None = None, to_admin_only: bool = False, sch
 # ---------------- команды ----------------
 @router.message(Command("start", "help", "menu"))
 async def cmd_start(m: Message):
-    await m.answer("📡 <b>Радар ЛНР</b>\nРаз в 4 часа присылаю дайджест новостей региона.\n\n"
+    await m.answer("📡 <b>Радар ЛНР</b>\nРаз в день в 15:00 (МСК) присылаю новости региона с кнопками оценки полезности 1–5.\n\n"
                    "/report [часы] — дайджест за N часов (по умолчанию 24) из сохранённого, без трат токенов\n"
                    "/myid — твой user_id\n/chatid — ID чата (для группы)\n/inn — карточка по ИНН (или пришли файл)\n/channels — каналы\n/stats — статистика и токены\n"
                    "/mute, /unmute — отключить/включить дайджест в личку\n"
-                   "/digest [часы] — свежий сбор новостей прямо сейчас (только админ, тратит токены)\n"
+                   "/digest [часы] — свежий сбор новостей прямо сейчас, только админу (тратит токены)\n"
+                   "/daily — репетиция ежедневной рассылки только админу; /feedback — статистика оценок (админ)\n"
                    "В группе добавляй имя бота: /report@Radar_Bank_Bot 24")
 
 
@@ -132,7 +229,54 @@ async def cmd_digest(m: Message, command: CommandObject):
         return
     hours = parse_hours(command.args)       # окно в часах — первое слово аргументов, остальное игнорируем
     await m.answer("Запускаю… это займёт несколько минут ⏳")
-    await m.answer(escape(await do_digest(hours)))
+    await m.answer(escape(await do_digest(hours, to_admin_only=True)))   # рассылка всем — только ежедневная в 15:00
+
+
+@router.message(Command("daily"))
+async def cmd_daily(m: Message):
+    """Репетиция ежедневной рассылки: приходит только админу, ничего не помечается отправленным."""
+    if m.from_user.id != get_env().admin_user_id:
+        await m.answer("Эта команда только для администратора.")
+        return
+    await m.answer("Готовлю дайджест дня (только тебе, без пометки «отправлено»)… ⏳")
+    await m.answer(escape(await do_daily(preview=True)))
+
+
+@router.message(Command("feedback"))
+async def cmd_feedback(m: Message):
+    if m.from_user.id != get_env().admin_user_id:
+        await m.answer("Эта команда только для администратора.")
+        return
+    await m.answer(feedback_report(ctx.db.feedback_rows()))
+
+
+def _can_vote(c: CallbackQuery) -> bool:
+    env = get_env()
+    uid = c.from_user.id
+    in_group = c.message is not None and c.message.chat.id in set(env.chat_ids) and c.message.chat.id < 0
+    return uid in env.allowed_ids or uid == env.admin_user_id or in_group
+
+
+@router.callback_query(F.data.startswith("v:"))
+async def on_vote(c: CallbackQuery):
+    """Нажатие кнопки 1–5 под новостью: пишем оценку (один голос на человека, можно переголосовать)."""
+    vote = parse_vote(c.data)
+    if not vote or not _can_vote(c):
+        await c.answer("Недоступно", show_alert=False)
+        return
+    eid, score = vote
+    ev = ctx.db.get_event(eid)
+    if not ev:
+        await c.answer("Эта новость уже удалена")
+        return
+    ctx.db.set_vote(eid, c.from_user.id, score)
+    avg, n = ctx.db.vote_stats(eid)
+    await c.answer(f"Спасибо! Оценка {score}")
+    try:
+        await c.message.edit_text(card_text(ev, avg, n, score), reply_markup=keyboard(eid, score),
+                                  disable_web_page_preview=True)
+    except Exception as e:      # «message is not modified» и т.п. — оценка уже сохранена
+        log.info("карточку не обновили: %s", e)
 
 
 @router.message(Command("report"))
@@ -279,23 +423,34 @@ async def run_bot() -> None:
     # По часам на часах (00:00, 04:00, 08:00…), а не «через 4 часа после старта» — расписание не сдвигается перезапусками
     trigger = (CronTrigger(hour=",".join(str(h) for h in hours_list), minute=0, timezone=dcfg["timezone"])
                if hours_list else IntervalTrigger(hours=dcfg["every_hours"]))
-    sched.add_job(do_digest, trigger, kwargs={"scheduled": True}, id="digest",
-                  max_instances=1, coalesce=True, misfire_grace_time=600)
+    # фоновый тихий сбор (в базу), получателям ничего не уходит
+    sched.add_job(do_collect, trigger, id="collect", max_instances=1, coalesce=True, misfire_grace_time=600)
+    # ежедневная рассылка: раз в день, в daily_hour:00 по Москве
+    daily_hour, daily_min = int(dcfg.get("daily_hour", 15)), int(dcfg.get("daily_minute", 0))
+    sched.add_job(do_daily, CronTrigger(hour=daily_hour, minute=daily_min, timezone=dcfg["timezone"]), id="daily",
+                  max_instances=1, coalesce=True, misfire_grace_time=3600)
     sched.start()
     # Если слот пропущен (простой/перезапуск в момент слота) — один раз наверстываем сразу, не ждём следующего
     from datetime import datetime, timedelta, timezone
     if needs_catchup(ctx.db.last_success(), datetime.now(timezone.utc), hours_list, dcfg["every_hours"]):
-        sched.add_job(do_digest, DateTrigger(run_date=datetime.now(timezone.utc) + timedelta(seconds=15)),
-                      kwargs={"scheduled": True}, id="catchup")
-        log.info("Прошлый успешный запуск слишком давно — наверстаю дайджест через 15 секунд")
-    nxt = sched.get_job("digest").next_run_time
-    log.info("Бот запущен. Whitelist: %d пользователей, чатов для дайджеста: %d. Следующий дайджест: %s",
+        sched.add_job(do_collect, DateTrigger(run_date=datetime.now(timezone.utc) + timedelta(seconds=15)),
+                      id="catchup")
+        log.info("Прошлый успешный сбор слишком давно — наверстаю через 15 секунд")
+    # Дневную рассылку наверстываем, только если она уже когда-то была, сегодня ещё нет, а время вышло
+    from zoneinfo import ZoneInfo
+    now_l = datetime.now(ZoneInfo(dcfg["timezone"]))
+    last_daily = ctx.db.get_meta("last_daily_date")
+    if last_daily and last_daily != now_l.date().isoformat() and now_l.hour >= daily_hour and now_l.hour < 22:
+        sched.add_job(do_daily, DateTrigger(run_date=datetime.now(timezone.utc) + timedelta(seconds=90)), id="daily_catchup")
+        log.info("Сегодняшняя рассылка не уходила — наверстаю через 90 секунд")
+    nxt = sched.get_job("daily").next_run_time
+    log.info("Бот запущен. Whitelist: %d пользователей, чатов для дайджеста: %d. Следующая рассылка: %s",
              len(env.allowed_ids), len(env.chat_ids), nxt)
     await startup_check()
     try:
         if nxt:
-            await notify_admin(f"🟢 Радар запущен. Следующий дайджест: <b>{nxt:%d.%m %H:%M}</b> ({dcfg['timezone']}); "
-                               f"расписание по часам: {', '.join(f'{h:02d}:00' for h in hours_list) if hours_list else 'каждые ' + str(dcfg['every_hours']) + ' ч'}.")
+            await notify_admin(f"🟢 Радар запущен. Рассылка раз в день: <b>{nxt:%d.%m %H:%M}</b> ({dcfg['timezone']}). "
+                               f"Фоновый сбор: {', '.join(f'{h:02d}:00' for h in hours_list) if hours_list else 'каждые ' + str(dcfg['every_hours']) + ' ч'}.")
         await dp.start_polling(ctx.bot)
     finally:
         sched.shutdown(wait=False)

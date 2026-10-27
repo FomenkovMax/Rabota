@@ -28,7 +28,7 @@ def extract_json(text: str) -> dict:
 
 
 class Classifier:
-    def __init__(self, client: LLMClient, env, cfg: dict, banks: list[str], cost: CostTracker):
+    def __init__(self, client: LLMClient, env, cfg: dict, banks: list[str], cost: CostTracker, calibration: str = ""):
         self.client, self.cost = client, cost
         self.model_filter, self.model_analyze = env.model_filter, env.model_analyze
         self.batch = cfg["llm"]["filter_batch_size"]
@@ -36,7 +36,7 @@ class Classifier:
         self.max_chars = cfg["scrape"]["max_text_chars"]
         cats = CATEGORY_LIST.format(banks=", ".join(banks))
         self.filter_sys = FILTER_SYSTEM.format(cats=cats)
-        self.analyze_sys = ANALYZE_SYSTEM.format(cats=cats)
+        self.analyze_sys = ANALYZE_SYSTEM.format(cats=cats) + calibration   # примеры по оценкам коллег
 
     async def _ask_json(self, stage, model, system, user, schema, max_tokens):
         """Запрос с повтором при невалидном JSON (в повторе просим исправиться)."""

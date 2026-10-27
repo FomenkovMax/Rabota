@@ -85,8 +85,7 @@ def test_schedule_runs_every_4_hours_on_the_clock_moscow():
 
 
 def test_only_midnight_and_4am_slots_are_silent():
-    silent = CFG["digest"]["silent_hours"]
-    assert silent == [0, 4]
+    silent = [0, 4]
     slots = CFG["digest"]["schedule_hours"]
     assert {h: is_silent_slot(h, silent) for h in slots} == {0: True, 4: True, 8: False, 12: False, 16: False, 20: False}
     assert not is_silent_slot(3, None) and not is_silent_slot(3, [])

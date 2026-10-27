@@ -176,12 +176,6 @@ channels:
   priority: 2
   group: xlsx
   district: Первомайск
-- username: admrov
-  title: 'Администрация: Ровеньки'
-  section: Муниципалитеты — города
-  priority: 2
-  group: xlsx
-  district: Ровеньки
 - username: Agr_lnr
   title: 'Администрация: Рубежное'
   section: Муниципалитеты — города

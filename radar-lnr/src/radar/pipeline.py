@@ -16,6 +16,7 @@ from .enrichment.service import Enricher, build_adapters
 from .llm.classifier import Classifier
 from .llm.client import LLMAuthError, LLMBalanceError, make_client
 from .llm.cost import CostTracker
+from .report.feedback import calibration_text
 from .report.digest import build_digest, usage_line
 from .sources.tme_web import ChannelUnavailable, TmeWebSource
 
@@ -40,9 +41,10 @@ class RunResult:
 
 
 async def run_once(db: DB, hours: float | None = None, dry_run: bool = False, limit_channels: int | None = None,
-                   source: TmeWebSource | None = None) -> RunResult:
+                   source: TmeWebSource | None = None, build_outputs: bool = True) -> RunResult:
     """Выполняет полный цикл. hours — принудительное окно (для демо); иначе «с прошлого успешного запуска».
-    dry_run=True: ничего не сохраняем в БД (посты не помечаются прочитанными)."""
+    dry_run=True: ничего не сохраняем в БД (посты не помечаются прочитанными).
+    build_outputs=False: фоновый сбор — только база, без дайджеста/PDF/Excel (их соберёт ежедневная рассылка)."""
     env, cfg = get_env(), get_settings()
     until = datetime.now(timezone.utc)
     last = db.last_success()
@@ -103,7 +105,8 @@ async def run_once(db: DB, hours: float | None = None, dry_run: bool = False, li
 
         # ---- 3. LLM ----
         if groups:
-            clf = Classifier(client, env, cfg, load_yaml("config/competitors.yaml")["banks"], res.cost)
+            clf = Classifier(client, env, cfg, load_yaml("config/competitors.yaml")["banks"], res.cost,
+                             calibration_text(db.feedback_rows()))
             relevant = await clf.filter_groups(groups)
             log.info("Релевантных после фильтра: %d из %d", len(relevant), len(groups))
             res.events = await clf.analyze_all(relevant)
@@ -139,6 +142,14 @@ async def run_once(db: DB, hours: float | None = None, dry_run: bool = False, li
         warn = cfg["llm"].get("low_balance_warn")
         tokens_line = usage_line(res.tokens_spent, res.tokens_left, res.tokens_approx, warn)
         d = cfg["digest"]
+        if not build_outputs:
+            log.info(res.cost.summary())
+            if not dry_run:
+                db.finish_run(run_id, "ok", posts_new=res.posts_new, events_n=len(res.events),
+                              tokens_in=res.cost.tokens_in, tokens_out=res.cost.tokens_out,
+                              cost_usd=res.cost.cost_usd, channel_errors=res.channel_errors,
+                              tokens_spent=None if res.tokens_approx else res.tokens_spent, tokens_left=res.tokens_left)
+            return res
         res.digest = build_digest(res.events, since, until, len(res.channel_errors), d["timezone"],
                                   d["max_events"], d["min_score"], d.get("dashboard_min_score", 2), tokens_line)
         dash_events = [e for e in res.events if e["relevance_score"] >= d.get("dashboard_min_score", 2)]
@@ -154,7 +165,8 @@ async def run_once(db: DB, hours: float | None = None, dry_run: bool = False, li
         if not dry_run:
             db.finish_run(run_id, "ok", posts_new=res.posts_new, events_n=len(res.events),
                           tokens_in=res.cost.tokens_in, tokens_out=res.cost.tokens_out,
-                          cost_usd=res.cost.cost_usd, channel_errors=res.channel_errors)
+                          cost_usd=res.cost.cost_usd, channel_errors=res.channel_errors,
+                          tokens_spent=None if res.tokens_approx else res.tokens_spent, tokens_left=res.tokens_left)
         return res
     except LLMBalanceError:
         if not dry_run:

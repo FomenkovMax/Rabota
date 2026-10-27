@@ -26,6 +26,10 @@ SECTION_PRIORITY = {
 }
 
 
+# Каналы, которые не читаются (нет веб-превью) — не добавляем при повторном импорте
+EXCLUDED = {"admrov"}
+
+
 def username_from_url(url: str) -> str | None:
     """https://t.me/agl_lnr -> agl_lnr (без / и ?)."""
     m = re.match(r"https?://t\.me/(?:s/)?([^/?#]+)", url.strip())
@@ -45,7 +49,7 @@ def main(xlsx: Path) -> None:
     channels, skipped = [], []
     for _, section, title, url, subs, _desc, status in rows:
         uname = username_from_url(url) if url else None
-        if status != OK_STATUS or not uname:
+        if status != OK_STATUS or not uname or uname in EXCLUDED:
             skipped.append(title)
             continue
         item = {
