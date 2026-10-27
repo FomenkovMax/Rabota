@@ -6,8 +6,9 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bankintel.db.models import Bank, CollectionRun, Document, FetchAttempt, Product, Source
+from bankintel.formatting import fmt_msk
 
-DEMO_NOTICE = "⚠️ Демо-прототип: данные только по ПСБ и ВТБ, Сбера (эталона) пока нет; доступность в ЛНР не подтверждена."
+DEMO_NOTICE = "⚠️ Демо-прототип: данные собраны не по всем банкам реестра (Сбера — эталона — пока нет); доступность в ЛНР не подтверждена."
 
 # Команда -> (название, этап, в чём суть). Пока не реализовано — честно говорим об этом.
 PLANNED = {
@@ -67,7 +68,7 @@ async def status_text(session: AsyncSession) -> str:
         if run is None:
             state = "сбор не запускался"
         else:
-            when = run.started_at.strftime("%d.%m.%Y %H:%M")
+            when = fmt_msk(run.started_at)
             state = f"последний сбор {when}: {run.status}"
         last = await session.scalar(
             select(FetchAttempt).join(Source, Source.id == FetchAttempt.source_id)

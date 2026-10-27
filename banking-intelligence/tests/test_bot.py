@@ -49,7 +49,7 @@ async def test_status_shows_last_run(seeded):
         s.add(CollectionRun(bank_id=bank.id, started_at=datetime(2026, 1, 2, 3, 4, tzinfo=UTC), status="failed"))
         await s.commit()
         text = await views.status_text(s)
-    assert "02.01.2026 03:04: failed" in text
+    assert "02.01.2026 06:04 МСК: failed" in text  # 03:04 UTC = 06:04 МСК; пояс указан явно
 
 
 async def test_html_is_escaped(session_factory):

@@ -4,6 +4,7 @@ from html import escape
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bankintel.cycle import MARK
+from bankintel.formatting import fmt_msk
 from bankintel.monitor import monitoring_status, recent_changes
 
 LIMIT = 20
@@ -22,7 +23,7 @@ def parse_days(args: str | None) -> int:
 
 
 def _dt(iso: str | None) -> str:
-    return datetime.fromisoformat(iso).strftime("%d.%m.%Y %H:%M") if iso else "—"
+    return fmt_msk(iso)
 
 
 async def changes_text(session: AsyncSession, days: int) -> str:

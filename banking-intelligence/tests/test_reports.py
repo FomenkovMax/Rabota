@@ -208,3 +208,16 @@ async def test_html_layout_rules(loaded):
     assert re.search(r"(?<!\+ )\.scenario \{\s*break-before", html) is None  # принудительного разрыва перед первым сценарием нет
     # счёт без суммы в валюте: прочерк, затем валюта (а не «(CNY)—»)
     assert "(CNY)—" not in html and re.search(r"—\s*\(CNY\)", html)
+
+
+async def test_report_times_are_labelled_msk(loaded):
+    import re
+
+    from bankintel.reports import charts
+    from bankintel.reports.render_html import _render
+
+    async with loaded() as s:
+        ds = await build_dataset(s, NOW)  # NOW = 12:00 UTC → 15:00 МСК
+    html = _render(ds, "pdf", lambda rows, uid: charts.svg_range_chart(rows, uid=uid))
+    assert "24.10.2026 15:00 МСК" in html  # «Сформировано»
+    assert not re.search(r"\d{2}\.\d{2}\.\d{4} \d{2}:\d{2}(?! МСК)", html)  # времени без пометки пояса нет

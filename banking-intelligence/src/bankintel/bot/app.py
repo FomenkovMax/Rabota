@@ -26,7 +26,7 @@ async def run() -> None:
         logging.warning("ALLOWED_TELEGRAM_IDS пуст — бот будет отказывать всем пользователям")
     engine = make_engine(settings.database_url)
     dp = build_dispatcher(settings.allowed_telegram_ids, make_session_factory(engine))
-    bot = Bot(settings.bot_token.get_secret_value(), default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+    bot = Bot(settings.bot_token.get_secret_value(), default=DefaultBotProperties(parse_mode=ParseMode.HTML, link_preview_is_disabled=True))
     try:
         await dp.start_polling(bot)
     finally:
