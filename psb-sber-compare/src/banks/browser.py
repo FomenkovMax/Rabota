@@ -16,6 +16,7 @@ API — просто читаем страницу так, как её види�
 
 from __future__ import annotations
 
+import re
 import logging
 import multiprocessing
 import os
@@ -157,6 +158,14 @@ class BrowserSettings:
     #: кредиту») и прокручивать страницу перед чтением. У Сбера ставки по
     #: кредитам и ипотеке видны только во вкладке (проверено 07.10.2026).
     expand: bool = True
+    #: Регион для калькуляторов на страницах («Луганская Народная Республика,
+    #: Луганск»). Пусто — калькуляторы не трогаем.
+    calculator_region: str = ""
+    #: Сохранять JSON, который страница скачивает при загрузке: в нём
+    #: калькуляторы держат программы, регионы и ставки.
+    record_network: bool = False
+    #: На каких адресах искать калькулятор (регулярное выражение по пути).
+    calculator_paths: str = ""
 
     @classmethod
     def from_config(cls, data: dict[str, Any] | None) -> "BrowserSettings":
@@ -169,6 +178,8 @@ class BrowserSettings:
             proxy=str(data.get("proxy", "") or ""),
             ignore_https_errors=bool(data.get("ignore_https_errors", False)),
             expand=bool(data.get("expand", True)),
+            calculator_region=str(data.get("calculator_region", "") or ""),
+            record_network=bool(data.get("record_network", False)),
         )
 
 
@@ -274,6 +285,11 @@ class BrowserSession:
 
         limit = self.settings.timeout_ms
         page = self._context.new_page()
+        responses: list[Any] = []
+        if self.settings.record_network:
+            # В обработчике только запоминаем ответ: читать тело внутри
+            # события синхронного Playwright нельзя — зависнет.
+            page.on("response", lambda r: responses.append(r) if len(responses) < 80 else None)
         try:
             page.set_default_timeout(limit)
             response = page.goto(url, wait_until="domcontentloaded", timeout=limit)
@@ -297,10 +313,25 @@ class BrowserSession:
             data["status"] = status
             data["url"] = page.url
             data["expanded"] = clicked
+            if self.settings.calculator_region and re.search(
+                    self.settings.calculator_paths or ".", url):
+                data["calculator"] = self._calculator(page)
+            if responses and re.search(self.settings.calculator_paths or ".", url):
+                data["network"] = _json_bodies(responses, url)
             return data
         finally:
             page.close()
             time.sleep(self.settings.pause_s)
+
+    def _calculator(self, page: Any) -> dict[str, Any] | None:
+        """Калькулятор на странице: регион, все цели, ставка. Ошибка не мешает чтению."""
+        from . import calculator
+        try:
+            with hard_limit(CALCULATOR_LIMIT_S, f"калькулятор {page.url}"):
+                return calculator.explore(page, self.settings.calculator_region)
+        except Exception as exc:                    # noqa: BLE001
+            log.debug("Калькулятор на %s не прочитан: %s", page.url, exc)
+            return {"error": f"{type(exc).__name__}: {str(exc)[:160]}"}
 
     def _expand(self, page: Any) -> int:
         """Прокрутка и клики по вкладкам с условиями — как у посетителя.
@@ -337,6 +368,31 @@ class BrowserSession:
             except Exception:
                 pass
         self._context = self._browser = self._playwright = None
+
+
+#: Сколько секунд даём калькулятору: регион и до 12 целей по ~4 с.
+CALCULATOR_LIMIT_S = 90
+
+
+def _json_bodies(responses: list[Any], url: str, *, limit: int = 1_500_000) -> list[dict]:
+    """JSON-ответы того же сайта, что и страница, — с телом, не больше limit байт."""
+    from urllib.parse import urlsplit
+    site = ".".join(urlsplit(url).netloc.split(".")[-2:])
+    out, total = [], 0
+    for response in responses:
+        try:
+            if site not in urlsplit(response.url).netloc:
+                continue
+            if "json" not in (response.headers.get("content-type") or ""):
+                continue
+            body = response.text()
+        except Exception:                           # noqa: BLE001
+            continue
+        if not body or len(body) > 400_000 or total + len(body) > limit:
+            continue
+        total += len(body)
+        out.append({"url": response.url, "status": response.status, "body": body})
+    return out
 
 
 # Подписи вкладок и кнопок, за которыми прячутся ставки и условия.
@@ -515,6 +571,8 @@ class PageReader:
         self.wait_for = wait_for
         self.limit_s = limit_s or (
             (settings.timeout_ms * 2 + settings.settle_ms) / 1000 + 20)
+        if settings.calculator_region:
+            self.limit_s += CALCULATOR_LIMIT_S
         self.start_limit_s = start_limit_s
         self._process: Any = None
         self._channel: Any = None

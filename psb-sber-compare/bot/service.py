@@ -399,11 +399,13 @@ def audit_summary(returncode: int, tail: list[str]) -> str:
 
 
 def missing_pages_archive() -> Path | None:
-    """Архив страниц продуктов, где ставка не нашлась при последних сборах."""
+    """Архив для доработки: страницы без ставки, калькуляторы (calc-*.json)
+    и данные, которые страницы калькуляторов скачали (net-*.json)."""
     import zipfile
 
     folder = ROOT / "data" / "pages-missing"
-    files = sorted(folder.rglob("*.txt")) if folder.exists() else []
+    files = sorted(f for pattern in ("*.txt", "*.json")
+                   for f in folder.rglob(pattern)) if folder.exists() else []
     if not files:
         return None
     archive = ROOT / "data" / "pages-missing.zip"

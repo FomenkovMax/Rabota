@@ -330,6 +330,29 @@ def _found(product: Product | None) -> str:
     return f"{rate}; {reason or conditions.LABELS[kind]}"
 
 
+def market_program(product: Product) -> str:
+    """Программа пункта калькулятора — только если она распознана по названию.
+
+    «Квартира на вторичном рынке» → «Вторичное жильё». Пункт без явной
+    программы (уходит в «Рыночную ипотеку» по умолчанию) не помечаем: иначе
+    недоступность одного пункта закрыла бы всю рыночную ипотеку.
+    """
+    from .. import market
+    program = market.program_of(product)
+    return "" if program in market._DEFAULT_PROGRAM.values() else program
+
+
+def mark_blocked(products: list[Product], blocked: dict[str, str]) -> None:
+    """Продукты программ, которые калькулятор назвал недоступными в регионе."""
+    if not blocked:
+        return
+    from .. import market
+    for product in products:
+        note = blocked.get(market.program_of(product))
+        if note and product.category in ("Ипотека", "Кредиты"):
+            product.terms.setdefault(market.REGION_KEY, note)
+
+
 def _worth_saving(product: Product) -> bool:
     """Страницу стоит сохранить для доработки разбора.
 
@@ -550,6 +573,15 @@ class CrawlAdapter(BankAdapter):
         # запросов, — поверх общей настройки браузера.
         if self.settings.get("pause_s"):
             settings.pause_s = float(self.settings["pause_s"])
+        # Калькуляторы: регион ЛНР, все цели из списка — на страницах, адрес
+        # которых подходит под calculator_paths (иначе на каждой витрине
+        # агент искал бы калькулятор впустую).
+        if self.settings.get("calculator_paths"):
+            settings.calculator_region = str(
+                self.settings.get("calculator_region")
+                or "Луганская Народная Республика, Луганск")
+            settings.calculator_paths = str(self.settings["calculator_paths"])
+            settings.record_network = True
         now = datetime.now().isoformat(timespec="seconds")
         region_cookies = self.settings.get("region_cookies") or []
         method, region_label = region_binding(self.sets_region, self.settings)
@@ -575,6 +607,7 @@ class CrawlAdapter(BankAdapter):
         failures: list[str] = []
         visited = 0
         self._clear_missing()
+        calc_blocked: dict[str, str] = {}      # программа → что сказал калькулятор
         site_sections: dict[str, str] = {}
         retried: set[str] = set()
         blocked = False
@@ -664,6 +697,11 @@ class CrawlAdapter(BankAdapter):
                             products.setdefault(normalize_title(product.title), product)
                             if _worth_saving(product):
                                 self._save_missing(url, data, product)
+                    # Калькулятор бывает и на витрине (ипотека Сбера — на
+                    # /credits/homenew), поэтому — для любой страницы.
+                    if data.get("calculator") or data.get("network"):
+                        self._save_calculator(url, data, family,
+                                              None if is_listing else product, calc_blocked)
 
                     for link in links:
                         popularity[link] = popularity.get(link, 0) + 1
@@ -679,6 +717,7 @@ class CrawlAdapter(BankAdapter):
                         self.title, str(exc)[:160])
 
         merged = self._merge(products, showcase, region_label, now)
+        mark_blocked(merged, calc_blocked)
         if blocked:
             log.warning("%s: обход остановлен — сайт закрыл доступ после %s страниц, "
                         "в очереди осталось %s. Собранное сохранено; при следующем "
@@ -757,6 +796,42 @@ class CrawlAdapter(BankAdapter):
         (folder / f"{number:03d}-{name or 'root'}.txt").write_text(
             "\n".join(body), encoding="utf-8")
 
+    def _save_calculator(self, url: str, data: dict[str, Any], family: str,
+                         product: Product | None, blocked: dict[str, str]) -> None:
+        """Что показал калькулятор: в условия продукта, в отметки недоступности
+        и в файлы для доработки (рядом со «Страницами без ставки»)."""
+        import json
+        from . import calculator
+        result = data.get("calculator") or {}
+        line = calculator.summary(result) if result.get("options") else ""
+        if product is not None and line:
+            product.terms["Калькулятор на сайте"] = line
+        day = datetime.now().strftime("%d.%m.%Y")
+        for item in result.get("options") or []:
+            if item.get("available") or not item.get("option"):
+                continue
+            probe = Product(bank=self.title, title=item["option"],
+                            category=family or "Ипотека")
+            program = market_program(probe)
+            if program:
+                blocked.setdefault(program, (
+                    f"калькулятор на сайте банка для «{result.get('region') or 'ЛНР'}» "
+                    f"на «{item['option']}» пишет «{item.get('note') or 'недоступно'}» "
+                    f"(сбор {day})"))
+        try:
+            folder = self._missing_dir()
+            folder.mkdir(parents=True, exist_ok=True)
+            name = re.sub(r"[^a-z0-9]+", "-", urlsplit(url).path.lower()).strip("-")[:80]
+            if result:
+                (folder / f"calc-{name or 'page'}.json").write_text(
+                    json.dumps({"url": url, **result}, ensure_ascii=False, indent=1),
+                    encoding="utf-8")
+            if data.get("network"):
+                (folder / f"net-{name or 'page'}.json").write_text(
+                    json.dumps(data["network"], ensure_ascii=False), encoding="utf-8")
+        except OSError as exc:
+            log.debug("Калькулятор не сохранился: %s", exc)
+
     def _missing_dir(self) -> Path:
         root = Path(self.settings.get("missing_dir") or "data/pages-missing")
         if not root.is_absolute():
@@ -766,7 +841,7 @@ class CrawlAdapter(BankAdapter):
     def _clear_missing(self) -> None:
         """Перед сбором — убрать страницы прошлого сбора: в архиве только свежие."""
         folder = self._missing_dir()
-        for item in folder.glob("*.txt") if folder.is_dir() else ():
+        for item in folder.glob("*.*") if folder.is_dir() else ():
             try:
                 item.unlink()
             except OSError:
