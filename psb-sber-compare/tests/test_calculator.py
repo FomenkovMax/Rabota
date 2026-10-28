@@ -141,3 +141,36 @@ def test_calculator_inside_iframe(tmp_path, monkeypatch):
     calc = data["calculator"]
     assert calc["frame"].endswith("/calc.html")
     assert {o["option"]: o for o in calc["options"]}["Квартира в новостройке"]["rate"] == 18.9
+
+
+def test_calculator_read_before_tabs_hide_it(tmp_path, monkeypatch):
+    """Сбер, новостройка (28.10.2026): калькулятор на вкладке «Об ипотеке»,
+    раскрытие вкладок переключает на «Условия и требования» и прячет его."""
+    tabs = PAGE.replace(
+        '<div style="display:flex">',
+        '<button id="t1">Об ипотеке</button><button id="t2">Условия и требования</button>'
+        '<div id="cond" style="display:none"><div>Процентные ставки</div></div>'
+        '<div id="about" style="display:flex">').replace(
+        '</script></body>',
+        "document.getElementById('t2').onclick = () => {"
+        " document.getElementById('about').style.display = 'none';"
+        " document.getElementById('cond').style.display = 'block'; };\n</script></body>")
+    (tmp_path / "index.html").write_text(tabs, encoding="utf-8")
+    handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(tmp_path))
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    monkeypatch.setenv("NO_PROXY", "127.0.0.1,localhost")
+    from src.banks.browser import BrowserSettings, browser_session
+
+    settings = BrowserSettings(settle_ms=300, pause_s=0,
+                               calculator_region="Луганская Народная Республика, Луганск")
+    try:
+        with browser_session(settings) as session:
+            data = session.inspect(f"http://127.0.0.1:{server.server_port}/index.html")
+    except Exception as exc:                        # noqa: BLE001
+        pytest.skip(f"браузер недоступен: {exc}")
+    finally:
+        server.shutdown()
+    by_goal = {o["option"]: o for o in data["calculator"]["options"]}
+    assert by_goal["Квартира на вторичном рынке"]["available"] is False
+    assert "Процентные ставки" in data["text"]       # вкладки раскрыты после калькулятора

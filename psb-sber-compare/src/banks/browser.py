@@ -306,6 +306,20 @@ class BrowserSession:
             # Время на JS-проверку и на дозагрузку условий отдельными запросами.
             page.wait_for_timeout(self.settings.settle_ms)
 
+            # Калькулятор — до раскрытия вкладок: у Сбера (28.10.2026) он на
+            # вкладке «Об ипотеке», а раскрытие переключает на «Условия и
+            # требования», и калькулятор пропадает со страницы.
+            calc = None
+            if self.settings.calculator_region and re.search(
+                    self.settings.calculator_paths or ".", url):
+                try:
+                    with hard_limit(15, f"прокрутка {url}"):
+                        page.evaluate(_SCROLL_JS)
+                        page.wait_for_timeout(800)
+                except Exception:                   # noqa: BLE001
+                    pass
+                calc = self._calculator(page)
+
             clicked = self._expand(page) if self.settings.expand else 0
 
             with hard_limit(self._overall(), f"чтение страницы {url}"):
@@ -313,9 +327,8 @@ class BrowserSession:
             data["status"] = status
             data["url"] = page.url
             data["expanded"] = clicked
-            if self.settings.calculator_region and re.search(
-                    self.settings.calculator_paths or ".", url):
-                data["calculator"] = self._calculator(page)
+            if calc is not None:
+                data["calculator"] = calc
             if responses and re.search(self.settings.calculator_paths or ".", url):
                 data["network"] = _json_bodies(responses, url)
             return data
