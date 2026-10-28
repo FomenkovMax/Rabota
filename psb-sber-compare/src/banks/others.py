@@ -175,6 +175,8 @@ class VtbAdapter(CrawlAdapter):
         # Подборки, города и служебное в разделе вкладов ВТБ (обход 07.10.2026).
         r"/vklad-\d|/vklady-(?!i-scheta)|/so-snyatiem|/sberezhenija$|/nakopitelnyy-chet-|"
         r"/kurs-|/monety|metallicheskij|/seyfovye|/strahovanie|asv|/informacija|"
+        r"/restrukturizaciya|/spisok-partnerov|/katalog-nedvizhimosti|/maksimum-vygody|"
+        r"/zarplatnyj-proekt|/vtbpay|"
         r"/(nizhniy-novgorod|chelyabinsk|yekaterinburg|krasnodar|rostov-na-donu|ufa|"
         r"samara|voronezh|krasnoyarsk|tyumen|perm|volgograd|omsk|saratov|irkutsk|"
         r"izhevsk|ryazan|barnaul|tolyatti|ulyanovsk|yaroslavl|khabarovsk|vladivostok|"
@@ -245,7 +247,11 @@ class TbankAdapter(CrawlAdapter):
     skip = re.compile(NOT_RETAIL.pattern + "|" + (
         r"/city/|/foreign|/form$|/(dlya|bez|s)-|virtualnaya|beskontaktnaya|"
         r"nakopitelnaya-karta|mezhdunarodnaya|imennaya|besplatnaya|momentalnaya|"
-        r"/debit-cards/(premium|travel|driver|games|shopping)$|insurance"), re.I)
+        r"/debit-cards/(premium|travel|driver|games|shopping)$|insurance|"
+        # Сбор 28.10.2026: «как погасить», карты сайта, формы заявок и
+        # оплаты, партнёрские рассрочки в магазинах — не продукты.
+        r"how-repay|/sitemap|/form/|/new-form|/payment$|/purpose$|/service$|"
+        r"/pos-loans/[\w/-]+"), re.I)
 
 
 @registry.register

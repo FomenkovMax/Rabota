@@ -1228,6 +1228,10 @@ class CrawlAdapter(BankAdapter):
             parts = urlsplit(url)
             if parts.netloc != base_host or _FILE.search(parts.path):
                 continue
+            # Склеенные адреса из меню («…/www.koronapay.com», «…/+74957253141»,
+            # «…/ipoteka/[…](https://…)») — не страницы сайта.
+            if re.search(r"www\.|\+7|%20|\[|https?:", parts.path):
+                continue
             if not self._family(url) or self.skip.search(parts.path) or is_seo_page(url):
                 continue
             if url not in out:

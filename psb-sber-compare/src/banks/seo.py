@@ -62,6 +62,14 @@ _SEO_PAGES = {
     "tbank.ru": re.compile(
         r"^/loans/cash-loan/(?:na-[\w-]+|pensioneram|studentam|selfemployed|"
         r"nizkij-proczent|srochnyj-kredit-nalichnymi|nopledge|how-repay|form/[\w-]+)/?$"
+        # Сбор 28.10.2026: автокредит «на Lada / Haval / …», подборки вкладов
+        # «на 3 месяца / для пенсионеров / в рублях», посадочные кредитных
+        # карт («без процентов», «по паспорту», «за 5 минут»…) — копии продуктов.
+        r"|^/loans/auto-loan/[\w-]+-v-kredit/?$"
+        r"|^/savings/deposit/(?:vklad[\w-]*|vklady[\w-]*|dolgosrochnyi-vklad)/?$"
+        r"|^/cards/credit-cards/(?:without-[\w-]+|ot-5-minut|v-den-[\w-]+|po-pasportu|"
+        r"home-delivery|cashback|virtual-credit-card|with-[\w-]+|shopping|travel|driver|"
+        r"games)/?$"
         # «Дебетовая карта Black в Москве / Уфе / …» (сбор 28.10.2026) — города.
         r"|^/cards/debit-cards/tinkoff-black/(?!pension|junior|selfemployed|mir|youth-card)"
         r"[\w-]+/?$"
@@ -75,7 +83,12 @@ _SEO_PAGES = {
         r"anapa|balashiha|domodedovo|elektrostal|habarovsk|kolomna|korolyov|krym|"
         r"lipeck|maykop|nizhnij-novgorod|orehovo-zuevo|prokopevsk|sergiev-posad|"
         r"tyva)/?$"
-        r"|^/personal/karty/kreditnye/(?:s-[\w-]+|v-den-[\w-]+)/?$"
+        r"|^/personal/karty/kreditnye/(?:s-[\w-]+|v-den-[\w-]+|\d+|po-pasportu|"
+        r"lipeck|habarovsk|balashiha)/?$"
+        # Сбор 28.10.2026: подборки и города среди дебетовых карт и кредитов.
+        r"|^/personal/karty/debetovye/(?:s-[\w-]+|debetovaya-karta-[\w-]+|momentalnye|"
+        r"karty-s-[\w-]+|imennye|digital-designs|balashiha|lipeck|v-valyute)/?$"
+        r"|^/personal/kredit/(?:spb|srochnyj|nizkaya-stavka|online|nalichnymi/[\w-]+)/?$"
     ),
 }
 
