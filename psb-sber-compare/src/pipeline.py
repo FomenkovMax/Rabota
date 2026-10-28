@@ -255,6 +255,30 @@ def bank_region_methods(config: Config, codes: list[str] | None = None) -> dict[
     return out
 
 
+def bank_presence(config: Config, codes: list[str],
+                  links: dict[str, dict[str, str]]) -> dict[str, str]:
+    """Чем подтверждено, что банк работает в ЛНР: банк → основание.
+
+    Сильнее всего — адрес в Луганске на странице офисов самого банка (её
+    читает сбор). Нет его — источник из настройки presence_source с
+    пометкой, что на странице офисов Луганск не нашёлся."""
+    from .banks.crawl_adapter import OFFICES_KEY, OFFICES_PROOF_KEY
+    titles = registry.titles()
+    out: dict[str, str] = {}
+    for code in codes:
+        title = titles.get(code, code)
+        own = links.get(title) or {}
+        proof, page = own.get(OFFICES_PROOF_KEY, ""), own.get(OFFICES_KEY, "")
+        source = str((config.bank_settings(code) or {}).get("presence_source") or "")
+        if proof and "не найден" not in proof:
+            out[title] = f"страница офисов банка {page}: «{proof}»"
+        elif source and page:
+            out[title] = f"{source} (на странице офисов банка Луганск не найден: {page})"
+        else:
+            out[title] = source
+    return out
+
+
 def mark_not_in_region(config: Config, products: list[Any]) -> None:
     """Программы, недоступные в регионе, — из настройки banks.<код>.not_in_region.
 
@@ -397,9 +421,8 @@ def load_report_data(config: Config, *, competitor: str = "") -> dict[str, Any] 
         calc_offers = charts.calculator_offers(scope, key_rate=key_rate,
                                                region_methods=region_methods)
         # Главное по ТЗ — есть ли продукт в Луганске: статус и основание.
-        presence = {titles.get(code, code): str(
-                        (config.bank_settings(code) or {}).get("presence_source") or "")
-                    for code in competitor_codes + [HOME_BANK]}
+        presence = bank_presence(config, competitor_codes + [HOME_BANK],
+                                 storage.coverage_of_run(run_id))
         lnr_status = availability.statuses(scope, region_methods=region_methods,
                                            presence=presence)
         lnr_rows = availability.matrix(scope, home=home_title,
@@ -423,7 +446,7 @@ def load_report_data(config: Config, *, competitor: str = "") -> dict[str, Any] 
             gaps=gaps, quality_rows=quality_rows, manual=manual, home=home_title,
             specials=special_rows, coverage_matrix=coverage_matrix,
             calculator=calc_offers, lnr_rows=lnr_rows, lnr_total=lnr_total,
-            lnr_status=lnr_status,
+            lnr_status=lnr_status, presence=presence,
         )
 
         return {
@@ -456,6 +479,7 @@ def load_report_data(config: Config, *, competitor: str = "") -> dict[str, Any] 
             "lnr_status": lnr_status,
             "lnr_rows": lnr_rows,
             "lnr_total": lnr_total,
+            "presence": presence,
             "product_ids": market.product_ids(all_products),
         }
     finally:

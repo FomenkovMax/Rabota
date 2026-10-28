@@ -66,3 +66,35 @@ def test_clause_on_page_marks_product_absent():
     product = crawl.product_from_page(page, bank="Банк", url="https://x/credit",
                                       category="Кредиты", region="", collected_at="")
     assert "ДНР и ЛНР" in product.terms[market.REGION_KEY]
+
+
+def test_office_link_and_lugansk_quote():
+    from src.banks import crawl_adapter as crawl
+    links = [["https://www.vtb.ru/personal/ipoteka", "Ипотека"],
+             ["https://other.ru/offices", "Офисы"],
+             ["https://www.vtb.ru/offices/", "Офисы и банкоматы"]]
+    assert crawl.office_link(links, "https://www.vtb.ru") == "https://www.vtb.ru/offices/"
+    assert crawl.lugansk_quote("Москва\nЛуганск\nДонецк") == ""
+    quote = crawl.lugansk_quote("Офис «Луганский»\nг. Луганск, ул. Советская, 54\nПн–Пт 9:00–18:00")
+    assert "ул. Советская" in quote
+
+
+def test_presence_prefers_office_address_over_article():
+    from src import pipeline
+    from src.banks.crawl_adapter import OFFICES_KEY, OFFICES_PROOF_KEY
+    config = pipeline.Config(raw={"banks": {"vtb": {"presence_source": "статья"},
+                                            "tbank": {"presence_source": "статья"}}})
+    links = {"ВТБ": {OFFICES_KEY: "https://www.vtb.ru/offices/",
+                     OFFICES_PROOF_KEY: "г. Луганск, ул. Советская, 54"},
+             "Т-Банк": {OFFICES_KEY: "https://www.tbank.ru/offices/",
+                        OFFICES_PROOF_KEY: "на странице офисов банка Луганск не найден"}}
+    out = pipeline.bank_presence(config, ["vtb", "tbank"], links)
+    assert out["ВТБ"].startswith("страница офисов банка") and "Советская" in out["ВТБ"]
+    assert out["Т-Банк"].startswith("статья (на странице офисов банка Луганск не найден")
+
+
+def test_savings_account_titles_are_accounts():
+    from src.banks.generic_site import category_for
+    assert category_for("Сберегательный счёт", "Вклады") == "Накопительные счета"
+    assert category_for("Вклад до востребования СберБанка России", "Вклады") == "Накопительные счета"
+    assert category_for("Вклад Выгодный старт", "Вклады") == "Вклады"

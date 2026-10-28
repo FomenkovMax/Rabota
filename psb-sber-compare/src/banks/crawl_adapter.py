@@ -333,6 +333,46 @@ def _found(product: Product | None) -> str:
     return f"{rate}; {reason or conditions.LABELS[kind]}"
 
 
+#: Служебные строки охвата: страница офисов и что на ней про Луганск.
+OFFICES_KEY = "Офисы в ЛНР"
+OFFICES_PROOF_KEY = "Офисы в ЛНР: подтверждение"
+
+_OFFICE_TEXT = re.compile(
+    r"^(?:офисы(?:\s+и\s+банкоматы)?|отделения(?:\s+и\s+банкоматы)?|"
+    r"банкоматы\s+и\s+(?:офисы|отделения)|адреса(?:\s+офисов)?|где\s+нас\s+найти|"
+    r"офисы\s+обслуживания)$", re.I)
+_LUGANSK = re.compile(r"[^\n]{0,80}\bЛуганск\w*[^\n]{0,120}", re.I)
+_ADDRESS = re.compile(r"\bул\.|улиц|просп|пр-т|пл\.|площад|кв-л|квартал|\bд\.\s?\d|"
+                      r"\d{2,}[,\s]|часы\s+работы|режим\s+работы", re.I)
+
+
+def office_link(links: list[Any], base_url: str) -> str:
+    """Ссылка «Офисы и банкоматы» из меню или подвала сайта банка."""
+    own = urlsplit(base_url).netloc.removeprefix("www.")
+    for item in links:
+        if isinstance(item, (list, tuple)):
+            href, text = (str(item[0]) if item else ""), (str(item[1]) if len(item) > 1 else "")
+        else:
+            href, text = str(item), ""
+        if not text or not _OFFICE_TEXT.match(text.strip()):
+            continue
+        if own and own in urlsplit(href).netloc:
+            return href
+    return ""
+
+
+def lugansk_quote(text: str) -> str:
+    """Цитата со страницы офисов: Луганск рядом с адресом или часами работы.
+
+    Одно слово «Луганск» в списке городов — ещё не офис: нужна строка
+    с признаком адреса. Нет такой — пусто."""
+    for match in _LUGANSK.finditer(text or ""):
+        line = " ".join(match.group(0).split())
+        if _ADDRESS.search(line):
+            return line[:200]
+    return ""
+
+
 def market_program(product: Product) -> str:
     """Программа пункта калькулятора — только если она распознана по названию.
 
@@ -634,6 +674,7 @@ class CrawlAdapter(BankAdapter):
         visited = 0
         self._clear_missing()
         calc_blocked: dict[str, str] = {}      # программа → что сказал калькулятор
+        office_url = ""                         # страница «Офисы и банкоматы»
         site_sections: dict[str, str] = {}
         retried: set[str] = set()
         blocked = False
@@ -694,6 +735,8 @@ class CrawlAdapter(BankAdapter):
                          for item in data.get("links") or []],
                         site_sections, base_url=self.base_url)
                     self._save_page(visited, url, data, links)
+                    office_url = office_url or office_link(data.get("links") or [],
+                                                           self.base_url)
                     path = urlsplit(url).path
                     deeper = {l for l in links if urlsplit(l).path.startswith(path + "/")}
                     # Главный продукт — всегда страница продукта, даже если
@@ -734,6 +777,10 @@ class CrawlAdapter(BankAdapter):
                         if link not in seen:
                             seen.add(link)
                             queue.append(link)
+                # Присутствие в ЛНР: есть ли Луганск на странице офисов банка.
+                # Одна страница сверх лимита — и только если сайт не закрылся.
+                if office_url and not blocked:
+                    site_sections.update(self._presence(reader, office_url, visited + 1))
             self._save_summary(visited, queue, failures)
         except BrowserUnavailable as exc:
             if not products and not showcase:
@@ -867,6 +914,27 @@ class CrawlAdapter(BankAdapter):
                     json.dumps(data["network"], ensure_ascii=False), encoding="utf-8")
         except OSError as exc:
             log.debug("Калькулятор не сохранился: %s", exc)
+
+    def _presence(self, reader: Any, url: str, number: int) -> dict[str, str]:
+        """Страница офисов банка: найден ли там Луганск — с цитатой адреса.
+
+        Ответ кладётся в охват (две служебные строки), он хранится по
+        сборам и переносится из прошлого сбора, как ссылки на разделы."""
+        log.info("%s: присутствие в ЛНР — страница офисов %s", self.title,
+                 urlsplit(url).path)
+        try:
+            data = reader.read(url)
+        except Exception as exc:                    # noqa: BLE001
+            log.warning("%s: страница офисов не прочиталась — %s", self.title,
+                        str(exc)[:120])
+            return {}
+        if not data or is_blocked(data):
+            return {}
+        self._save_page(number, url, data, [])
+        text = "\n".join(filter(None, [data.get("text"), data.get("text_after")]))
+        quote = lugansk_quote(text)
+        return {OFFICES_KEY: url,
+                OFFICES_PROOF_KEY: quote or "на странице офисов банка Луганск не найден"}
 
     def _missing_dir(self) -> Path:
         root = Path(self.settings.get("missing_dir") or "data/pages-missing")

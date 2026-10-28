@@ -267,7 +267,27 @@ def _overview(*, gaps: list[Any], home: str, comparisons: list[Any], specials: l
     return "".join(out)
 
 
-def _lnr_section(rows: list[Any], total: dict[str, int], banks: list[str], home: str) -> str:
+def _presence_block(presence: dict[str, str], banks: list[str]) -> str:
+    """Чем подтверждено присутствие каждого банка в ЛНР."""
+    rows = []
+    for bank in banks:
+        basis = presence.get(bank, "")
+        icon = "🏢" if basis.startswith("страница офисов") else ("📄" if basis else "❔")
+        rows.append(f'<tr><td class="pname">{e(bank)}</td><td>{icon}</td>'
+                    f'<td class="pmeta">{_linkify(basis) if basis else "не подтверждено"}</td></tr>')
+    return ('<details class="cat"><summary>Присутствие банков в ЛНР — основания'
+            '<span class="cnt">🏢 адрес на сайте банка · 📄 внешний источник</span></summary>'
+            '<div class="scroll"><table><tbody>' + "".join(rows) + "</tbody></table></div></details>")
+
+
+def _linkify(text: str) -> str:
+    return re.sub(r"(https?://[^\s)»]+)",
+                  lambda m: f'<a href="{m.group(1)}" target="_blank" rel="noopener">{m.group(1)}</a>',
+                  e(text))
+
+
+def _lnr_section(rows: list[Any], total: dict[str, int], banks: list[str], home: str,
+                 presence: dict[str, str] | None = None) -> str:
     """Таблица ТЗ: каждый продукт Сбера — есть ли он и его аналоги в ЛНР."""
     from . import availability as av
     if not rows:
@@ -320,6 +340,7 @@ def _lnr_section(rows: list[Any], total: dict[str, int], banks: list[str], home:
   продукт той же программы и ставка; «—» — аналог не найден. Наведите на значок — основание.</p>
   <div class="tiles">{tiles}</div>
   {check}
+  {_presence_block(presence or {}, banks)}
   {blocks}
 </section>"""
 
@@ -1002,6 +1023,7 @@ def render_report(
     lnr_rows: list[Any] | None = None,
     lnr_total: dict[str, int] | None = None,
     lnr_status: dict[int, Any] | None = None,
+    presence: dict[str, str] | None = None,
 ) -> str:
     total_promos = promo_active_total
     delta_chart = _delta_chart(comparisons)
@@ -1047,7 +1069,7 @@ def render_report(
            quality_rows=quality_rows or [], changes=changes,
            banks=catalog_banks or list((catalog or {}).keys()), lnr_total=lnr_total)}
 
-{_lnr_section(lnr_rows or [], lnr_total or {}, catalog_banks or [], home)}
+{_lnr_section(lnr_rows or [], lnr_total or {}, catalog_banks or [], home, presence or {})}
 
 {_calculator_section(calculator or [], home)}
 
