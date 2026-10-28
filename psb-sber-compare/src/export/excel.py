@@ -164,9 +164,10 @@ def _sheet_products(book: Workbook, data: dict[str, Any]) -> None:
         ["Банк", "Категория", "Продукт", "Ставка от", "Ставка до",
          "Условия лучшей ставки", "ПСК от", "Сумма до", "Срок до, мес",
          "Источник", "product_id", "Привязка к региону", "Достоверность",
-         "Замечания", "Тип ставки", "Условие ставки"],
-        [10, 22, 40, 12, 12, 40, 11, 14, 14, 44, 30, 14, 13, 50, 22, 50],
+         "Замечания", "Тип ставки", "Условие ставки", "Наличие в ЛНР", "Основание"],
+        [10, 22, 40, 12, 12, 40, 11, 14, 14, 44, 30, 14, 13, 50, 22, 50, 30, 60],
     )
+    lnr = data.get("lnr_status") or {}
 
     ids = data.get("product_ids") or {}
     methods = data.get("region_methods") or {}
@@ -192,6 +193,8 @@ def _sheet_products(book: Workbook, data: dict[str, Any]) -> None:
             "; ".join(check.issues),
             conditions.LABELS[kind],
             reason,
+            lnr[id(product)].label if id(product) in lnr else "",
+            lnr[id(product)].reason if id(product) in lnr else "",
         ])
         for column in (4, 5, 7):
             cell = sheet.cell(row=sheet.max_row, column=column)
@@ -201,7 +204,33 @@ def _sheet_products(book: Workbook, data: dict[str, Any]) -> None:
         if isinstance(cell.value, (int, float)):
             cell.number_format = "# ##0"
 
-    _finish(sheet, 16)
+    _finish(sheet, 18)
+
+
+def _sheet_lnr(book: Workbook, data: dict[str, Any]) -> None:
+    """Таблица ТЗ: продукт Сбера × банк — наличие в ЛНР, аналог и ставка."""
+    rows = data.get("lnr_rows") or []
+    if not rows:
+        return
+    banks = [b for b in rows[0].cells]
+    sheet = book.create_sheet("Наличие в ЛНР", 0)
+    titles = ["Категория", "Продукт Сбера", "Программа", "Сбер: наличие", "Сбер: основание"]
+    widths = [20, 40, 24, 30, 50]
+    for bank in banks:
+        titles += [f"{bank}: аналог", f"{bank}: наличие", f"{bank}: ставка"]
+        widths += [34, 30, 10]
+    _write_header(sheet, titles, widths)
+    for row in rows:
+        line = [row.product.category, row.product.title, row.program,
+                row.own.label, row.own.reason]
+        for bank in banks:
+            cell = row.cells[bank]
+            if cell.status is None:
+                line += ["аналог не найден", "", None]
+            else:
+                line += [cell.product.title, cell.status.label, cell.rate]
+        sheet.append(line)
+    _finish(sheet, len(titles))
 
 
 GAP_FILL = {
@@ -316,6 +345,7 @@ def build(path: str | Path, data: dict[str, Any]) -> Path:
 
     book = Workbook()
     _sheet_traffic(book, data)
+    _sheet_lnr(book, data)
     _sheet_gaps(book, data)
     _sheet_quality(book, data)
     _sheet_specials(book, data)

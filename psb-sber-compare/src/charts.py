@@ -53,7 +53,8 @@ def _svg(width: int, height: int, label: str) -> str:
 
 def insights(gaps: list[Any], *, home: str, comparisons: list[Any] | None = None,
              specials: list[Any] | None = None, quality_rows: list[Any] | None = None,
-             changes: list[Any] | None = None) -> list[tuple[str, str]]:
+             changes: list[Any] | None = None,
+             lnr_total: dict[str, int] | None = None) -> list[tuple[str, str]]:
     """Короткие выводы по данным отчёта: (статус-цвет, текст).
 
     Правила простые и проверяемые: каждая фраза опирается на строку одной из
@@ -61,6 +62,13 @@ def insights(gaps: list[Any], *, home: str, comparisons: list[Any] | None = None
     к запуску и не содержат того, чего нет в данных.
     """
     out: list[tuple[str, str]] = []
+    if lnr_total and sum(lnr_total.values()):
+        n = sum(lnr_total.values())
+        known = n - lnr_total.get("unknown", 0)
+        out.append(("--s1" if known == n else "--st-warning",
+                    f"Наличие в ЛНР установлено у {known} из {n} продуктов {genitive(home)}: "
+                    f"с условиями ЛНР — {lnr_total.get('lnr', 0)}, с общероссийскими — "
+                    f"{lnr_total.get('federal', 0)}, нет в ЛНР — {lnr_total.get('absent', 0)}."))
     rated = [g for g in gaps if g.status in (LEADER, IN_MARKET, BEHIND)]
     if rated:
         lead = [g for g in rated if g.status == LEADER]

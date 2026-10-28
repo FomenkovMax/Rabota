@@ -200,6 +200,9 @@ svg{display:block;max-width:100%;overflow:visible}
 .catrow .src{display:block;color:var(--ink-muted);font-size:11.5px}
 .catrow .r{font-variant-numeric:tabular-nums;white-space:nowrap;font-weight:600}
 .catrow .r.none{color:var(--ink-muted);font-weight:500}
+.lnr{cursor:help}
+table.lnrt td.lnrc{white-space:nowrap;cursor:help}
+table.lnrt td.none{color:var(--ink-muted)}
 @media(max-width:640px){
   .vs{grid-template-columns:1fr;gap:10px;text-align:left}
   .vs-mid{justify-self:start}
@@ -218,10 +221,11 @@ CSS += charts.CSS + (
 
 
 def _overview(*, gaps: list[Any], home: str, comparisons: list[Any], specials: list[Any],
-              quality_rows: list[Any], changes: list[Any], banks: list[str]) -> str:
+              quality_rows: list[Any], changes: list[Any], banks: list[str],
+              lnr_total: dict[str, int] | None = None) -> str:
     """Обзор в начале отчёта: выводы и графики по тем же данным, что в таблицах."""
     items = charts.insights(gaps, home=home, comparisons=comparisons, specials=specials,
-                            quality_rows=quality_rows, changes=changes)
+                            quality_rows=quality_rows, changes=changes, lnr_total=lnr_total)
     out = ['<section class="card"><h2>Главное</h2>'
            '<p class="hint">Выводы собраны по правилам из таблиц ниже — без модели '
            'и без цифр со стороны. Каждую фразу можно проверить в своём разделе.</p>'
@@ -261,6 +265,63 @@ def _overview(*, gaps: list[Any], home: str, comparisons: list[Any], specials: l
                    'от медианы всех банков. Синий — выгоднее клиенту, красный — хуже. '
                    f"Колонка Сбера выделена рамкой.</p>{heat}</section>")
     return "".join(out)
+
+
+def _lnr_section(rows: list[Any], total: dict[str, int], banks: list[str], home: str) -> str:
+    """Таблица ТЗ: каждый продукт Сбера — есть ли он и его аналоги в ЛНР."""
+    from . import availability as av
+    if not rows:
+        return ""
+    rivals = [b for b in banks if b != home]
+    n = sum(total.values()) or 1
+    tiles = "".join(
+        f'<div class="tile"><div class="v">{av.ICONS[code]} {total.get(code, 0)}</div>'
+        f'<div class="k">{e(av.LABELS[code])} · {round(100 * total.get(code, 0) / n)} %</div></div>'
+        for code in (av.LNR, av.FEDERAL, av.ABSENT, av.UNKNOWN))
+
+    def cell(st: Any, rate: float | None, title: str = "") -> str:
+        if st is None:
+            return '<td class="lnrc none" title="у банка не найден продукт той же программы">—</td>'
+        value = fmt_rate(rate) if rate is not None else ""
+        name = f'<div class="pmeta">{e(title)}</div>' if title else ""
+        return (f'<td class="lnrc" title="{e(st.label)}: {e(st.reason)}">'
+                f'{st.icon} <span class="num">{e(value)}</span>{name}</td>')
+
+    groups: dict[str, list[str]] = {}
+    for row in rows:
+        p = row.product
+        rate = p.rate_max if p.category in ("Вклады", "Накопительные счета") else p.rate_min
+        cells = "".join(
+            cell(row.cells[b].status, row.cells[b].rate,
+                 row.cells[b].product.title if row.cells[b].product else "")
+            for b in rivals)
+        groups.setdefault(p.category or "Прочее", []).append(
+            f'<tr><td><div class="pname">{e(p.title)}</div>'
+            f'<div class="pmeta">{e(row.program)}</div></td>'
+            f'{cell(row.own, rate)}{cells}</tr>')
+    head = "".join(f"<th>{e(b)}</th>" for b in [home] + rivals)
+    blocks = "".join(
+        f'<details class="cat"{" open" if i == 0 else ""}><summary>{e(cat)}'
+        f'<span class="cnt">{len(items)} продукт.</span></summary>'
+        f'<div class="scroll"><table class="lnrt"><thead><tr><th>Продукт Сбера</th>{head}'
+        f'</tr></thead><tbody>{"".join(items)}</tbody></table></div></details>'
+        for i, (cat, items) in enumerate(groups.items()))
+    unknown = total.get(av.UNKNOWN, 0)
+    check = (f'<p class="note">⚠️ У {unknown} продуктов Сбера наличие в ЛНР не установлено — '
+             "это первые кандидаты на доработку сбора: основание видно при наведении на ⚪.</p>"
+             if unknown else
+             '<p class="note">✅ У всех продуктов Сбера наличие в ЛНР установлено.</p>')
+    return f"""<section class="card">
+  <h2>Наличие в ЛНР: продукт Сбера × банк</h2>
+  <p class="hint">Главный вопрос ТЗ — есть ли продукт в Луганске. 🟢 условия ЛНР: регион
+  выбран на сайте или в калькуляторе банка либо банк работает только в ЛНР. 🔵 банк работает
+  в ЛНР, отдельных условий нет — берутся общероссийские. 🔴 прямое указание, что в ЛНР
+  продукта нет (калькулятор, текст страницы). ⚪ не установлено. В ячейке банка — его
+  продукт той же программы и ставка; «—» — аналог не найден. Наведите на значок — основание.</p>
+  <div class="tiles">{tiles}</div>
+  {check}
+  {blocks}
+</section>"""
 
 
 def _calculator_section(offers: list[dict[str, Any]], home: str) -> str:
@@ -669,7 +730,8 @@ def _catalog_rate(product: Any) -> tuple[str, bool]:
     return "не найдена", False
 
 
-def _catalog(catalog: dict[str, list[Any]], banks: list[str]) -> str:
+def _catalog(catalog: dict[str, list[Any]], banks: list[str],
+             lnr_status: dict[int, Any] | None = None) -> str:
     """Все продукты банков по категориям — и те, у кого нет пары для светофора."""
     def category_of(product: Any) -> str:
         return product.category or "Прочее"
@@ -703,8 +765,11 @@ def _catalog(catalog: dict[str, list[Any]], banks: list[str]) -> str:
                 source = " · ".join(notes)
                 name = (f'<a href="{e(product.source_url)}" target="_blank" rel="noopener">'
                         f'{e(product.title)}</a>' if product.source_url else e(product.title))
+                st = (lnr_status or {}).get(id(product))
+                mark = (f'<span class="lnr" title="{e(st.label)}: {e(st.reason)}">'
+                        f'{st.icon}</span> ' if st else "")
                 rows.append(
-                    f'<div class="catrow"><span class="n">{name}'
+                    f'<div class="catrow"><span class="n">{mark}{name}'
                     + (f'<span class="src">{e(source)}</span>' if source else "")
                     + f'</span><span class="r{"" if is_rate else " none"}">{e(rate)}</span></div>')
             body = "".join(rows) or '<p class="empty">В этой категории продуктов не найдено</p>'
@@ -934,6 +999,9 @@ def render_report(
     specials: list[Any] | None = None,
     coverage_matrix: dict[str, dict[str, Any]] | None = None,
     calculator: list[dict[str, Any]] | None = None,
+    lnr_rows: list[Any] | None = None,
+    lnr_total: dict[str, int] | None = None,
+    lnr_status: dict[int, Any] | None = None,
 ) -> str:
     total_promos = promo_active_total
     delta_chart = _delta_chart(comparisons)
@@ -977,7 +1045,9 @@ def render_report(
 
 {_overview(gaps=gaps or [], home=home, comparisons=comparisons, specials=specials or [],
            quality_rows=quality_rows or [], changes=changes,
-           banks=catalog_banks or list((catalog or {}).keys()))}
+           banks=catalog_banks or list((catalog or {}).keys()), lnr_total=lnr_total)}
+
+{_lnr_section(lnr_rows or [], lnr_total or {}, catalog_banks or [], home)}
 
 {_calculator_section(calculator or [], home)}
 
@@ -1036,7 +1106,7 @@ def render_report(
   только в калькуляторе или документе); цифру мы не додумываем.
   «ПСК» — указана только полная стоимость кредита, она не равна ставке.
   Название ведёт на страницу-источник.</p>
-  {_catalog(catalog or {}, catalog_banks or list((catalog or {}).keys()))}
+  {_catalog(catalog or {}, catalog_banks or list((catalog or {}).keys()), lnr_status or {})}
 </section>
 
 <section class="card">

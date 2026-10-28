@@ -14,7 +14,7 @@ import yaml
 from .banks import registry
 from .banks.base import region_binding
 from .banks.from_file import FileAdapter
-from . import charts, coverage, keyrate, market
+from . import availability, charts, coverage, keyrate, market
 from .changes import detect_changes, format_digest
 from .compare import Thresholds, build_comparisons, suggest_pairs, summarize
 from .promos import EXPIRED, classify_all, compare_segments
@@ -396,6 +396,16 @@ def load_report_data(config: Config, *, competitor: str = "") -> dict[str, Any] 
                                           storage.coverage_of_run(run_id))
         calc_offers = charts.calculator_offers(scope, key_rate=key_rate,
                                                region_methods=region_methods)
+        # Главное по ТЗ — есть ли продукт в Луганске: статус и основание.
+        presence = {titles.get(code, code): str(
+                        (config.bank_settings(code) or {}).get("presence_source") or "")
+                    for code in competitor_codes + [HOME_BANK]}
+        lnr_status = availability.statuses(scope, region_methods=region_methods,
+                                           presence=presence)
+        lnr_rows = availability.matrix(scope, home=home_title,
+                                       banks=[home_title] + competitor_titles,
+                                       status=lnr_status)
+        lnr_total = availability.completeness(scope, lnr_status, home=home_title)
 
         html = render_report(
             comparisons=comparisons, counts=counts, changes=changes,
@@ -412,7 +422,8 @@ def load_report_data(config: Config, *, competitor: str = "") -> dict[str, Any] 
             key_rate=key.label if key else "",
             gaps=gaps, quality_rows=quality_rows, manual=manual, home=home_title,
             specials=special_rows, coverage_matrix=coverage_matrix,
-            calculator=calc_offers,
+            calculator=calc_offers, lnr_rows=lnr_rows, lnr_total=lnr_total,
+            lnr_status=lnr_status,
         )
 
         return {
@@ -442,6 +453,9 @@ def load_report_data(config: Config, *, competitor: str = "") -> dict[str, Any] 
             "quality": quality_rows,
             "manual": manual,
             "region_methods": region_methods,
+            "lnr_status": lnr_status,
+            "lnr_rows": lnr_rows,
+            "lnr_total": lnr_total,
             "product_ids": market.product_ids(all_products),
         }
     finally:

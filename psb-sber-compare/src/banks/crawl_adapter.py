@@ -31,7 +31,8 @@ from .browser import (BrowserSettings, BrowserUnavailable, PageFailed,
                       PageReader, PageTooSlow)
 from .generic_site import caption_rules_out, category_for, extract_products, rates_of
 from .seo import is_seo_page
-from .. import conditions, coverage
+from .. import conditions, coverage, market
+from ..availability import find_clause
 
 log = logging.getLogger(__name__)
 
@@ -548,6 +549,12 @@ def product_from_page(data: dict[str, Any], *, bank: str, url: str,
                                    else "на странице продукта не указана")
     if body:
         product.terms["Контекст на странице"] = " · ".join(body[:8])[:300]
+    # Оговорка о регионе в описании продукта: «не предоставляется в ДНР, ЛНР…».
+    # Только описание и блок ставок — в меню и подвале сайта таких фраз
+    # хватает, и к продукту они не относятся.
+    clause = find_clause("\n".join(body + rates_section(data)))
+    if clause:
+        product.terms.setdefault(market.REGION_KEY, f"на странице банка: «{clause}»")
     return product
 
 
