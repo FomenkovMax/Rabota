@@ -97,6 +97,10 @@ banks:
     # заказчика это единые условия по РФ; условия для новых регионов — на
     # отдельной странице ипотеки, она в главных продуктах адаптера.
     region_mode: federal
+    # Калькулятор: если в нём есть выбор региона, агент выберет ЛНР и узнает,
+    # что доступно в Луганске (сайт целиком — федеральный). Страницы —
+    # главные программы, в том числе отдельная для новых регионов.
+    calculator_paths: "/personal/ipoteka/(novostrojki|vtorichnoe-zhile|new-regions)$|/personal/kredit/nalichnymi$"
   tbank:
     presence_source: "https://bankprofi.ru/blog/kakie-banki-rabotayut-v-lnr-v-2026-godu"
     enabled: true         # проверен check-bank 07.10.2026
@@ -104,6 +108,7 @@ banks:
     region_mode: federal
     max_pages: 40
     pause_s: 6
+    calculator_paths: "/mortgage/?$|/loans/cash-loan/?$"
   rostfinance:
     presence_source: "https://www.rostfinance.ru/ (город Луганск в списке городов, проверено 07.10.2026)"
     enabled: true         # проверен check-bank 07.10.2026, регион Луганск
@@ -116,6 +121,7 @@ banks:
     # Хранилище → Куки → current_region_normal.
     region_cookies:
       - {name: "current_region_normal", value: "1877", domain: "www.rostfinance.ru"}
+    calculator_paths: "/mortgage/(stroyashcheesya-zhile|gotovoe-zhile|ipoteka-dlya-novykh-regionov)/?$|/credit/kredit-pod-zalog-nedvizhimosti/?$"
   cmr:
     presence_source: "https://cmrbank.ru/offices/69/69002.html"
     # Разделов нет в меню сайта (07.10.2026) — в охвате эти клетки не считаются.

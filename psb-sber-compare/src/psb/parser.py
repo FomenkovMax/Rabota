@@ -477,4 +477,11 @@ def parse_product(page_html: str, page: Any, region_name: str, collected_at: str
                       *(str(v) for k, v in product.terms.items() if k != conditions.TERMS_KEY)])
     conditions.remember(product, conditions.scan(noted))
 
+    # Оговорка о регионе в условиях продукта: «не предоставляется в … ЛНР».
+    from ..availability import find_clause
+    from ..market import REGION_KEY
+    clause = find_clause(noted)
+    if clause:
+        product.terms.setdefault(REGION_KEY, f"на странице банка: «{clause}»")
+
     return product

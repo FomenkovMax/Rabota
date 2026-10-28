@@ -444,7 +444,10 @@ def _formula_minutes(config: Config, code: str) -> float:
     pages = int(bank.get("max_pages") or 40)
     pause = float(bank.get("pause_s") or browser.get("pause_s") or 2)
     settle = float(browser.get("settle_ms") or 5000) / 1000
-    return pages * (pause + settle + 4) / 60
+    # Калькуляторы: каждая страница из calculator_paths — до 2 минут перебора.
+    calc = 2 * (str(bank.get("calculator_paths") or "").count("|") + 1
+                if bank.get("calculator_paths") else 0)
+    return pages * (pause + settle + 4) / 60 + calc
 
 
 def collect_estimate(code: str) -> str:

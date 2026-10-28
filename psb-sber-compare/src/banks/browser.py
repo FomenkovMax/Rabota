@@ -328,7 +328,8 @@ class BrowserSession:
         from . import calculator
         try:
             with hard_limit(CALCULATOR_LIMIT_S, f"калькулятор {page.url}"):
-                return calculator.explore(page, self.settings.calculator_region)
+                return calculator.explore(page, self.settings.calculator_region,
+                                          budget_s=CALCULATOR_LIMIT_S - 20)
         except Exception as exc:                    # noqa: BLE001
             log.debug("Калькулятор на %s не прочитан: %s", page.url, exc)
             return {"error": f"{type(exc).__name__}: {str(exc)[:160]}"}
@@ -370,8 +371,10 @@ class BrowserSession:
         self._context = self._browser = self._playwright = None
 
 
-#: Сколько секунд даём калькулятору: регион и до 12 целей по ~4 с.
-CALCULATOR_LIMIT_S = 90
+#: Сколько секунд даём калькулятору: регион, до 12 целей и вложенные
+#: программы по ~4 с. Сам калькулятор останавливается раньше (бюджет на
+#: 20 с меньше) и отдаёт прочитанное; этот предел — на случай зависания.
+CALCULATOR_LIMIT_S = 150
 
 
 def _json_bodies(responses: list[Any], url: str, *, limit: int = 1_500_000) -> list[dict]:

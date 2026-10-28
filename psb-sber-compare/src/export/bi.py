@@ -34,6 +34,7 @@ TABLES: dict[str, list[str]] = {
               "scope", "region_method", "products"],
     "products": ["snapshot_date", "bank", "bank_code", "product_id", "block",
                  "product_type", "program", "product_name", "available_in_lnr",
+                 "lnr_basis", "lnr_source",
                  "region_method", "confidence", "source_url", "notes",
                  "rate_kind", "rate_kind_reason"],
     "conditions": ["snapshot_date", "bank", "product_id", "parameter", "value", "unit",
@@ -87,10 +88,11 @@ def collect_tables(storage: Any, *, home: str, region_methods: dict[str, str],
                    bank_settings: dict[str, dict[str, Any]] | None = None,
                    parity_pp: float = 0.5,
                    key_rate_settings: dict[str, Any] | None = None,
+                   config: Any = None,
                    ) -> dict[str, list[dict[str, Any]]]:
     """Все таблицы по всем срезам в базе."""
-    from .. import keyrate
-    from ..pipeline import _rows_to_products
+    from .. import availability, keyrate
+    from ..pipeline import _rows_to_products, mark_not_in_region
 
     bank_settings = bank_settings or {}
     tables: dict[str, list[dict[str, Any]]] = {name: [] for name in TABLES}
@@ -102,7 +104,11 @@ def collect_tables(storage: Any, *, home: str, region_methods: dict[str, str],
         key = keyrate.ensure(storage, run_id, run["started_at"], key_rate_settings)
         key_rate = key.value if key else None
         products = _rows_to_products(storage.products_of_run(run_id))
+        if config is not None:
+            mark_not_in_region(config, products)
         ids = market.product_ids(products)
+        presence = {bank: str((s or {}).get("presence_source") or "")
+                    for bank, s in bank_settings.items()}
         by_key = {getattr(p, "product_key", p.url_path): ids[id(p)] for p in products}
 
         tables["snapshots"].append({
@@ -132,12 +138,15 @@ def collect_tables(storage: Any, *, home: str, region_methods: dict[str, str],
             category = product.category or ""
             showcase = bool((product.terms or {}).get("Источник ставки"))
             kind, reason = conditions.kind_of(product)
+            lnr = availability.status_of(product, region_method=method,
+                                         presence=presence.get(product.bank, ""))
             tables["products"].append({
                 "snapshot_date": snapshot, "bank": product.bank,
                 "bank_code": market.bank_code(product.bank), "product_id": pid,
                 "block": market.block_of(product), "product_type": category,
                 "program": market.program_of(product), "product_name": product.title,
-                "available_in_lnr": "unknown", "region_method": method,
+                "available_in_lnr": lnr.code, "lnr_basis": lnr.reason,
+                "lnr_source": lnr.source, "region_method": method,
                 "confidence": check.confidence, "source_url": product.source_url,
                 "notes": "; ".join(check.issues),
                 "rate_kind": kind, "rate_kind_reason": reason,
@@ -250,7 +259,7 @@ def build(config: Any, *, out_dir: Path | None = None) -> Path:
             region_methods=bank_region_methods(config, registry.codes()),
             bank_settings=settings,
             parity_pp=Thresholds.from_config(config.get("thresholds")).parity,
-            key_rate_settings=config.get("key_rate"))
+            key_rate_settings=config.get("key_rate"), config=config)
     finally:
         storage.close()
 
@@ -327,7 +336,9 @@ SEG — сегментные предложения и акции, OTHER — п�
 | product_type | text | категория на сайте банка |
 | program | text | программа для сравнения (семейная ипотека, автокредит…) |
 | product_name | text | название на сайте |
-| available_in_lnr | text | yes / no / unknown; пока всегда unknown — проверка доступности отдельный этап |
+| available_in_lnr | text | lnr — есть в ЛНР, условия ЛНР; federal — есть в ЛНР, условия общероссийские; absent — нет в ЛНР; unknown — не установлено |
+| lnr_basis | text | основание статуса: что показало (регион на сайте, калькулятор, цитата со страницы, присутствие банка) |
+| lnr_source | text | ссылка или источник основания |
 | region_method | text | см. выше |
 | confidence | text | high / medium / low |
 | source_url | text | страница-источник |

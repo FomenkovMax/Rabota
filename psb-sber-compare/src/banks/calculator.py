@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import logging
 import re
+import time
 from typing import Any
 
 log = logging.getLogger(__name__)
@@ -30,6 +31,9 @@ REGION_LABEL = r"регион"
 GOAL_LABEL = (r"цель кредита|цель ипотеки|цель|программа|тип недвижимости|"
               r"тип жилья|что покупаете|вид кредита")
 DISCOUNT_LABEL = r"зарплат|пенси|перевед[уё] зарплат"
+#: Вложенный список после цели: «Квартира в новостройке» → «Программа:
+#: Региональная / Семейная / Стандартная» (калькулятор Сбера, 28.10.2026).
+PROGRAM_LABEL = r"^программа|программа кредитования|госпрограмм|вид программы|^ипотечная программа"
 UNAVAILABLE = re.compile(r"недоступн\w*\s+в\s+(?:вашем|этом|выбранном)\s+регион|"
                          r"не\s+выда[её]тся\s+в\s+(?:вашем|этом)\s+регион", re.I)
 _RATE = re.compile(
@@ -54,7 +58,8 @@ _MARK_FIELD_JS = """
       const field = box.querySelector(
         'input:not([type=hidden]):not([type=checkbox]):not([type=radio]), select, ' +
         '[role=combobox], [aria-haspopup=listbox], [aria-haspopup=true]');
-      if (field && visible(field)) {
+      // Поле, уже занятое другим списком (цель против программы), — не наше.
+      if (field && visible(field) && (!field.dataset.agent || field.dataset.agent === mark)) {
         field.setAttribute('data-agent', mark);
         return {tag: field.tagName, value: field.value || field.innerText || '',
                 label: lab.textContent.trim()};
@@ -62,7 +67,7 @@ _MARK_FIELD_JS = """
     }
     // Поля нет — кликабельный блок вокруг подписи (кастомный селект).
     const block = lab.closest('[role=button], button, [tabindex], label') || lab.parentElement;
-    if (block && visible(block)) {
+    if (block && visible(block) && (!block.dataset.agent || block.dataset.agent === mark)) {
       block.setAttribute('data-agent', mark);
       return {tag: block.tagName, value: block.innerText || '', label: lab.textContent.trim()};
     }
@@ -196,58 +201,94 @@ def set_region(page: Any, region: str) -> str:
         return ""
 
 
-def explore(page: Any, region: str, *, max_options: int = 12) -> dict[str, Any] | None:
-    """Регион → скидки выключены → каждый пункт списка цели → результат.
-
-    None — калькулятора с выбором цели на странице нет.
-    """
-    goal = page.evaluate(_MARK_FIELD_JS, [GOAL_LABEL, "goal"])
-    region_field = page.evaluate(_MARK_FIELD_JS, [REGION_LABEL, "region"])
-    if not goal and not region_field:
-        return None
-    out: dict[str, Any] = {"region": "", "goal_label": (goal or {}).get("label", ""),
-                           "discounts_off": [], "options": []}
-    if region_field:
-        out["region"] = set_region(page, region)
-    out["discounts_off"] = page.evaluate(_DISCOUNTS_OFF_JS, DISCOUNT_LABEL) or []
-    if out["discounts_off"]:
-        page.wait_for_timeout(1500)
-    if not goal:
-        text = page.evaluate(_RESULT_JS, "region") or ""
-        out["options"].append({"option": "", **read_result(text), "text": text[:700]})
-        return out
-
-    field = page.locator('[data-agent="goal"]').first
+def _list_options(page: Any, mark: str, max_options: int) -> list[str]:
+    """Пункты выпадающего списка: кликом или из <select>."""
+    field = page.locator(f'[data-agent="{mark}"]').first
+    options: list[str] = []
     try:
         field.click(timeout=3000)
         page.wait_for_timeout(900)
         options = (page.evaluate(_OPTIONS_JS) or [])[:max_options]
         page.keyboard.press("Escape")
     except Exception as exc:                        # noqa: BLE001
-        log.debug("Список целей не открылся: %s", exc)
-        options = []
+        log.debug("Список %s не открылся: %s", mark, exc)
     if not options:
-        # Обычный <select>: пункты читаются без клика.
         options = page.evaluate(
-            "() => { const s = document.querySelector('[data-agent=goal]');"
+            "(m) => { const s = document.querySelector('[data-agent=\"' + m + '\"]');"
             " return s && s.tagName === 'SELECT' ? Array.from(s.options).map(o => o.text.trim())"
-            " : []; }") or []
-    for option in options[:max_options]:
+            " : []; }", mark) or []
+    return options[:max_options]
+
+
+def _choose(page: Any, mark: str, option: str) -> bool:
+    field = page.locator(f'[data-agent="{mark}"]').first
+    tag = page.evaluate(
+        "(m) => document.querySelector('[data-agent=\"' + m + '\"]')?.tagName", mark)
+    if tag == "SELECT":
+        field.select_option(label=option)
+        return True
+    field.click(timeout=3000)
+    page.wait_for_timeout(700)
+    if _pick_option(page, option):
+        return True
+    page.keyboard.press("Escape")
+    return False
+
+
+def _read(page: Any, mark: str) -> dict[str, Any]:
+    page.wait_for_timeout(2500)
+    # Смена пункта может вернуть скидку по умолчанию — выключаем снова.
+    if page.evaluate(_DISCOUNTS_OFF_JS, DISCOUNT_LABEL):
+        page.wait_for_timeout(1500)
+    text = page.evaluate(_RESULT_JS, mark) or ""
+    return {**read_result(text), "text": text[:700]}
+
+
+def explore(page: Any, region: str, *, max_options: int = 12,
+            budget_s: float = 120) -> dict[str, Any] | None:
+    """Регион → скидки выключены → каждый пункт списка цели (и вложенного
+    списка программы, если он появляется) → результат.
+
+    None — калькулятора с выбором цели на странице нет. Время ограничено
+    budget_s: не успели — возвращаем то, что прочитали, а не теряем всё.
+    """
+    deadline = time.monotonic() + budget_s
+    goal = page.evaluate(_MARK_FIELD_JS, [GOAL_LABEL, "goal"])
+    region_field = page.evaluate(_MARK_FIELD_JS, [REGION_LABEL, "region"])
+    if not goal and not region_field:
+        return None
+    out: dict[str, Any] = {"region": "", "goal_label": (goal or {}).get("label", ""),
+                           "discounts_off": [], "options": [], "complete": True}
+    if region_field:
+        out["region"] = set_region(page, region)
+    out["discounts_off"] = page.evaluate(_DISCOUNTS_OFF_JS, DISCOUNT_LABEL) or []
+    if out["discounts_off"]:
+        page.wait_for_timeout(1500)
+    if not goal:
+        out["options"].append({"option": "", **_read(page, "region")})
+        return out
+
+    for option in _list_options(page, "goal", max_options):
+        if time.monotonic() > deadline:
+            out["complete"] = False
+            break
         try:
-            if page.evaluate("() => document.querySelector('[data-agent=goal]')?.tagName") == "SELECT":
-                field.select_option(label=option)
-            else:
-                field.click(timeout=3000)
-                page.wait_for_timeout(700)
-                if not _pick_option(page, option):
-                    page.keyboard.press("Escape")
-                    continue
-            page.wait_for_timeout(2500)
-            # Смена цели может вернуть скидку по умолчанию — выключаем снова.
-            if page.evaluate(_DISCOUNTS_OFF_JS, DISCOUNT_LABEL):
-                page.wait_for_timeout(1500)
-            text = page.evaluate(_RESULT_JS, "goal") or ""
-            out["options"].append({"option": option, **read_result(text), "text": text[:700]})
+            if not _choose(page, "goal", option):
+                continue
+            out["options"].append({"option": option, **_read(page, "goal")})
+            # Вложенный список программы — ищем заново после каждой цели:
+            # у новостройки он есть, у вторички может не быть.
+            page.evaluate("() => document.querySelectorAll('[data-agent=prog]')"
+                          ".forEach(e => e.removeAttribute('data-agent'))")
+            if not page.evaluate(_MARK_FIELD_JS, [PROGRAM_LABEL, "prog"]):
+                continue
+            for program in _list_options(page, "prog", 6):
+                if time.monotonic() > deadline:
+                    out["complete"] = False
+                    break
+                if _choose(page, "prog", program):
+                    out["options"].append({"option": f"{option} → {program}",
+                                           **_read(page, "prog")})
         except Exception as exc:                    # noqa: BLE001
             log.debug("Пункт «%s» калькулятора не прочитан: %s", option, exc)
     return out

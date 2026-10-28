@@ -26,11 +26,15 @@ PAGE = """<!doctype html><html><head><meta charset="utf-8"><title>Ипотека
   <ul id="opts" role="listbox" style="display:none">
     <li role="option">Квартира на вторичном рынке</li><li role="option">Квартира в новостройке</li>
   </ul>
+  <div id="progbox" style="display:none"><span>Программа</span><div id="prog" role="combobox" tabindex="0">Стандартная</div></div>
+  <ul id="popts" role="listbox" style="display:none">
+    <li role="option">Стандартная</li><li role="option">Региональная</li>
+  </ul>
   <label><span>Получаю зарплату на Сбер</span><input id="sal" type="checkbox" checked></label>
 </div>
 <div id="res"></div></div>
 <script>
-const st = {region: 'Москва', goal: 'Квартира на вторичном рынке'};
+const st = {region: 'Москва', goal: 'Квартира на вторичном рынке', prog: 'Стандартная'};
 const reg = document.getElementById('reg'), sug = document.getElementById('sug');
 reg.addEventListener('input', () => { sug.innerHTML = reg.value.length > 2
   ? '<li role="option">Луганская Народная Республика, Луганск</li>' : ''; });
@@ -39,13 +43,20 @@ sug.addEventListener('click', e => { st.region = e.target.innerText; reg.value =
 const opts = document.getElementById('opts'), goal = document.getElementById('goal');
 goal.addEventListener('click', () => { opts.style.display = 'block'; });
 opts.addEventListener('click', e => { st.goal = e.target.innerText; goal.innerText = st.goal;
-  opts.style.display = 'none'; draw(); });
+  opts.style.display = 'none';
+  document.getElementById('progbox').style.display = st.goal.includes('новострой') ? 'block' : 'none';
+  draw(); });
+const popts = document.getElementById('popts'), prog = document.getElementById('prog');
+prog.addEventListener('click', () => { popts.style.display = 'block'; });
+popts.addEventListener('click', e => { st.prog = e.target.innerText; prog.innerText = st.prog;
+  popts.style.display = 'none'; draw(); });
 document.getElementById('sal').addEventListener('change', draw);
 function draw() {
   const res = document.getElementById('res');
   if (st.region.startsWith('Луганская') && st.goal.includes('вторичн')) {
     res.innerText = 'Программа недоступна в вашем регионе'; return; }
-  const base = st.region.startsWith('Луганская') ? 18.9 : 21.9;
+  let base = st.region.startsWith('Луганская') ? 18.9 : 21.9;
+  if (st.goal.includes('новострой') && st.prog === 'Региональная') base = 3.0;
   const r = base - (document.getElementById('sal').checked ? 1 : 0);
   res.innerText = 'Ставка\\n' + r.toFixed(1).replace('.', ',') + '%\\nЕжемесячный платёж\\n95 000 ₽';
 }
@@ -82,6 +93,10 @@ def test_explore_sets_region_turns_off_salary_and_reads_every_goal(tmp_path, mon
     by_goal = {o["option"]: o for o in calc["options"]}
     assert by_goal["Квартира на вторичном рынке"]["available"] is False
     assert by_goal["Квартира в новостройке"]["rate"] == 18.9
+    assert by_goal["Квартира в новостройке → Стандартная"]["rate"] == 18.9
+    # Зарплатная скидка у льготной программы тоже выключена: 3,0, а не 2,0.
+    assert by_goal["Квартира в новостройке → Региональная"]["rate"] == 3.0
+    assert calc["complete"] is True
     assert "недоступно в регионе" in calculator.summary(calc)
 
 
