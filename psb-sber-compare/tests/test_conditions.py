@@ -146,3 +146,36 @@ def test_refinance_salary_heading_far_above_rate():
         category="Кредиты", region="", collected_at="")
     assert (product.rate_min, product.apr_min, product.apr_max) == (19.4, 19.4, 50.2)
     assert conditions.kind_of(product)[0] == conditions.BASE
+
+
+def test_mortgage_rates_tab_after_accordion():
+    """Семейная ипотека Сбера (сбор 27.10.2026): в шапке только взнос, ставки —
+    в аккордеоне «Процентные ставки», конец блока — «Требования к заёмщикам»."""
+    page = _page("Семейная ипотека", "Программа для семей с детьми",
+                 "Первоначальный взнос от 20,1%", "Срок кредита до 30 лет",
+                 "Подать заявку", "Об ипотекеУсловия и требованияВопросы и ответы",
+                 "Процентные ставки", "Ставка", "от 6%", "Требования к заёмщикам",
+                 "Возраст от 21 года", "Скидка до 79,9%")
+    product = crawl.product_from_page(
+        page, bank="Сбер", url="https://www.sberbank.ru/ru/person/credits/home/family",
+        category="Ипотека", region="", collected_at="")
+    assert product.rate_min == 6.0
+
+
+def test_mortgage_rate_above_ceiling_is_not_a_rate():
+    """«Ипотека на новостройку 79,9 %» (сбор 27.10.2026) — не ставка."""
+    page = _page("Ипотека на новостройку", "Первоначальный взнос от 20,1%",
+                 "До 79,9%", "Ставка", "от 17,9%")
+    product = crawl.product_from_page(
+        page, bank="Сбер", url="https://www.sberbank.ru/ru/person/credits/home/buying_project",
+        category="Ипотека", region="", collected_at="")
+    assert product.rate_min == 17.9
+
+
+def test_salary_rate_page_is_saved_for_review():
+    salary = _product("Сбер", "Рефинансирование", 17.4, category="Кредиты",
+                      terms={conditions.TERMS_KEY: "для зарплатных клиентов: «Получаю зарплату»"})
+    base = _product("Сбер", "Кредит наличными", 20.4, category="Кредиты")
+    debit = _product("Сбер", "СберКарта", None, category="Дебетовые карты")
+    assert crawl._worth_saving(salary) and not crawl._worth_saving(base)
+    assert not crawl._worth_saving(debit)

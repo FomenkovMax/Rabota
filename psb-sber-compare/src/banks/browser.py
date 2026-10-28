@@ -310,13 +310,20 @@ class BrowserSession:
         чтению: страница читается такой, какой открылась.
         """
         try:
-            with hard_limit(15, f"раскрытие вкладок {page.url}"):
+            with hard_limit(25, f"раскрытие вкладок {page.url}"):
                 page.evaluate(_SCROLL_JS)
                 page.wait_for_timeout(800)
-                clicked = page.evaluate(_EXPAND_JS, _EXPAND_LABELS)
-                if clicked:
+                # Несколько раундов: у ипотеки Сбера (сбор 27.10.2026) вкладка
+                # «Условия и требования» только после клика показывает
+                # аккордеон «Процентные ставки» — его жмём следующим раундом.
+                clicked = 0
+                for _ in range(3):
+                    step = int(page.evaluate(_EXPAND_JS, _EXPAND_LABELS) or 0)
+                    if not step:
+                        break
+                    clicked += step
                     page.wait_for_timeout(1500)
-                return int(clicked or 0)
+                return clicked
         except Exception as exc:                    # noqa: BLE001
             log.debug("Вкладки на %s не раскрылись: %s", page.url, exc)
         return 0
@@ -351,6 +358,11 @@ _EXPAND_JS = """
   const re = new RegExp('^\\\\s*(' + labels + ')\\\\s*$', 'i');
   const nodes = document.querySelectorAll(
     'button, [role="tab"], [role="button"], a[href^="#"], summary, li, span, div');
+  // Уже нажатое (в прошлом раунде) и уже открытое не трогаем: повторный
+  // клик по аккордеону свернул бы его обратно.
+  const done = el => el.closest('[data-expanded-by-agent]') !== null
+    || el.getAttribute('aria-expanded') === 'true'
+    || el.getAttribute('aria-selected') === 'true';
   let clicked = 0;
   for (const el of nodes) {
     if (clicked >= 6) break;
@@ -360,7 +372,8 @@ _EXPAND_JS = """
     if (link && !link.getAttribute('href').startsWith('#')) continue;
     // Жмём самый глубокий элемент с этой подписью, а не его обёртки.
     if (Array.from(el.children).some(c => re.test((c.innerText || '').trim()))) continue;
-    try { el.click(); clicked++; } catch (e) {}
+    if (done(el)) continue;
+    try { el.click(); el.setAttribute('data-expanded-by-agent', '1'); clicked++; } catch (e) {}
   }
   // Второй проход: вкладки и раскрывашки, где условия названы иначе
   // («Условия ипотеки», «Ставки и платежи», «Тарифы»). Только элементы,
@@ -375,7 +388,8 @@ _EXPAND_JS = """
     const link = el.closest('a[href]');
     if (link && !link.getAttribute('href').startsWith('#')) continue;
     if (/заявк|оформить|рассчитать|подать/i.test(text)) continue;
-    try { el.click(); clicked++; } catch (e) {}
+    if (done(el)) continue;
+    try { el.click(); el.setAttribute('data-expanded-by-agent', '1'); clicked++; } catch (e) {}
   }
   return clicked;
 }

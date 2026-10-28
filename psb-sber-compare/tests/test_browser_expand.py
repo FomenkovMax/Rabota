@@ -42,3 +42,41 @@ def test_details_tab_is_opened_without_leaving_page(site, monkeypatch):
         pytest.skip(f"браузер недоступен: {exc}")
     assert "От 20,4%" in data["text"]
     assert data["url"].endswith("/index.html")
+
+
+# Ипотека Сбера (сбор 27.10.2026): вкладка «Условия и требования» после клика
+# рисует аккордеон, и «Процентные ставки» в нём надо нажать ещё раз — уже
+# следующим раундом. Повторный клик по вкладке/аккордеону его бы свернул.
+MORTGAGE = """<!doctype html><html><head><meta charset="utf-8"><title>Ипотека</title></head><body>
+<h1>Семейная ипотека</h1>
+<div role="tablist"><button id="t">Условия и требования</button></div>
+<div id="panel"></div>
+<script>
+document.getElementById('t').onclick = () => setTimeout(() => {
+  const p = document.getElementById('panel');
+  p.innerHTML = '<div id="h" role="button" aria-expanded="false">Процентные ставки</div>'
+    + '<div id="b" style="display:none"><div>Ставка</div><div>От 6%</div></div>';
+  document.getElementById('h').onclick = () => {
+    const b = document.getElementById('b');
+    b.style.display = b.style.display === 'none' ? 'block' : 'none';
+  };
+}, 300);
+</script></body></html>"""
+
+
+def test_accordion_inside_tab_is_opened_next_round(tmp_path, monkeypatch):
+    (tmp_path / "index.html").write_text(MORTGAGE, encoding="utf-8")
+    handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(tmp_path))
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    monkeypatch.setenv("NO_PROXY", "127.0.0.1,localhost")
+    from src.banks.browser import BrowserSettings, browser_session
+
+    try:
+        with browser_session(BrowserSettings(settle_ms=300, pause_s=0)) as session:
+            data = session.inspect(f"http://127.0.0.1:{server.server_port}/index.html")
+    except Exception as exc:                        # noqa: BLE001
+        pytest.skip(f"браузер недоступен: {exc}")
+    finally:
+        server.shutdown()
+    assert "От 6%" in data["text"]

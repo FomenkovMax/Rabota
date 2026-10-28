@@ -304,6 +304,43 @@ def _rate_conditions(body: list[str], index: int, best: float) -> list[str]:
     return found
 
 
+# Ставки выше этого не бывает: «Ипотека на новостройку 79,9 %» в сборе
+# 27.10.2026 — чужая цифра со страницы (доля, взнос), а не ставка.
+_MAX_RATE = {"Ипотека": 40.0}
+
+# Категории, где ключевой параметр — ставка. Дебетовым картам и страховке
+# ставка не нужна, их страницы в «Страницы без ставки» не идут.
+_RATE_CATEGORIES = {"Вклады", "Накопительные счета", "Кредиты", "Ипотека",
+                    "Кредитные карты"}
+_CREDIT_CATEGORIES = {"Кредиты", "Ипотека", "Кредитные карты"}
+
+
+def _found(product: Product | None) -> str:
+    """Что разбор взял со страницы — для заголовка сохранённого текста."""
+    if product is None or (product.rate_min is None and product.apr_min is None):
+        return "ставка не найдена"
+    rate = (f"ставка {product.rate_min:g}–{product.rate_max:g}"
+            if product.rate_min is not None else "ставки нет")
+    kind, reason = conditions.kind_of(product)
+    return f"{rate}; {reason or conditions.LABELS[kind]}"
+
+
+def _worth_saving(product: Product) -> bool:
+    """Страницу стоит сохранить для доработки разбора.
+
+    Ставка не найдена — или у кредита она найдена, но на особых условиях:
+    рефинансирование Сбера 27.10.2026 вышло «17,4 % для зарплатных», а
+    общая ставка 19,4 % на той же странице. Без текста страницы не видно,
+    почему разбор её пропустил.
+    """
+    if product.category not in _RATE_CATEGORIES:
+        return False
+    if product.rate_min is None and product.apr_min is None:
+        return True
+    return (product.category in _CREDIT_CATEGORIES
+            and not conditions.is_comparable(product))
+
+
 def _read_rates(product: Product, body: list[str]) -> None:
     """Ставка и ПСК из строк описания — первая базовая ставка.
 
@@ -315,9 +352,12 @@ def _read_rates(product: Product, body: list[str]) -> None:
     """
     fallback: tuple[list[float], str, int, tuple] | None = None
     block_apr: list[float] = []          # ПСК текущего блока таблицы
+    ceiling = _MAX_RATE.get(product.category)
     for index, line in enumerate(body):
         values = rates_of(line)
         if values is None:
+            continue
+        if ceiling is not None and max(values) > ceiling:
             continue
         following = body[index + 1] if index + 1 < len(body) else ""
         # «от 20,1%» с подписью «первоначальный взнос» — не ставка. Подпись
@@ -395,7 +435,7 @@ _RATES_HEADING = re.compile(
     r"^(?:ставки по (?:кредиту|ипотеке|вкладу)|ставки и условия|условия и ставки|"
     r"процентные ставки|подробные условия|условия кредит\w*)$", re.I)
 _SECTION_END = re.compile(
-    r"^(?:требования к заёмщику|требования к заемщику|документы|документы и ссылки|"
+    r"^(?:требования к заё?е?мщик|документы|документы и ссылки|"
     r"вопросы и ответы|юридическая информация|оцените)", re.I)
 
 
@@ -528,6 +568,7 @@ class CrawlAdapter(BankAdapter):
         showcase: dict[str, tuple[Any, str, str]] = {}
         failures: list[str] = []
         visited = 0
+        self._clear_missing()
         site_sections: dict[str, str] = {}
         retried: set[str] = set()
         blocked = False
@@ -615,8 +656,8 @@ class CrawlAdapter(BankAdapter):
                             region=region_label, collected_at=now)
                         if product is not None:
                             products.setdefault(normalize_title(product.title), product)
-                            if product.rate_min is None and product.apr_min is None:
-                                self._save_missing(url, data)
+                            if _worth_saving(product):
+                                self._save_missing(url, data, product)
 
                     for link in links:
                         popularity[link] = popularity.get(link, 0) + 1
@@ -710,7 +751,23 @@ class CrawlAdapter(BankAdapter):
         (folder / f"{number:03d}-{name or 'root'}.txt").write_text(
             "\n".join(body), encoding="utf-8")
 
-    def _save_missing(self, url: str, data: dict[str, Any]) -> None:
+    def _missing_dir(self) -> Path:
+        root = Path(self.settings.get("missing_dir") or "data/pages-missing")
+        if not root.is_absolute():
+            root = Path(__file__).resolve().parents[2] / root
+        return root / self.code
+
+    def _clear_missing(self) -> None:
+        """Перед сбором — убрать страницы прошлого сбора: в архиве только свежие."""
+        folder = self._missing_dir()
+        for item in folder.glob("*.txt") if folder.is_dir() else ():
+            try:
+                item.unlink()
+            except OSError:
+                pass
+
+    def _save_missing(self, url: str, data: dict[str, Any],
+                      product: Product | None = None) -> None:
         """Страница продукта, где ставка не нашлась, — в data/pages-missing.
 
         Пишется при каждом сборе: по этим текстам дорабатывается разбор, и
@@ -718,14 +775,11 @@ class CrawlAdapter(BankAdapter):
         которых сайт банка включает защиту.
         """
         try:
-            root = Path(self.settings.get("missing_dir") or "data/pages-missing")
-            if not root.is_absolute():
-                root = Path(__file__).resolve().parents[2] / root
-            folder = root / self.code
+            folder = self._missing_dir()
             folder.mkdir(parents=True, exist_ok=True)
             name = re.sub(r"[^a-z0-9]+", "-", urlsplit(url).path.lower()).strip("-")[:80]
             (folder / f"{name or 'page'}.txt").write_text(
-                f"URL: {url}\nH1: {data.get('h1', '')}\nВКЛАДОК НАЖАТО: "
+                f"URL: {url}\nH1: {data.get('h1', '')}\nРАЗБОР: {_found(product)}\nВКЛАДОК НАЖАТО: "
                 f"{data.get('expanded', 0)}\nСОБРАНО: {datetime.now():%d.%m.%Y %H:%M}\n\n"
                 + (data.get("text") or ""), encoding="utf-8")
         except OSError as exc:

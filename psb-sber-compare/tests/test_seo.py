@@ -24,6 +24,13 @@ from src.banks.seo import is_seo_page
     "https://www.sberbank.ru/ru/person/contributions/deposits/schet-v-moskve",
     "https://www.sberbank.ru/ru/person/contributions/deposits/vklad-ot-100000-rubley",
     "https://www.sberbank.ru/ru/person/contributions/accounts/candidate",
+    # Сбор 27.10.2026.
+    "https://www.sberbank.ru/ru/person/bank_cards/credit_cards/za-15-minut",
+    "https://www.sberbank.ru/ru/person/bank_cards/credit_cards/s_dostavkoj_na_dom",
+    "https://www.sberbank.ru/ru/person/bank_cards/credit_cards/srochno",
+    "https://www.sberbank.ru/ru/person/bank_cards/debit/v-sankt-peterburge",
+    "https://www.sberbank.ru/ru/person/bank_cards/debit/dlya-perevodov",
+    "https://www.sberbank.ru/ru/person/credits/repayment",
 ])
 def test_seo_pages(url):
     assert is_seo_page(url)
@@ -44,6 +51,11 @@ def test_seo_pages(url):
     "https://www.sberbank.ru/ru/person/contributions/deposits/nakopi",
     "https://www.sberbank.ru/ru/person/contributions/deposits/vklad/vklad_luchshiy_procent",
     "https://www.vtb.ru/personal/ipoteka/combo",
+    "https://www.sberbank.ru/ru/person/bank_cards/credit_cards/credit_sberkarta",
+    "https://www.sberbank.ru/ru/person/bank_cards/credit_cards/molodezhnaya",
+    "https://www.sberbank.ru/ru/person/bank_cards/debit/sberkarta",
+    "https://www.sberbank.ru/ru/person/bank_cards/debit/sberkarta_kids",
+    "https://www.sberbank.ru/ru/person/credits/home/family",
 ])
 def test_real_products_stay(url):
     assert not is_seo_page(url)

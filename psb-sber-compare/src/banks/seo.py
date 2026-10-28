@@ -42,6 +42,16 @@ _SEO_PAGES = {
         r"|^/ru/person/bank_cards/credit_cards/(?:dlya_puteshestvij|luchshaya|mir|"
         r"momentalnye_po_pasportu|rassrochka|s_beplatnym_obsluzhivaniyem|"
         r"s_bolshojt_kreditnojt_nagruzkoj|za_5_minut|grace|s_lgotnym_periodom)/?$"
+        # Сбор 27.10.2026: ещё посадочные страницы карт — заняли 16 из 80
+        # страниц лимита, и до IT-, военной и сельской ипотеки обход не
+        # дошёл. Погашение, страховщики и доверенности — не продукты.
+        r"|^/ru/person/bank_cards/credit_cards/(?:dlya-pokupok|za-15-minut|"
+        r"s[-_]dostavkoj[-_]na[-_]dom|cashback|s-nizkim-proczentom|"
+        r"s-momentalnym-resheniyem|srochno|ehkspress-kreditnye-karty)/?$"
+        r"|^/ru/person/bank_cards/debit/(?:besplatnaya-karta-mir|v-[\w-]+|dlya-vkladov|"
+        r"dlya-perevodov|dlya-pokupok|cashback|besplatnoe_obsluzhivanie)/?$"
+        r"|^/ru/person/credits/(?:repayment|insurance)/?$"
+        r"|^/ru/person/contributions/poa/?$"
     ),
     "tbank.ru": re.compile(
         r"^/loans/cash-loan/(?:na-[\w-]+|pensioneram|studentam|selfemployed|"
