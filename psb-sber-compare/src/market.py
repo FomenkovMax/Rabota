@@ -256,6 +256,9 @@ def _fmt(value: float) -> str:
 #: Ключ в `terms`: программа банка недоступна в регионе отчёта (по настройке
 #: banks.<код>.not_in_region — например, по калькулятору на сайте банка).
 REGION_KEY = "Недоступно в регионе"
+#: Ключ в `terms`: банк пишет, что ПСК посчитана с субсидией — тогда она
+#: может быть ниже номинальной ставки, и это не ошибка разбора.
+PSK_SUBSIDY_KEY = "ПСК с субсидией"
 
 
 def assess(product: Any, *, key_rate: float | None, region_method: str) -> Assessment:
@@ -311,6 +314,7 @@ def assess(product: Any, *, key_rate: float | None, region_method: str) -> Asses
         # с учётом льготного периода. Поэтому проверка — только для кредитов.
         apr = product.apr_min
         if (apr is not None and rate_low is not None and category != "Кредитные карты"
+                and not terms.get(PSK_SUBSIDY_KEY)
                 and apr < rate_low - PSK_TOLERANCE_PP):
             result.lower(LOW, f"ПСК {_fmt(apr)} % ниже номинальной ставки "
                               f"{_fmt(rate_low)} % — так не бывает, ошибка разбора")

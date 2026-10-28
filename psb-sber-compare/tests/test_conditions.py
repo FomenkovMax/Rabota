@@ -225,3 +225,25 @@ def test_share_of_property_value_is_not_rate():
         page, bank="Сбер", url="https://www.sberbank.ru/ru/person/credits/money/credit_zalog",
         category="Кредиты", region="", collected_at="")
     assert product.rate_min == 18.9
+
+
+def test_subsidised_psk_below_base_rate_is_not_an_error():
+    """Новостройка Сбера (28.10.2026): базовая 18,7 %, ПСК от 18,014 % —
+    «Субсидирование процентной ставки учитывалось»."""
+    page = _page("Ипотека на новостройку", "Процентные ставки", "Полная стоимость кредита*",
+                 "18,014% — 24,812%", "Базовая ставка", "18,7%", "Минимальная ставка**",
+                 "15,2%", "Надбавки:", "Требования к заёмщикам",
+                 "*В расчёте учитывалось … Субсидирование процентной ставки учитывалось.")
+    product = crawl.product_from_page(
+        page, bank="Сбер", url="https://www.sberbank.ru/ru/person/credits/home/buying_project",
+        category="Ипотека", region="", collected_at="")
+    assert (product.rate_min, product.apr_min) == (18.7, 18.014)
+    check = market.assess(product, key_rate=14.0, region_method="selector")
+    assert check.usable, check.issues
+
+
+@pytest.mark.parametrize("line", ["до 10% кешбэка", "Получайте до 10% бонусами Спасибо"])
+def test_cashback_share_is_not_rate(line):
+    """Кредитная СберКарта (28.10.2026): «до 10% кешбэка» читалось ставкой 10 %."""
+    from src.banks.generic_site import rates_of
+    assert rates_of(line) is None

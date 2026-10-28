@@ -18,6 +18,8 @@ from src.banks import calculator
 # зарплатной скидки; с ней — 17,9 %).
 PAGE = """<!doctype html><html><head><meta charset="utf-8"><title>Ипотека</title></head><body>
 <h1>Ипотека на вторичное жильё</h1>
+<header><div>Программа для семей с детьми</div><a href="#">Партнерская программа</a>
+<ul><li>Дебетовые карты</li></ul></header>
 <div style="display:flex">
 <div id="calc">
   <div><span>Регион покупки недвижимости</span><input id="reg" value="Москва"></div>
@@ -112,3 +114,30 @@ def test_unavailable_goal_marks_program_products():
     crawl.mark_blocked([second, family], {"Вторичное жильё": "калькулятор: недоступно"})
     assert second.terms[market.REGION_KEY] == "калькулятор: недоступно"
     assert market.REGION_KEY not in family.terms
+
+
+def test_calculator_inside_iframe(tmp_path, monkeypatch):
+    """Калькулятор во встроенном окне виджета — тоже находится."""
+    (tmp_path / "calc.html").write_text(PAGE, encoding="utf-8")
+    (tmp_path / "index.html").write_text(
+        '<!doctype html><html><head><meta charset="utf-8"><title>Ипотека</title></head>'
+        '<body><h1>Ипотека</h1><iframe src="calc.html" width="1200" height="900"></iframe>'
+        '</body></html>', encoding="utf-8")
+    handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(tmp_path))
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    monkeypatch.setenv("NO_PROXY", "127.0.0.1,localhost")
+    from src.banks.browser import BrowserSettings, browser_session
+
+    settings = BrowserSettings(settle_ms=800, pause_s=0,
+                               calculator_region="Луганская Народная Республика, Луганск")
+    try:
+        with browser_session(settings) as session:
+            data = session.inspect(f"http://127.0.0.1:{server.server_port}/index.html")
+    except Exception as exc:                        # noqa: BLE001
+        pytest.skip(f"браузер недоступен: {exc}")
+    finally:
+        server.shutdown()
+    calc = data["calculator"]
+    assert calc["frame"].endswith("/calc.html")
+    assert {o["option"]: o for o in calc["options"]}["Квартира в новостройке"]["rate"] == 18.9

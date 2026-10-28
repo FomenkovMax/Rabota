@@ -27,13 +27,18 @@ from typing import Any
 
 log = logging.getLogger(__name__)
 
-REGION_LABEL = r"регион"
-GOAL_LABEL = (r"цель кредита|цель ипотеки|цель|программа|тип недвижимости|"
-              r"тип жилья|что покупаете|вид кредита")
+# Подписи сверяются целиком (с двоеточием или «*» в конце): у Т-Банка
+# 28.10.2026 «Партнёрская программа» из подвала сошла за список цели, у
+# Сбера — «Программа для семей с детьми» из карточки.
+REGION_LABEL = r"^(?:регион(?:\s+покупки(?:\s+недвижимости)?)?|ваш\s+регион|регион\s+приобретения)\s*[:*]?$"
+GOAL_LABEL = (r"^(?:цель(?:\s+(?:кредита|ипотеки|кредитования))?|программа|тип\s+недвижимости|"
+              r"тип\s+жилья|что\s+(?:покупаете|хотите\s+купить)|вид\s+кредита|"
+              r"объект\s+недвижимости)\s*[:*]?$")
 DISCOUNT_LABEL = r"зарплат|пенси|перевед[уё] зарплат"
 #: Вложенный список после цели: «Квартира в новостройке» → «Программа:
 #: Региональная / Семейная / Стандартная» (калькулятор Сбера, 28.10.2026).
-PROGRAM_LABEL = r"^программа|программа кредитования|госпрограмм|вид программы|^ипотечная программа"
+PROGRAM_LABEL = (r"^(?:программа|программа\s+кредитования|госпрограмма|вид\s+программы|"
+                 r"ипотечная\s+программа)\s*[:*]?$")
 UNAVAILABLE = re.compile(r"недоступн\w*\s+в\s+(?:вашем|этом|выбранном)\s+регион|"
                          r"не\s+выда[её]тся\s+в\s+(?:вашем|этом)\s+регион", re.I)
 _RATE = re.compile(
@@ -50,7 +55,8 @@ _MARK_FIELD_JS = """
     return r.width > 0 && r.height > 0 && getComputedStyle(el).visibility !== 'hidden'; };
   const labels = Array.from(document.querySelectorAll('body *')).filter(el => {
     const t = (el.textContent || '').trim();
-    return t.length > 0 && t.length <= 60 && re.test(t) && el.children.length === 0 && visible(el);
+    return t.length > 0 && t.length <= 60 && re.test(t) && el.children.length === 0 && visible(el)
+      && !el.closest('a, nav, header, footer, [role=navigation], [class*=footer], [class*=Footer], [class*=menu]');
   });
   for (const lab of labels) {
     let box = lab;
@@ -120,21 +126,58 @@ _DISCOUNTS_OFF_JS = """
 # результат (ставка с % или предупреждение), но не выше разумного размера.
 _RESULT_JS = """
 (mark) => {
+  // Результат калькулятора — ближайшая к полю видимая цифра с «%», у которой
+  // в подписи (до 300 символов вокруг) есть «ставк». Подниматься от поля до
+  // общего блока нельзя: у ВТБ (28.10.2026) предки поля сразу содержат пол-
+  // страницы, и первая «ставка … %» оказывалась из шапки, а не из расчёта.
   const field = document.querySelector('[data-agent="' + mark + '"]');
-  let box = field, best = '';
-  for (let i = 0; i < 12 && box; i++, box = box.parentElement) {
-    const t = box.innerText || '';
-    if (t.length > 9000) break;
-    best = t;
-    if (/ставк[\\s\\S]{0,60}\\d\\s?%|недоступн/i.test(t) && i >= 2) {
-      // Панель результата бывает соседней колонкой: берём ещё уровень.
-      const up = box.parentElement && box.parentElement.innerText || '';
-      return up.length <= 9000 ? up : t;
+  if (!field) return '';
+  const visible = el => { const r = el.getBoundingClientRect();
+    return r.width > 0 && r.height > 0 && getComputedStyle(el).visibility !== 'hidden'; };
+  const f = field.getBoundingClientRect(), fx = f.left + f.width / 2, fy = f.top + f.height / 2;
+  let best = '', dist = 1e9;
+  // Текстовые узлы, а не элементы: цифра бывает голым текстом рядом с <br>.
+  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    const t = (node.textContent || '').trim();
+    const el = node.parentElement;
+    if (!t || t.length > 40 || !/\\d\\s?%/.test(t) || !el || !visible(el)) continue;
+    let box = el, ctx = '';
+    for (let i = 0; i < 5 && box; i++, box = box.parentElement) {
+      const c = (box.innerText || '').trim();
+      if (c.length > 300) break;
+      ctx = c;
+      if (/ставк/i.test(c)) break;
     }
+    if (!/ставк/i.test(ctx)) continue;
+    const r = el.getBoundingClientRect();
+    const d = Math.hypot(r.left + r.width / 2 - fx, r.top + r.height / 2 - fy);
+    if (d < dist) { dist = d; best = ctx; }
   }
-  return best;
+  // Предупреждение о регионе ищем по всей странице: другой такой фразы там нет.
+  const body = document.body.innerText || '';
+  const warn = body.match(/[^\\n]{0,60}недоступн[^\\n]{0,80}регион[^\\n]{0,40}/i);
+  return (warn ? warn[0] + '\\n' : '') + best;
 }
 """
+
+
+class FrameView:
+    """Страница глазами калькулятора: разметка — из фрейма, клавиатура и
+    ожидание — у страницы. Калькулятор Сбера может быть во встроенном окне."""
+
+    def __init__(self, page: Any, frame: Any) -> None:
+        self._page, self._frame = page, frame
+        self.keyboard = page.keyboard
+
+    def evaluate(self, script: str, arg: Any = None) -> Any:
+        return self._frame.evaluate(script, arg)
+
+    def locator(self, selector: str, **kwargs: Any) -> Any:
+        return self._frame.locator(selector, **kwargs)
+
+    def wait_for_timeout(self, ms: float) -> None:
+        self._page.wait_for_timeout(ms)
 
 
 def _rate(text: str) -> float | None:

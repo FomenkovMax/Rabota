@@ -328,8 +328,22 @@ class BrowserSession:
         from . import calculator
         try:
             with hard_limit(CALCULATOR_LIMIT_S, f"калькулятор {page.url}"):
-                return calculator.explore(page, self.settings.calculator_region,
-                                          budget_s=CALCULATOR_LIMIT_S - 20)
+                started = time.monotonic()
+                # Калькулятор бывает во встроенном окне (iframe виджета):
+                # пробуем саму страницу, потом каждый фрейм по очереди.
+                for frame in [page.main_frame] + [f for f in page.frames
+                                                  if f is not page.main_frame]:
+                    left = CALCULATOR_LIMIT_S - 20 - (time.monotonic() - started)
+                    if left < 15:
+                        break
+                    result = calculator.explore(calculator.FrameView(page, frame),
+                                                self.settings.calculator_region,
+                                                budget_s=left)
+                    if result is not None:
+                        if frame is not page.main_frame:
+                            result["frame"] = frame.url
+                        return result
+                return None
         except Exception as exc:                    # noqa: BLE001
             log.debug("Калькулятор на %s не прочитан: %s", page.url, exc)
             return {"error": f"{type(exc).__name__}: {str(exc)[:160]}"}

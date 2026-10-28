@@ -60,7 +60,7 @@ _SHARE_AFTER = re.compile(
     # 28.10.2026) — доля, а не ставка: прилагательное перед «стоимости».
     r"\d{1,3}(?:[,.]\d{1,2})?\s?%\s*(?:(?:от|из)\s+)?"
     r"(?:[а-яё]+(?:ой|ая|ую|ого|ей)\s+)?(?:стоимост|цен|суммы|рыночн|"
-    r"дохода|платеж|покупк|зарплат|мил[ьи]|бонус|балл|чек)\w*",
+    r"дохода|платеж|покупк|зарплат|мил[ьи]|бонус|балл|чек|к[еэ]шб[еэ]к|cashback)\w*",
     re.I,
 )
 
@@ -165,7 +165,10 @@ def rates_of(line: str) -> list[float] | None:
         return None
     if _RELATIVE_RATE.search(line):
         return None
-    measured = _SHARE_AFTER.sub(" ", _NOT_A_RATE.sub(" ", line))
+    # Сначала доля с подписью после числа («до 10% кешбэка»), потом слова-
+    # исключения: в обратном порядке слово уходило раньше, а «до 10%»
+    # оставалось ставкой (кредитная СберКарта, сбор 28.10.2026).
+    measured = _NOT_A_RATE.sub(" ", _SHARE_AFTER.sub(" ", line))
     if not _RATE_LINE.search(measured):
         return None
     values = [r for r in parse_rates(measured) if 0.1 <= r <= 100]
