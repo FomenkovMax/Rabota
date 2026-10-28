@@ -250,13 +250,20 @@ def _traffic_table(comparisons: list[Comparison]) -> str:
             # колонке, и повтор «до 13,80% | 13,80% — 181 день» только шумит.
             conditions = re.sub(r"^\d+[,.]\d+%\s*[—-]\s*", "",
                                 getattr(c.psb, "rate_conditions", ""))
-            detail = conditions or (f"{fmt_money(c.psb.amount_max)} · "
-                                    f"{fmt_term(c.psb.term_max_months)}")
-            psb_extra = f'<div class="pmeta">{e(detail)}</div>'
+            # Без суммы и срока строка «— · —» только шумит.
+            limits = [v for v in (fmt_money(c.psb.amount_max),
+                                  fmt_term(c.psb.term_max_months)) if v != "—"]
+            detail = conditions or " · ".join(limits)
+            if detail:
+                psb_extra = f'<div class="pmeta">{e(detail)}</div>'
+        # Конкурентов несколько — в строке видно, с каким банком и каким
+        # его продуктом идёт сравнение (в демо-отчёте 28.10.2026 это
+        # было не понять: «Кредит наличными» стоял четыре раза подряд).
+        rival = (f"{c.psb.bank} · {c.psb.title}" if c.psb else "") or c.category
         rows.append(
             f"<tr>"
             f'<td><div class="pname">{e(c.label)}</div>'
-            f'<div class="pmeta">{e(c.category)}</div></td>'
+            f'<div class="pmeta">{e(rival)}</div></td>'
             f'<td class="num">{e(psb_rate)}{psb_extra}</td>'
             f'<td class="num">{e(sber_rate)}</td>'
             f'<td class="num">{e(fmt_delta(c.delta_rate))}</td>'
