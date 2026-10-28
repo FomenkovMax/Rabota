@@ -384,6 +384,9 @@ def _found(product: Product | None) -> str:
     return f"{rate}; {reason or conditions.LABELS[kind]}"
 
 
+#: Ставка, выведенная из платежа калькулятора (оценка, в рейтинг не идёт).
+IMPLIED_KEY = "Ставка по платежу калькулятора"
+
 #: Служебные строки охвата: страница офисов и что на ней про Луганск.
 OFFICES_KEY = "Офисы в ЛНР"
 OFFICES_PROOF_KEY = "Офисы в ЛНР: подтверждение"
@@ -990,6 +993,13 @@ class CrawlAdapter(BankAdapter):
         line = calculator.summary(result) if result.get("options") else ""
         if product is not None and line:
             product.terms["Калькулятор на сайте"] = line
+        # Ставку на странице банк не пишет, а калькулятор показывает только
+        # платёж (автокредит Сбера) — ставка, выведенная из платежа. В
+        # рейтинг она не идёт: это оценка, а не условие банка.
+        implied = next((o.get("rate_implied") for o in result.get("options") or []
+                        if o.get("rate_implied")), None)
+        if product is not None and implied and product.rate_min is None:
+            product.terms[IMPLIED_KEY] = f"≈{implied:g} %".replace(".", ",")
         day = datetime.now().strftime("%d.%m.%Y")
         for item in result.get("options") or []:
             if item.get("available") or not item.get("option"):

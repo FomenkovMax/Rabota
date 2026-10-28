@@ -752,6 +752,9 @@ def _catalog_rate(product: Any) -> tuple[str, bool]:
         return f"{fmt_rate(low)[:-1]}–{fmt_rate(high)}", True
     if product.apr_min is not None:
         return f"ПСК {fmt_rate(product.apr_min)}", False
+    implied = (product.terms or {}).get("Ставка по платежу калькулятора")
+    if implied:
+        return f"{implied} (из платежа)", False
     # Карта без ставки — её главные параметры (обслуживание, кешбэк).
     from . import card_terms
     cards = card_terms.summary(product.terms or {})

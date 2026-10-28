@@ -300,8 +300,95 @@ def _read(page: Any, mark: str) -> dict[str, Any]:
     return {**read_result(text), "text": text[:700]}
 
 
+SUM_LABEL = (r"^(?:сумма(?:\s+кредита)?|сколько\s+вам\s+нужно|стоимость(?:\s+[а-яё]+){0,2}|"
+             r"осталось\s+выплатить)\s*[:*]?$")
+TERM_LABEL = r"^(?:срок(?:\s+кредита|\s+рефинансирования)?|на\s+срок)\s*[:*]?$"
+
+_FIELD_VALUE_JS = """
+(mark) => {
+  const f = document.querySelector('[data-agent="' + mark + '"]');
+  if (!f) return '';
+  let box = f;
+  for (let i = 0; i < 3 && box.parentElement; i++) box = box.parentElement;
+  return (f.value || '') + '\\n' + (box.innerText || '').slice(0, 200);
+}
+"""
+
+
+# Блок калькулятора с платежом: поднимаемся от поля суммы, пока в тексте
+# не появится «платёж … ₽».
+_PAYMENT_BLOCK_JS = """
+(mark) => {
+  let box = document.querySelector('[data-agent="' + mark + '"]');
+  for (let i = 0; i < 10 && box; i++, box = box.parentElement) {
+    const t = box.innerText || '';
+    if (t.length > 4000) break;
+    if (/плат[её]ж[\\s\\S]{0,80}₽/i.test(t)) return t;
+  }
+  return '';
+}
+"""
+_PAYMENTS = re.compile(r"плат[её]ж[^\n]{0,40}\n?\s*(\d[\d\s  ]{2,})\s?₽", re.I)
+
+
+def _money(text: str) -> int | None:
+    match = re.search(r"(\d[\d\s ]{3,})", text or "")
+    return int(re.sub(r"\D", "", match.group(1))) if match else None
+
+
+def _months(text: str) -> int | None:
+    years = re.search(r"(\d{1,2})\s*(?:год|года|лет)", text or "", re.I)
+    months = re.search(r"(\d{1,3})\s*мес", text or "", re.I)
+    total = (int(years.group(1)) * 12 if years else 0) + (int(months.group(1)) if months else 0)
+    if total:
+        return total
+    plain = re.search(r"^\s*(\d{1,3})\s*$", (text or "").split("\n")[0])
+    return int(plain.group(1)) if plain else None
+
+
+def implied_rate(amount: float, months: int, payment: float) -> float | None:
+    """Годовая ставка по аннуитетному платежу: обратный расчёт (бисекция).
+
+    Банк в калькуляторе показывает платёж, а ставку не пишет (автокредит
+    Сбера, 28.10.2026). Это его же расчёт — ставку можно восстановить, но
+    помечаем как выведенную."""
+    if not amount or not months or not payment or payment * months <= amount:
+        return None
+    low, high = 0.0001, 2.0
+    for _ in range(80):
+        mid = (low + high) / 2
+        r = mid / 12
+        calc = amount * r / (1 - (1 + r) ** -months)
+        low, high = (mid, high) if calc < payment else (low, mid)
+    return round((low + high) / 2 * 100, 2)
+
+
+def _plain_calculator(page: Any) -> dict[str, Any] | None:
+    """Калькулятор без региона и цели: сумма, срок → платёж, ставка."""
+    if not page.evaluate(_MARK_FIELD_JS, [SUM_LABEL, "sum"]):
+        return None
+    page.evaluate(_DISCOUNTS_OFF_JS, DISCOUNT_LABEL)
+    result = _read(page, "sum")
+    amount = _money(page.evaluate(_FIELD_VALUE_JS, "sum") or "")
+    term = None
+    if page.evaluate(_MARK_FIELD_JS, [TERM_LABEL, "term"]):
+        term = _months(page.evaluate(_FIELD_VALUE_JS, "term") or "")
+    block = page.evaluate(_PAYMENT_BLOCK_JS, "sum") or ""
+    # Платежей бывает два: «в первый месяц» и «со 2-го месяца» — аннуитет второй,
+    # он и больше (первый месяц короче).
+    payments = [int(re.sub(r"\D", "", m.group(1))) for m in _PAYMENTS.finditer(block)]
+    payment = result.get("payment") or (max(payments) if payments else None)
+    if result.get("rate") is None:
+        result["rate"] = _rate(block)
+    out = {"option": "", **result, "payment": payment, "amount": amount, "term_months": term}
+    if result.get("rate") is None and amount and term and payment:
+        out["rate_implied"] = implied_rate(amount, term, payment)
+    return {"region": "", "goal_label": "", "discounts_off": [], "options": [out],
+            "complete": True, "kind": "сумма и срок"}
+
+
 def explore(page: Any, region: str, *, max_options: int = 12,
-            budget_s: float = 120) -> dict[str, Any] | None:
+            budget_s: float = 120, seen: set | None = None) -> dict[str, Any] | None:
     """Регион → скидки выключены → каждый пункт списка цели (и вложенного
     списка программы, если он появляется) → результат.
 
@@ -312,7 +399,7 @@ def explore(page: Any, region: str, *, max_options: int = 12,
     goal = page.evaluate(_MARK_FIELD_JS, [GOAL_LABEL, "goal"])
     region_field = page.evaluate(_MARK_FIELD_JS, [REGION_LABEL, "region"])
     if not goal and not region_field:
-        return None
+        return _plain_calculator(page)
     out: dict[str, Any] = {"region": "", "goal_label": (goal or {}).get("label", ""),
                            "discounts_off": [], "options": [], "complete": True}
     if region_field:
@@ -324,7 +411,16 @@ def explore(page: Any, region: str, *, max_options: int = 12,
         out["options"].append({"option": "", **_read(page, "region")})
         return out
 
-    for option in _list_options(page, "goal", max_options):
+    options = _list_options(page, "goal", max_options)
+    # Калькулятор ипотеки у банка один на все страницы программ: тот же
+    # список целей уже перебран в этом сборе — второй раз не перебираем.
+    key = (out["region"], tuple(options))
+    if seen is not None and options:
+        if key in seen:
+            out["skipped"] = "тот же калькулятор уже прочитан на другой странице"
+            return out
+        seen.add(key)
+    for option in options:
         if time.monotonic() > deadline:
             out["complete"] = False
             break
@@ -359,5 +455,12 @@ def summary(result: dict[str, Any]) -> str:
             parts.append(f"{name}: недоступно в регионе")
         elif item.get("rate") is not None:
             parts.append(f"{name}: {str(item['rate']).replace('.', ',')} %")
+        elif item.get("rate_implied") is not None:
+            def rub(v: Any) -> str:
+                return f"{int(v):,}".replace(",", " ") + " ₽"
+            parts.append(
+                f"{name}: платёж {rub(item.get('payment'))} за {rub(item.get('amount'))} на "
+                f"{item.get('term_months')} мес — это около "
+                f"{str(item['rate_implied']).replace('.', ',')} % годовых (выведено из платежа)")
     region = result.get("region") or "регион не выбран"
     return f"{region} — " + "; ".join(parts) if parts else ""

@@ -174,3 +174,44 @@ def test_calculator_read_before_tabs_hide_it(tmp_path, monkeypatch):
     by_goal = {o["option"]: o for o in data["calculator"]["options"]}
     assert by_goal["Квартира на вторичном рынке"]["available"] is False
     assert "Процентные ставки" in data["text"]       # вкладки раскрыты после калькулятора
+
+
+AUTO = """<!doctype html><html><head><meta charset="utf-8"><title>Автокредит</title></head><body>
+<h1>Автокредит</h1>
+<div class="calc">
+  <div><span>Сколько вам нужно</span><input id="sum" value="5 000 000"></div>
+  <div><span>На срок</span><input id="term" value="4 года"></div>
+  <div><div>Платёж в первый месяц</div><div>158 618 ₽</div>
+       <div>Платёж со 2‑го месяца</div><div>166 761 ₽</div></div>
+</div></body></html>"""
+
+
+def test_payment_only_calculator_gives_implied_rate(tmp_path, monkeypatch):
+    """Автокредит Сбера (28.10.2026): ставки на странице нет, калькулятор
+    показывает только платёж — ставка выводится из него, с пометкой."""
+    (tmp_path / "index.html").write_text(AUTO, encoding="utf-8")
+    handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(tmp_path))
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    monkeypatch.setenv("NO_PROXY", "127.0.0.1,localhost")
+    from src.banks.browser import BrowserSettings, browser_session
+
+    settings = BrowserSettings(settle_ms=300, pause_s=0,
+                               calculator_region="Луганская Народная Республика, Луганск")
+    try:
+        with browser_session(settings) as session:
+            data = session.inspect(f"http://127.0.0.1:{server.server_port}/index.html")
+    except Exception as exc:                        # noqa: BLE001
+        pytest.skip(f"браузер недоступен: {exc}")
+    finally:
+        server.shutdown()
+    item = data["calculator"]["options"][0]
+    assert item["amount"] == 5_000_000 and item["term_months"] == 48
+    assert 20 < item["rate_implied"] < 30
+    assert "выведено из платежа" in calculator.summary(data["calculator"])
+
+
+def test_implied_rate_math():
+    # 1 000 000 ₽ на 12 мес под 12 % годовых — платёж 88 849 ₽.
+    assert calculator.implied_rate(1_000_000, 12, 88_849) == 12.0
+    assert calculator.implied_rate(1_000_000, 12, 50_000) is None

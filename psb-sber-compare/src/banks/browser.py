@@ -192,6 +192,7 @@ class BrowserSession:
         self._playwright = None
         self._browser = None
         self._context = None
+        self._calc_seen: set = set()       # калькуляторы, уже прочитанные в сборе
 
     def start(self) -> None:
         try:
@@ -351,7 +352,7 @@ class BrowserSession:
                         break
                     result = calculator.explore(calculator.FrameView(page, frame),
                                                 self.settings.calculator_region,
-                                                budget_s=left)
+                                                budget_s=left, seen=self._calc_seen)
                     if result is not None:
                         if frame is not page.main_frame:
                             result["frame"] = frame.url
