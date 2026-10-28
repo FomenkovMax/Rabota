@@ -795,20 +795,28 @@ class CrawlAdapter(BankAdapter):
         return None
 
     def _pages_dir(self) -> Path | None:
+        """Куда класть тексты всех прочитанных страниц.
+
+        По умолчанию — data/pages-all/<банк> при каждом сборе: по полному
+        снимку разбор дорабатывается без новых заходов на сайты (одного
+        сбора хватает, чтобы проверить разбор на всех страницах сразу).
+        check-bank задаёт свою папку.
+        """
         folder = self.settings.get("pages_dir")
-        return Path(folder) if folder else None
+        if folder:
+            return Path(folder)
+        return Path(__file__).resolve().parents[2] / "data" / "pages-all" / self.code
 
     def _save_page(self, number: int, url: str, data: dict[str, Any],
                    links: list[str]) -> None:
-        """Текст прочитанной страницы в файл — для разбора, почему чего-то нет.
-
-        Включается только проверкой банка (check-bank): при обычном сборе
-        pages_dir не задан и на диск ничего не пишется.
-        """
+        """Текст прочитанной страницы в файл — для разбора без новых заходов."""
         folder = self._pages_dir()
         if folder is None:
             return
-        folder.mkdir(parents=True, exist_ok=True)
+        try:
+            folder.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            return
         name = re.sub(r"[^a-z0-9]+", "-", urlsplit(url).path.lower()).strip("-")[:80]
         own = urlsplit(self.base_url).netloc
         other = sorted({str(item[0] if isinstance(item, (list, tuple)) else item)
@@ -816,6 +824,8 @@ class CrawlAdapter(BankAdapter):
         other = [l for l in other if urlsplit(l).netloc != own][:200]
         body = [f"URL: {url}", f"H1: {data.get('h1', '')}",
                 f"TITLE: {data.get('title', '')}",
+                f"РАЗДЕЛ: {self._family(url) or ''}",
+                f"ВКЛАДОК НАЖАТО: {data.get('expanded', 0)}",
                 f"ССЫЛКИ ДЛЯ ОБХОДА ({len(links)}):", *links, "",
                 f"ССЫЛКИ НА ДРУГИЕ САЙТЫ ({len(other)}):", *other, "", "ТЕКСТ:",
                 data.get("text") or ""]
@@ -865,13 +875,13 @@ class CrawlAdapter(BankAdapter):
         return root / self.code
 
     def _clear_missing(self) -> None:
-        """Перед сбором — убрать страницы прошлого сбора: в архиве только свежие."""
-        folder = self._missing_dir()
-        for item in folder.glob("*.*") if folder.is_dir() else ():
-            try:
-                item.unlink()
-            except OSError:
-                pass
+        """Перед сбором — убрать страницы прошлого сбора: в архивах только свежие."""
+        for folder in (self._missing_dir(), self._pages_dir()):
+            for item in folder.glob("*.*") if folder and folder.is_dir() else ():
+                try:
+                    item.unlink()
+                except OSError:
+                    pass
 
     def _save_missing(self, url: str, data: dict[str, Any],
                       product: Product | None = None) -> None:

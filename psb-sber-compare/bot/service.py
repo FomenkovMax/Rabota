@@ -415,6 +415,24 @@ def missing_pages_archive() -> Path | None:
     return archive
 
 
+def full_snapshot_archive() -> Path | None:
+    """Всё, что агент видел на сайтах при последнем сборе: тексты всех
+    страниц, калькуляторы и их данные. По нему разбор дорабатывается
+    без повторных сборов."""
+    import zipfile
+
+    sources = [ROOT / "data" / "pages-all", ROOT / "data" / "pages-missing"]
+    files = [(src, f) for src in sources if src.exists()
+             for f in sorted(src.rglob("*")) if f.is_file()]
+    if not files:
+        return None
+    archive = ROOT / "data" / "snapshot.zip"
+    with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as out:
+        for src, path in files:
+            out.write(path, Path(src.name) / path.relative_to(src))
+    return archive
+
+
 # --- сколько займёт сбор ---------------------------------------------------
 
 DURATIONS = ROOT / "data" / "collect_times.json"

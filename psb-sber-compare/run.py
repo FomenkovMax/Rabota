@@ -310,7 +310,7 @@ def main() -> int:
     )
     parser.add_argument("command", choices=[
         "collect", "check-bank", "banks", "report", "export",
-        "suggest", "history", "bot", "dump", "audit", "page",
+        "suggest", "history", "bot", "dump", "audit", "page", "replay",
     ])
     parser.add_argument("target", nargs="?", default="",
                         help="код банка для check-bank и dump")
@@ -363,6 +363,12 @@ def main() -> int:
         return cmd_export(config, args.fmt, args.open)
     if args.command == "page":
         return cmd_page(config, args.target.strip().lower(), args.section)
+    if args.command == "replay":
+        from src import replay
+        folder = Path(args.target or ROOT / "data" / "pages-all")
+        for line in replay.report(folder):
+            print(line)
+        return 0
     if args.command == "audit":
         from src import audit
         result, html_path, zip_path = audit.run(config, sample=args.sample, llm=args.llm)

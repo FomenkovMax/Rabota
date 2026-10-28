@@ -376,6 +376,20 @@ async def on_audit(call: CallbackQuery) -> None:
                     "с Claude — по нему дорабатывается разбор.")
         await call.message.answer("Готово.", reply_markup=kb.main_menu())
         return
+    if action == "snapshot":
+        await call.answer()
+        archive = await asyncio.to_thread(service.full_snapshot_archive)
+        if archive is None:
+            await call.message.edit_text("Снимка нет: он появится после следующего сбора.",
+                                         reply_markup=kb.audit_menu())
+            return
+        await call.message.answer_document(
+            BufferedInputFile(archive.read_bytes(), filename=archive.name),
+            caption="Всё, что агент видел на сайтах при последнем сборе: тексты страниц, "
+                    "калькуляторы. Пришли этот архив в чат с Claude — разбор дорабатывается "
+                    "по нему, без повторных сборов.")
+        await call.message.answer("Готово.", reply_markup=kb.main_menu())
+        return
     if action == "last":
         await call.answer()
         files = await asyncio.to_thread(service.latest_audit_files)
