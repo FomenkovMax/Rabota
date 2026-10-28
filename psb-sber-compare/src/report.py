@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any
 
 from . import conditions
+from . import charts
 from .compare import GREEN, GREY, LIGHT_LABEL, RED, YELLOW, Comparison
 
 LIGHT_ICON = {GREEN: "▲", YELLOW: "■", RED: "▼", GREY: "—"}
@@ -209,6 +210,59 @@ svg{display:block;max-width:100%;overflow:visible}
 """
 
 
+CSS += charts.CSS + (
+    f":root{{{charts.VARS_LIGHT}}}"
+    f'@media (prefers-color-scheme:dark){{:root:not([data-theme="light"]){{{charts.VARS_DARK}}}}}'
+    f':root[data-theme="dark"]{{{charts.VARS_DARK}}}'
+)
+
+
+def _overview(*, gaps: list[Any], home: str, comparisons: list[Any], specials: list[Any],
+              quality_rows: list[Any], changes: list[Any], banks: list[str]) -> str:
+    """Обзор в начале отчёта: выводы и графики по тем же данным, что в таблицах."""
+    items = charts.insights(gaps, home=home, comparisons=comparisons, specials=specials,
+                            quality_rows=quality_rows, changes=changes)
+    out = ['<section class="card"><h2>Главное</h2>'
+           '<p class="hint">Выводы собраны по правилам из таблиц ниже — без модели '
+           'и без цифр со стороны. Каждую фразу можно проверить в своём разделе.</p>'
+           f"{charts.insights_block(items)}</section>"]
+    bars, flow = charts.status_bars(gaps, BLOCK_NAME), charts.funnel(quality_rows, gaps)
+    if bars or flow:
+        out.append('<div class="duo">')
+        if bars:
+            out.append('<section class="card"><h2>Место Сбера по блокам</h2>'
+                       '<p class="hint">Сколько программ блока Сбер лидирует, держится '
+                       f"в рынке, отстаёт или не найден.</p>{bars}</section>")
+        if flow:
+            out.append('<section class="card"><h2>Воронка данных</h2>'
+                       '<p class="hint">Все банки: сколько продуктов дошло от сбора '
+                       f"до рейтинга. Остальные — в «Качестве данных».</p>{flow}</section>")
+        out.append("</div>")
+        out.append('<div style="height:20px"></div>')
+    drops = charts.dumbbell(gaps, home=home)
+    if drops:
+        out.append('<section class="card"><h2>Сбер на фоне рынка</h2>'
+                   '<p class="hint">Линия — разброс ставок банков по программе, справа '
+                   'всегда выгоднее клиенту (для кредитов шкала развёрнута). Серые точки — '
+                   'конкуренты, черта — медиана остальных, цветная точка — Сбер. '
+                   f"Наведите на точку, чтобы увидеть банк и продукт.</p>{drops}</section>")
+    bub = charts.bubbles(gaps, home=home)
+    if bub:
+        out.append('<section class="card"><h2>Позиционирование банков</h2>'
+                   '<p class="hint">Средняя базовая ставка банка по сбережениям (вправо — '
+                   'выгоднее вкладчику) и по кредитам наличными, рефинансированию, '
+                   'автокредиту и залогу (вверх — дешевле заёмщику). Размер пузыря — '
+                   'в скольких программах у банка есть проверенная ставка. Пунктир — '
+                   f"медианы банков.</p>{bub}</section>")
+    heat = charts.heatmap(gaps, banks, home=home)
+    if heat:
+        out.append('<section class="card"><h2>Карта ставок: программа × банк</h2>'
+                   '<p class="hint">Лучшая базовая ставка банка в программе и её отклонение '
+                   'от медианы всех банков. Синий — выгоднее клиенту, красный — хуже. '
+                   f"Колонка Сбера выделена рамкой.</p>{heat}</section>")
+    return "".join(out)
+
+
 def _tiles(counts: dict[str, int], changes: list[Any], total_promos: int) -> str:
     high = sum(1 for c in changes if c["severity"] == "high")
     items = [
@@ -295,7 +349,7 @@ def _delta_chart(comparisons: list[Comparison]) -> str:
 
     parts = [
         f'<svg viewBox="0 0 {width} {height}" role="img" '
-        f'aria-label="Дельта ставок Сбер минус ПСБ по продуктам">'
+        f'aria-label="Дельта ставок Сбер минус конкурент по продуктам">'
     ]
     parts.append(f'<line x1="{zero_x}" y1="4" x2="{zero_x}" y2="{height - 26}" '
                  f'stroke="var(--axis)" stroke-width="1"/>')
@@ -306,7 +360,8 @@ def _delta_chart(comparisons: list[Comparison]) -> str:
         bar_w = max(2.0, abs(delta) * scale)
         x = zero_x if delta >= 0 else zero_x - bar_w
         var = LIGHT_VAR[c.light]
-        label = e(c.label if len(c.label) <= 34 else c.label[:33] + "…")
+        name = f"{c.psb.bank} · {c.label}" if c.psb else c.label
+        label = e(name if len(name) <= 34 else name[:33] + "…")
         value_x = x + bar_w + 8 if delta >= 0 else x - 8
         anchor = "start" if delta >= 0 else "end"
 
@@ -314,7 +369,7 @@ def _delta_chart(comparisons: list[Comparison]) -> str:
             f'<text x="{pad_l - 12}" y="{y + row_h / 2 + 4}" text-anchor="end" '
             f'font-size="12.5" fill="var(--ink-2)">{label}</text>'
             f'<rect x="{x:.1f}" y="{y}" width="{bar_w:.1f}" height="{row_h}" rx="4" '
-            f'fill="var({var})"><title>{e(c.label)}: {e(fmt_delta(delta))}</title></rect>'
+            f'fill="var({var})"><title>{e(name)}: {e(fmt_delta(delta))}</title></rect>'
             f'<text x="{value_x:.1f}" y="{y + row_h / 2 + 4}" text-anchor="{anchor}" '
             f'font-size="12" font-weight="600" fill="var(--ink-2)" '
             f'style="font-variant-numeric:tabular-nums">{e(fmt_delta(delta))}</text>'
@@ -876,8 +931,9 @@ def render_report(
     if delta_chart:
         delta_section = (
             '<section class="card"><h2>Дельта ставок по продуктам</h2>'
-            '<p class="hint">Ставка Сбера минус ставка ПСБ. Цвет столбца повторяет '
-            "светофор, значение подписано на каждом столбце.</p>"
+            '<p class="hint">Ставка Сбера минус ставка конкурента по каждой паре '
+            "светофора. Цвет столбца повторяет светофор, значение подписано на "
+            "каждом столбце.</p>"
             f"{delta_chart}</section>"
         )
 
@@ -906,6 +962,10 @@ def render_report(
   Собрано продуктов: конкуренты {psb_total}, Сбер {sber_total} · Запусков в истории: {run_count}
   · Ключевая ставка ЦБ: <b>{e(key_rate or "н/д")}</b></div>
 </header>
+
+{_overview(gaps=gaps or [], home=home, comparisons=comparisons, specials=specials or [],
+           quality_rows=quality_rows or [], changes=changes,
+           banks=catalog_banks or list((catalog or {}).keys()))}
 
 <section class="card">
   <h2>Место Сбера на рынке</h2>
