@@ -411,3 +411,63 @@ def missing_pages_archive() -> Path | None:
         for path in files:
             out.write(path, path.relative_to(folder))
     return archive
+
+
+# --- сколько займёт сбор ---------------------------------------------------
+
+DURATIONS = ROOT / "data" / "collect_times.json"
+# Без истории — оценка по настройкам: страниц × (пауза + ожидание скриптов +
+# загрузка и раскрытие вкладок ~4 с). Банки без лимита страниц (ПСБ — по
+# каталогу) и без браузера (ЦМР) — по наблюдениям сборов октября 2026.
+_FALLBACK_MIN = {"psb": 10, "cmr": 3}
+
+
+def remember_duration(key: str, seconds: float) -> None:
+    """Сохраняет, сколько шёл сбор: следующая оценка будет по факту."""
+    import json
+    try:
+        data = json.loads(DURATIONS.read_text(encoding="utf-8")) if DURATIONS.exists() else {}
+        data[key] = (data.get(key, []) + [round(seconds)])[-5:]
+        DURATIONS.parent.mkdir(parents=True, exist_ok=True)
+        DURATIONS.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    except (OSError, ValueError) as exc:
+        log.warning("Время сбора не сохранилось: %s", exc)
+
+
+def _formula_minutes(config: Config, code: str) -> float:
+    if code in _FALLBACK_MIN:
+        return _FALLBACK_MIN[code]
+    bank = config.get("banks", code, default={}) or {}
+    browser = config.get("browser", default={}) or {}
+    pages = int(bank.get("max_pages") or 40)
+    pause = float(bank.get("pause_s") or browser.get("pause_s") or 2)
+    settle = float(browser.get("settle_ms") or 5000) / 1000
+    return pages * (pause + settle + 4) / 60
+
+
+def collect_estimate(code: str) -> str:
+    """«около 30–40 минут» — по прошлым сборам этого банка, иначе по настройкам.
+
+    Сбер может закрыть доступ на время: тогда сборщик ждёт block_pause_s и
+    пробует снова — об этом честно предупреждаем отдельной фразой.
+    """
+    import json
+    import statistics
+    config = _config()
+    minutes, source = None, "по настройкам"
+    try:
+        history = json.loads(DURATIONS.read_text(encoding="utf-8")).get(code) or []
+        if history:
+            minutes, source = statistics.median(history) / 60, "по прошлым сборам"
+    except (OSError, ValueError):
+        pass
+    codes = config.enabled_banks() if code == "all" else [code]
+    if minutes is None:
+        minutes = sum(_formula_minutes(config, c) for c in codes)
+    low = max(5, int(minutes * 0.85 / 5) * 5)
+    high = max(low + 5, int(minutes * 1.15 / 5 + 0.99) * 5)
+    text = f"около {low}–{high} минут ({source})"
+    if "sber" in codes:
+        wait = int(config.get("banks", "sber", "block_pause_s", default=600)) // 60
+        text += f"; если сайт Сбера включит защиту — плюс {wait} минут на паузу"
+    return text

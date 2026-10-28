@@ -22,6 +22,7 @@ import html
 import logging
 import os
 import sys
+import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -426,8 +427,8 @@ async def on_audit(call: CallbackQuery) -> None:
 @dp.callback_query(F.data == "collect:menu")
 async def on_collect_menu(call: CallbackQuery) -> None:
     await call.message.edit_text(
-        "Какой банк обновить? Один банк — 5–12 минут, остальные банки "
-        "останутся из прошлого сбора. Бот напишет, когда закончит.",
+        "Какой банк обновить? Остальные банки останутся из прошлого сбора. "
+        "Сколько займёт — скажу сразу после выбора, и напишу, когда закончу.",
         reply_markup=kb.collect_menu())
     await call.answer()
 
@@ -452,14 +453,18 @@ async def on_collect(call: CallbackQuery) -> None:
         await call.answer("Запустил сбор")
         if code == "all":
             await call.message.edit_text(
-                "🔄 Обновляю все банки. Это 25–35 минут — напишу, когда закончу.\n"
+                f"🔄 Обновляю все банки: {service.collect_estimate('all')}. "
+                "Напишу, когда закончу.\n"
                 "Ботом можно пользоваться и сейчас: выгрузка покажет прошлый сбор.")
         else:
             await call.message.edit_text(
-                "🔁 Обновляю банк. Это 5–12 минут — напишу, когда закончу.")
+                f"🔁 Обновляю банк: {service.collect_estimate(code)}. "
+                "Напишу, когда закончу.")
 
+        started = time.monotonic()
         try:
             report = await _collect_in_process(code)
+            service.remember_duration(code, time.monotonic() - started)
         except Exception as exc:                  # noqa: BLE001
             log.exception("Сбор %s не удался", code)
             report = f"Сбор не удался: {html.escape(str(exc))[:400]}"
