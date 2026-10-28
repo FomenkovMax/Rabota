@@ -247,3 +247,54 @@ def test_cashback_share_is_not_rate(line):
     """Кредитная СберКарта (28.10.2026): «до 10% кешбэка» читалось ставкой 10 %."""
     from src.banks.generic_site import rates_of
     assert rates_of(line) is None
+
+
+def test_vtb_condition_below_calculator_and_duplicates():
+    """Ипотека ВТБ (28.10.2026): сверху расчёт калькулятора с дублями цифр,
+    ниже вкладок — условие «От 18,0 % · Ставка»."""
+    page = _page("Ипотека на новостройку", "От 20,1%", "Первоначальный взнос",
+                 "Расчёт произведён", "Полная стоимость кредита", "от 19.144 до 25.907%",
+                 "19,144-25,907%", "Ставка", "20,4%", "20,4%", "Необходимый доход",
+                 "Полезная информация", "УсловияТребованияДокументы",
+                 "19,144 – 23,705%", "Полная стоимость кредита", "До 30 лет",
+                 "Срок кредита", "От 18,0%", "Ставка", "От 20,1%", "Первоначальный взнос")
+    product = crawl.product_from_page(page, bank="ВТБ", url="https://www.vtb.ru/x",
+                                      category="Ипотека", region="", collected_at="")
+    assert product.rate_min == 18.0
+    assert "расчёт калькулятора" not in product.terms.get("Источник ставки на странице", "")
+
+
+def test_vtb_calculator_only_rate_is_marked():
+    page = _page("Выгодная ипотека", "Расчёт произведён", "Полная стоимость кредита",
+                 "от 19.144 до 23.705%", "19,144-23,705%", "Ставка", "20,4%", "20,4%")
+    product = crawl.product_from_page(page, bank="ВТБ", url="https://www.vtb.ru/y",
+                                      category="Ипотека", region="", collected_at="")
+    assert product.rate_min == 20.4
+    check = market.assess(product, key_rate=14.0, region_method="federal")
+    assert any("расчёт калькулятора" in issue for issue in check.issues)
+
+
+def test_vtb_base_rate_from_footnote_without_service():
+    """Кредит наличными ВТБ: на витрине 9,6 % с «Максимумом выгоды»,
+    в сноске — «Без МВ … ставка 19,9%-55,4% годовых»."""
+    page = _page("Кредит наличными", "19,900% – 55,400%", "Полная стоимость кредита",
+                 "От 9,6%", "Ставка", "Подробнее",
+                 "Полная стоимость кредита (ПСК) – 19,900%-55,400% годовых, ставка 9,6%-40,9% "
+                 "годовых с услугой «Максимум выгоды»(МВ). Без МВ ПСК – 19,900%-55,400% "
+                 "годовых, ставка 19,9%-55,4% годовых.")
+    product = crawl.product_from_page(page, bank="ВТБ", url="https://www.vtb.ru/z",
+                                      category="Кредиты", region="", collected_at="")
+    assert (product.rate_min, product.rate_max) == (19.9, 55.4)
+    assert conditions.kind_of(product)[0] == conditions.BASE
+    assert "9.6" in product.terms["Ставка с платной услугой"]
+
+
+@pytest.mark.parametrize("lines", [
+    ("До 6% скидка на покупки в Wildberries",),
+    ("До 5%", "Ставка с залогом ниже"),
+])
+def test_discount_and_reduction_are_not_rates(lines):
+    page = _page("Кредитная карта ВТБ", *lines)
+    product = crawl.product_from_page(page, bank="ВТБ", url="https://www.vtb.ru/c",
+                                      category="Кредиты", region="", collected_at="")
+    assert product.rate_min is None

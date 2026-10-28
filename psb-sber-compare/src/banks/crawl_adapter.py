@@ -310,6 +310,57 @@ def _rate_conditions(body: list[str], index: int, best: float) -> list[str]:
     return found
 
 
+_FROM_RATE = re.compile(r"^\s*(?:ставка\s+)?от\s+\d", re.I)
+_RATE_CAPTION = re.compile(r"^\s*(?:процентная\s+|базовая\s+)?ставка\s*[:*\d]*\s*$", re.I)
+
+
+def _is_condition(lines: list[str], i: int) -> bool:
+    """«От 18,0 %» с подписью «Ставка» вплотную — условие продукта.
+
+    Строки «от 0,5 %» у надбавок и скидок (Сбер) условием не считаются:
+    подписи «Ставка» рядом с ними нет."""
+    near = [lines[j] for j in (i - 1, i + 1) if 0 <= j < len(lines)]
+    return (bool(_FROM_RATE.match(lines[i])) and rates_of(lines[i]) is not None
+            and any(_RATE_CAPTION.match(n) for n in near))
+
+
+def condition_block(lines: list[str]) -> list[str]:
+    """Блок условий вокруг первой строки «от N % · Ставка» на всей странице:
+    у ВТБ он ниже вкладок «Полезная информация», куда описание не доходит."""
+    for i in range(len(lines)):
+        if _is_condition(lines, i):
+            return lines[max(0, i - 4): i + 4]
+    return []
+
+# Базовая ставка из юридической сноски: «ставка 9,6%-40,9% годовых с услугой
+# «Максимум выгоды»(МВ). Без МВ … ставка 19,9%-55,4% годовых» (ВТБ, кредиты
+# наличными, 28.10.2026). На витрине — ставка с платной услугой, а сравнивать
+# по ТЗ нужно базовую.
+_WITHOUT_SERVICE = re.compile(
+    r"\bбез\s+(?:услуги\s+|подписки\s+)?(?:«[^»]{2,40}»|[А-ЯЁ]{2,4}\b|подписки|услуги)"
+    r"[^.]{0,80}?\bставк\w*\s+(?:от\s+)?(\d{1,2}(?:[,.]\d{1,3})?)\s?%"
+    r"(?:\s*[-–—]\s*(\d{1,2}(?:[,.]\d{1,3})?)\s?%)?", re.I)
+
+
+def base_rate_without_service(product: Product, text: str) -> None:
+    """Ставка с подпиской → базовая из сноски «без услуги … ставка N %»."""
+    if conditions.kind_of(product)[0] != conditions.SUBSCRIPTION:
+        return
+    match = _WITHOUT_SERVICE.search(text or "")
+    if not match:
+        return
+    low = float(match.group(1).replace(",", "."))
+    high = float((match.group(2) or match.group(1)).replace(",", "."))
+    if product.rate_min is not None and low <= product.rate_min:
+        return
+    product.terms["Ставка с платной услугой"] = (
+        f"{product.rate_min:g} % — {product.rate_raw}".strip(" —"))
+    product.terms.pop(conditions.TERMS_KEY, None)
+    product.rate_min, product.rate_max = low, high
+    product.rate_raw = " ".join(match.group(0).split())[:200]
+    product.terms["Источник ставки на странице"] = "сноска: ставка без платной услуги"
+
+
 # Ставки выше этого не бывает: «Ипотека на новостройку 79,9 %» в сборе
 # 27.10.2026 — чужая цифра со страницы (доля, взнос), а не ставка.
 # «Кредит под залог недвижимости 60 %» (28.10.2026) — тоже доля стоимости.
@@ -433,9 +484,23 @@ def _read_rates(product: Product, body: list[str]) -> None:
     fallback: tuple[list[float], str, int, tuple] | None = None
     block_apr: list[float] = []          # ПСК текущего блока таблицы
     ceiling = _MAX_RATE.get(product.category)
+    # У кредитов условие пишется «от N %». Если на странице такое есть, голые
+    # «20,4 %» — это расчёт калькулятора по умолчанию (ВТБ, ипотека на
+    # новостройку 28.10.2026: расчёт «ПСК 19,144–25,907 % / Ставка 20,4 %»
+    # выше условий «От 18,0 % · Ставка»), их не берём.
+    def is_condition(i: int) -> bool:
+        return _is_condition(body, i)
+    from_only = product.category in _CREDIT_CATEGORIES and any(
+        is_condition(i) for i in range(len(body)))
     for index, line in enumerate(body):
         values = rates_of(line)
         if values is None:
+            continue
+        # Вёрстка ВТБ дублирует цифру для мобильной и полной версии:
+        # «от 19.144 до 23.705%» и сразу «19,144-23,705%». Второй экземпляр
+        # с подписью «Ставка» под ним читался ставкой — пропускаем дубль.
+        prev_values = rates_of(body[index - 1]) if index > 0 else None
+        if prev_values and sorted(prev_values) == sorted(values):
             continue
         following = body[index + 1] if index + 1 < len(body) else ""
         # «от 20,1%» с подписью «первоначальный взнос» — не ставка. Подпись
@@ -467,6 +532,14 @@ def _read_rates(product: Product, body: list[str]) -> None:
         if (len(above) == 1 and index > 1 and rates_of(body[index - 2]) is not None
                 and not above[0].rstrip().endswith(":")):
             psk_above = False
+        # «Полная стоимость кредита / До 30 лет / Срок кредита / От 18,0% /
+        # Ставка» (ВТБ): подпись «Ставка» прямо под числом сильнее подписи
+        # ПСК тремя строками выше — та относится к числу над ней.
+        # У Сбера подписи над числом («Полная стоимость кредита / 18,014% —
+        # 24,812% / Базовая ставка / 18,7%»): там подпись ПСК прямо сверху —
+        # она и решает.
+        if _RATE_CAPTION.match(following) and not _PSK.search(previous):
+            psk_above = False
         # «СТАВКА ПО КРЕДИТУ: 22,5% ГОДОВЫХ» — подпись в самой строке, и
         # подпись ПСК под ней («Минимальный размер полной стоимости
         # кредита:») относится уже к следующему числу.
@@ -487,6 +560,8 @@ def _read_rates(product: Product, body: list[str]) -> None:
         # Ставка выше порога — доля или взнос, а не ставка (ПСК выше уже
         # разобрана: у неё 50 % с лишним бывает законно).
         if ceiling is not None and max(values) > ceiling:
+            continue
+        if from_only and not own_rate and not is_condition(index):
             continue
         caption = body[index - 1] if index > 0 else ""
         own = conditions.scan(" ".join(_own_window(body, index)))
@@ -560,7 +635,18 @@ def product_from_page(data: dict[str, Any], *, bank: str, url: str,
         source_url=url, collected_at=collected_at,
     )
 
-    _read_rates(product, body)
+    rate_lines = body
+    # Цифры в описании есть, а условия «от N % · Ставка» нет — это расчёт
+    # калькулятора (ВТБ), условие ищем по всей странице. Цифр нет вовсе —
+    # работает поиск блока «Ставки по кредиту» ниже (Сбер).
+    if (product.category in _CREDIT_CATEGORIES
+            and any(rates_of(line) is not None for line in body)
+            and not any(_is_condition(body, i) for i in range(len(body)))):
+        page_lines = [l.strip() for l in (data.get("text") or "").split("\n") if l.strip()]
+        extra = condition_block(page_lines)
+        if extra:
+            rate_lines = body + extra
+    _read_rates(product, rate_lines)
 
     # Ставки в описании нет, но она есть в самом заголовке страницы
     # продукта: «ВТБ-Вклад в рублях до 13,7% годовых».
@@ -589,6 +675,16 @@ def product_from_page(data: dict[str, Any], *, bank: str, url: str,
                                    else "на странице продукта не указана")
     if body:
         product.terms["Контекст на странице"] = " · ".join(body[:8])[:300]
+    base_rate_without_service(product, data.get("text") or "")
+    # Ставка — результат калькулятора на странице с его настройками по
+    # умолчанию (ВТБ: «Расчёт произведён … Ставка 20,4 %»), а условия «от N %»
+    # на странице нет. Сравнивать можно, но с пометкой.
+    if (product.rate_min is not None and product.category in _CREDIT_CATEGORIES
+            and not _FROM_RATE.match(product.rate_raw or "")
+            and not any(_is_condition(rate_lines, i) for i in range(len(rate_lines)))
+            and re.search(r"расч[её]т\s+произвед", data.get("text") or "", re.I)):
+        product.terms["Источник ставки на странице"] = (
+            "расчёт калькулятора на странице с настройками по умолчанию")
     # «Субсидирование процентной ставки учитывалось» — ПСК посчитана с
     # субсидией застройщика и законно ниже базовой ставки (ипотека Сбера:
     # базовая 18,7 %, ПСК от 18,014 %, сбор 28.10.2026).

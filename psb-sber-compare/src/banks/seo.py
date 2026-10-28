@@ -61,7 +61,7 @@ _SEO_PAGES = {
     ),
     "tbank.ru": re.compile(
         r"^/loans/cash-loan/(?:na-[\w-]+|pensioneram|studentam|selfemployed|"
-        r"nizkij-proczent|srochnyj-kredit-nalichnymi|nopledge)/?$"
+        r"nizkij-proczent|srochnyj-kredit-nalichnymi|nopledge|how-repay|form/[\w-]+)/?$"
     ),
     "vtb.ru": re.compile(
         r"^/personal/ipoteka/(?:dlja-[\w-]+|mnogodetnym|ipoteka-s-pervym-vznosom|"
