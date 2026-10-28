@@ -356,8 +356,13 @@ async () => {
 _EXPAND_JS = """
 (labels) => {
   const re = new RegExp('^\\\\s*(' + labels + ')\\\\s*$', 'i');
-  const nodes = document.querySelectorAll(
-    'button, [role="tab"], [role="button"], a[href^="#"], summary, li, span, div');
+  // Все элементы страницы: заголовок аккордеона у Сбера бывает <h4> или <p>
+  // внутри кликабельного блока — по списку тегов его не найти. Длинные
+  // отсекаются дешёвым textContent до дорогого innerText.
+  const nodes = Array.from(document.querySelectorAll('body *')).filter(el => {
+    const raw = el.textContent || '';
+    return raw.length > 0 && raw.length <= 80 && !/^(SCRIPT|STYLE|SVG|PATH)$/i.test(el.tagName);
+  });
   // Уже нажатое (в прошлом раунде) и уже открытое не трогаем: повторный
   // клик по аккордеону свернул бы его обратно.
   const done = el => el.closest('[data-expanded-by-agent]') !== null

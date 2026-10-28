@@ -277,6 +277,11 @@ def _own_window(body: list[str], index: int, *, before: int = 12, after: int = 8
             break
         start -= 1
     end = min(len(body), index + after + 1)
+    # Новый раздел — уже не подписи к ставке: у рефинансирования Сбера под
+    # общей ставкой 19,4 % идёт «Условия кредитования / … если получаете
+    # зарплату…» (сбор 28.10.2026), и общая ставка читалась как зарплатная.
+    end = next((i for i in range(index + 1, end)
+                if _RATES_HEADING.match(body[i]) or _SECTION_END.match(body[i])), end)
     following = next((i for i in range(index + 1, end) if rates_of(body[i]) is not None), None)
     if following is not None:
         # Подписи над следующей ставкой — её, а не наши.
@@ -432,7 +437,8 @@ def _read_rates(product: Product, body: list[str]) -> None:
 
 
 _RATES_HEADING = re.compile(
-    r"^(?:ставки по (?:кредиту|ипотеке|вкладу)|ставки и условия|условия и ставки|"
+    r"^(?:ставки по (?:кредиту|ипотеке|вкладу)|ставки рефинансирования|"
+    r"ставки и условия|условия и ставки|"
     r"процентные ставки|подробные условия|условия кредит\w*)$", re.I)
 _SECTION_END = re.compile(
     r"^(?:требования к заё?е?мщик|документы|документы и ссылки|"

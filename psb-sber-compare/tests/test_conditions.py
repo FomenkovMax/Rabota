@@ -179,3 +179,21 @@ def test_salary_rate_page_is_saved_for_review():
     debit = _product("Сбер", "СберКарта", None, category="Дебетовые карты")
     assert crawl._worth_saving(salary) and not crawl._worth_saving(base)
     assert not crawl._worth_saving(debit)
+
+
+def test_refinance_salary_mention_in_terms_below_is_not_rate_condition():
+    """Рефинансирование Сбера (сбор 28.10.2026): под общей ставкой 19,4 %
+    раздел «Условия кредитования» с «…если получаете зарплату…»."""
+    page = _page("Рефинансирование", "Подробные условия", "Вопросы и ответы",
+                 "Ставки рефинансирования", "Получаю зарплату или пенсию в Сбере",
+                 "Сумма кредита", "От 10 000 ₽", "Полная стоимость кредита1",
+                 "17,400% - 48,200%", "Ставка", "От 17,4%", "Общие условия",
+                 "Сумма кредита", "От 10 000 ₽", "Полная стоимость кредита1",
+                 "19,400% - 50,200%", "Ставка", "От 19,4%", "Условия кредитования",
+                 "Сумма кредита до 10 млн ₽, если получаете зарплату или пенсию на карту "
+                 "СберБанка, в остальных случаях — до 3 млн ₽", "Требования к заёмщику")
+    product = crawl.product_from_page(
+        page, bank="Сбер", url="https://www.sberbank.ru/ru/person/credits/money/consumer_refinance",
+        category="Кредиты", region="", collected_at="")
+    assert (product.rate_min, product.apr_min, product.apr_max) == (19.4, 19.4, 50.2)
+    assert conditions.kind_of(product)[0] == conditions.BASE

@@ -54,7 +54,8 @@ MORTGAGE = """<!doctype html><html><head><meta charset="utf-8"><title>Ипоте
 <script>
 document.getElementById('t').onclick = () => setTimeout(() => {
   const p = document.getElementById('panel');
-  p.innerHTML = '<div id="h" role="button" aria-expanded="false">Процентные ставки</div>'
+  // Заголовок — <h4> внутри кликабельного блока, как у Сбера.
+  p.innerHTML = '<div id="h"><h4>Процентные ставки</h4><i>+</i></div>'
     + '<div id="b" style="display:none"><div>Ставка</div><div>От 6%</div></div>';
   document.getElementById('h').onclick = () => {
     const b = document.getElementById('b');

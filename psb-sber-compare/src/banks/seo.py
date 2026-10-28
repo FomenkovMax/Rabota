@@ -48,6 +48,12 @@ _SEO_PAGES = {
         r"|^/ru/person/bank_cards/credit_cards/(?:dlya-pokupok|za-15-minut|"
         r"s[-_]dostavkoj[-_]na[-_]dom|cashback|s-nizkim-proczentom|"
         r"s-momentalnym-resheniyem|srochno|ehkspress-kreditnye-karty)/?$"
+        # Сбор 28.10.2026: «Кредитная карта в Архангельске/Белгороде/…» по
+        # адресам /credit_cards/arhangelsk и т. п. — городов не перечислить,
+        # поэтому наоборот: продукты Сбера — только СберКарты, остальное
+        # в этом разделе — посадочные страницы.
+        r"|^/ru/person/bank_cards/credit_cards/"
+        r"(?!credit_sberkarta|molodezhnaya|dlya-studentov)[\w-]+/?$"
         r"|^/ru/person/bank_cards/debit/(?:besplatnaya-karta-mir|v-[\w-]+|dlya-vkladov|"
         r"dlya-perevodov|dlya-pokupok|cashback|besplatnoe_obsluzhivanie)/?$"
         r"|^/ru/person/credits/(?:repayment|insurance)/?$"

@@ -31,6 +31,8 @@ from src.banks.seo import is_seo_page
     "https://www.sberbank.ru/ru/person/bank_cards/debit/v-sankt-peterburge",
     "https://www.sberbank.ru/ru/person/bank_cards/debit/dlya-perevodov",
     "https://www.sberbank.ru/ru/person/credits/repayment",
+    "https://www.sberbank.ru/ru/person/bank_cards/credit_cards/arhangelsk",
+    "https://www.sberbank.ru/ru/person/bank_cards/credit_cards/velikiy-novgorod",
 ])
 def test_seo_pages(url):
     assert is_seo_page(url)
@@ -53,6 +55,8 @@ def test_seo_pages(url):
     "https://www.vtb.ru/personal/ipoteka/combo",
     "https://www.sberbank.ru/ru/person/bank_cards/credit_cards/credit_sberkarta",
     "https://www.sberbank.ru/ru/person/bank_cards/credit_cards/molodezhnaya",
+    "https://www.sberbank.ru/ru/person/bank_cards/credit_cards/credit_sberkarta_pens",
+    "https://www.sberbank.ru/ru/person/bank_cards/credit_cards",
     "https://www.sberbank.ru/ru/person/bank_cards/debit/sberkarta",
     "https://www.sberbank.ru/ru/person/bank_cards/debit/sberkarta_kids",
     "https://www.sberbank.ru/ru/person/credits/home/family",
