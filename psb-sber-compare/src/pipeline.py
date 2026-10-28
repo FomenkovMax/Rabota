@@ -14,7 +14,7 @@ import yaml
 from .banks import registry
 from .banks.base import region_binding
 from .banks.from_file import FileAdapter
-from . import coverage, keyrate, market
+from . import charts, coverage, keyrate, market
 from .changes import detect_changes, format_digest
 from .compare import Thresholds, build_comparisons, suggest_pairs, summarize
 from .promos import EXPIRED, classify_all, compare_segments
@@ -394,6 +394,8 @@ def load_report_data(config: Config, *, competitor: str = "") -> dict[str, Any] 
                                        region_methods=region_methods)
         coverage_matrix = coverage.matrix([home_title] + competitor_titles, scope,
                                           storage.coverage_of_run(run_id))
+        calc_offers = charts.calculator_offers(scope, key_rate=key_rate,
+                                               region_methods=region_methods)
 
         html = render_report(
             comparisons=comparisons, counts=counts, changes=changes,
@@ -410,6 +412,7 @@ def load_report_data(config: Config, *, competitor: str = "") -> dict[str, Any] 
             key_rate=key.label if key else "",
             gaps=gaps, quality_rows=quality_rows, manual=manual, home=home_title,
             specials=special_rows, coverage_matrix=coverage_matrix,
+            calculator=calc_offers,
         )
 
         return {

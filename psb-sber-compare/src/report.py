@@ -263,6 +263,17 @@ def _overview(*, gaps: list[Any], home: str, comparisons: list[Any], specials: l
     return "".join(out)
 
 
+def _calculator_section(offers: list[dict[str, Any]], home: str) -> str:
+    block = charts.calculator_block(offers, home=home)
+    if not block:
+        return ""
+    return ('<section class="card"><h2>Калькулятор: сколько это стоит в каждом банке</h2>'
+            '<p class="hint">Выберите продукт и подвиньте сумму и срок — платёж, переплата '
+            'или доход посчитаются по лучшей базовой проверенной ставке каждого банка. '
+            'Плюсы и минусы — из условий продукта: пределы суммы и срока, ПСК, ставки '
+            f"на особых условиях того же банка.</p>{block}</section>")
+
+
 def _tiles(counts: dict[str, int], changes: list[Any], total_promos: int) -> str:
     high = sum(1 for c in changes if c["severity"] == "high")
     items = [
@@ -922,6 +933,7 @@ def render_report(
     home: str = "Сбер",
     specials: list[Any] | None = None,
     coverage_matrix: dict[str, dict[str, Any]] | None = None,
+    calculator: list[dict[str, Any]] | None = None,
 ) -> str:
     total_promos = promo_active_total
     delta_chart = _delta_chart(comparisons)
@@ -966,6 +978,8 @@ def render_report(
 {_overview(gaps=gaps or [], home=home, comparisons=comparisons, specials=specials or [],
            quality_rows=quality_rows or [], changes=changes,
            banks=catalog_banks or list((catalog or {}).keys()))}
+
+{_calculator_section(calculator or [], home)}
 
 <section class="card">
   <h2>Место Сбера на рынке</h2>

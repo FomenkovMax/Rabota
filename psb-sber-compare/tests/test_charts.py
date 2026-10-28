@@ -54,3 +54,23 @@ def test_charts_render_from_gaps():
 def test_empty_data_gives_no_chart():
     assert charts.dumbbell([], home="Сбер") == "" and charts.bubbles([], home="Сбер") == ""
     assert charts.funnel([], []) == ""
+
+
+def test_calculator_takes_base_checked_rates_and_keeps_specials_as_pros():
+    from src import conditions
+
+    def p(bank, title, rate, terms=None):
+        return SimpleNamespace(bank=bank, title=title, category="Кредиты", rate_min=rate,
+                               rate_max=rate, apr_min=None, apr_max=None, amount_min=30_000,
+                               amount_max=3_000_000, term_min_months=3, term_max_months=60,
+                               terms=terms or {}, rate_conditions="", source_url="https://x",
+                               region="ЛНР")
+    salary = {conditions.TERMS_KEY: "для зарплатных клиентов: «получаю зарплату»"}
+    offers = charts.calculator_offers(
+        [p("Сбер", "Кредит наличными", 20.4), p("Сбер", "Кредит наличными зарплатным", 18.4, salary),
+         p("ПСБ", "Кредит наличными", 19.9)],
+        key_rate=14.0, region_methods={"Сбер": "selector", "ПСБ": "federal"})
+    sber = next(o for o in offers if o["bank"] == "Сбер")
+    assert sber["rate"] == 20.4 and "18,40 %" in sber["special"][0]
+    html = charts.calculator_block(offers, home="Сбер")
+    assert 'id="cSum"' in html and "Потребительский кредит" in html

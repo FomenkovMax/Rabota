@@ -444,3 +444,177 @@ VARS_LIGHT = ("--f1:#86b6ef;--f2:#5598e7;--f3:#256abf;--f4:#104281;"
 VARS_DARK = ("--f1:#86b6ef;--f2:#3987e5;--f3:#256abf;--f4:#184f95;"
              "--d-mid:#383835;--d-b1:#1c3a63;--d-b2:#1c5cab;--d-b3:#3987e5;"
              "--d-r1:#4a2321;--d-r2:#8a3533;--d-r3:#e66767;")
+
+
+# --- калькулятор на дашборде ------------------------------------------------
+
+#: Что можно посчитать и в каких пределах ползунков: сумма, ₽ и срок, мес.
+CALC_KINDS = {
+    "Кредиты": {"sum": (50_000, 5_000_000, 500_000, 10_000), "term": (6, 84, 36)},
+    "Ипотека": {"sum": (1_000_000, 20_000_000, 5_000_000, 100_000), "term": (12, 360, 240)},
+    "Вклады": {"sum": (10_000, 5_000_000, 500_000, 10_000), "term": (1, 36, 12)},
+    "Накопительные счета": {"sum": (10_000, 5_000_000, 500_000, 10_000), "term": (1, 36, 12)},
+}
+
+
+def calculator_offers(products: Iterable[Any], *, key_rate: float | None,
+                      region_methods: dict[str, str]) -> list[dict[str, Any]]:
+    """Лучшая базовая проверенная ставка каждого банка в каждой программе —
+    с пределами суммы и срока, ПСК и особыми ставками того же банка.
+
+    Те же правила, что у «Места Сбера»: особые и недоступные в регионе ставки
+    в расчёт не идут, но показываются в плюсах и минусах банка.
+    """
+    from . import conditions, market
+    best: dict[tuple[str, str], Any] = {}
+    special: dict[tuple[str, str], list[str]] = {}
+    for p in products:
+        if p.category not in CALC_KINDS:
+            continue
+        program = market.program_of(p)
+        key = (program, p.bank)
+        rate = p.rate_max if p.category in market.SAVINGS else p.rate_min
+        rate = rate if rate is not None else (p.rate_min or p.rate_max)
+        if rate is None:
+            continue
+        if not conditions.is_comparable(p):
+            kind, reason = conditions.kind_of(p)
+            special.setdefault(key, []).append(
+                f"{conditions.LABELS[kind]}: {pct(rate)} — «{p.title}»")
+            continue
+        check = market.assess(p, key_rate=key_rate,
+                              region_method=market.method_of(p, region_methods))
+        if not check.usable:
+            continue
+        current = best.get(key)
+        higher = p.category in market.SAVINGS
+        if current is None or (rate > current[1] if higher else rate < current[1]):
+            best[key] = (p, rate)
+    out = []
+    for (program, bank), (p, rate) in best.items():
+        out.append({
+            "program": program, "kind": p.category, "bank": bank, "title": p.title,
+            "url": p.source_url or "", "rate": rate,
+            "apr": [p.apr_min, p.apr_max] if p.apr_min is not None else None,
+            "sum": [p.amount_min, p.amount_max],
+            "term": [p.term_min_months, p.term_max_months],
+            "special": special.get((program, bank), [])[:3],
+            "calc": (p.terms or {}).get("Калькулятор на сайте", ""),
+        })
+    out.sort(key=lambda o: (o["kind"], o["program"], o["bank"]))
+    return out
+
+
+def calculator_block(offers: list[dict[str, Any]], *, home: str) -> str:
+    """Калькулятор с ползунками: платёж и переплата или доход — по всем банкам."""
+    import json
+    if not offers:
+        return ""
+    programs: dict[str, str] = {}
+    for o in offers:
+        programs.setdefault(o["program"], o["kind"])
+    # Программы, где банков хотя бы два, — первыми: сравнивать есть с кем.
+    counts = {p: sum(1 for o in offers if o["program"] == p) for p in programs}
+    first = ("Потребительский кредит", "Рефинансирование", "Новостройки", "Вторичное жильё",
+             "Семейная ипотека", "Вклады", "Накопительные счета", "Автокредит")
+    order = sorted(programs, key=lambda p: (
+        -min(counts[p], 2), first.index(p) if p in first else len(first),
+        list(CALC_KINDS).index(programs[p]), p))
+    options = "".join(f'<option value="{e(p)}">{e(p)} · {counts[p]} банк.</option>'
+                      for p in order)
+    data = json.dumps({"offers": offers, "kinds": CALC_KINDS, "home": home},
+                      ensure_ascii=False).replace("</", "<\\/")
+    return f"""
+<div class="calc">
+  <div class="calc-ctl">
+    <label>Продукт<select id="cProg">{options}</select></label>
+    <label><span>Сумма: <b id="cSumV"></b></span><input id="cSum" type="range"></label>
+    <label><span>Срок: <b id="cTermV"></b></span><input id="cTerm" type="range"></label>
+  </div>
+  <p class="calc-sum" id="cHead"></p>
+  <div id="cRows"></div>
+  <p class="hint" id="cNote"></p>
+</div>
+<script>
+(function(){{
+const D = {data};
+const $ = id => document.getElementById(id);
+const esc = t => String(t).replace(/[&<>"']/g, c => ({{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}})[c]);
+const rub = v => Math.round(v).toLocaleString('ru-RU') + ' ₽';
+const pc = v => v.toFixed(2).replace('.', ',') + ' %';
+const months = m => m % 12 === 0 ? (m / 12) + ' ' + (m / 12 === 1 ? 'год' : m / 12 < 5 ? 'года' : 'лет') : m + ' мес';
+function setup() {{
+  const kind = D.offers.find(o => o.program === $('cProg').value).kind, k = D.kinds[kind];
+  Object.assign($('cSum'), {{min: k.sum[0], max: k.sum[1], step: k.sum[3]}});
+  Object.assign($('cTerm'), {{min: k.term[0], max: k.term[1], step: 1}});
+  if (+$('cSum').value < k.sum[0] || +$('cSum').value > k.sum[1] || !$('cSum').dataset.k || $('cSum').dataset.k !== kind) {{
+    $('cSum').value = k.sum[2]; $('cTerm').value = k.term[2]; $('cSum').dataset.k = kind; }}
+  draw();
+}}
+function draw() {{
+  const prog = $('cProg').value, S = +$('cSum').value, n = +$('cTerm').value;
+  $('cSumV').textContent = rub(S); $('cTermV').textContent = months(n);
+  const rows = D.offers.filter(o => o.program === prog), save = ['Вклады', 'Накопительные счета'].includes(rows[0].kind);
+  for (const o of rows) {{
+    const r = o.rate / 100 / 12;
+    if (save) {{ o.pay = null; o.total = S * o.rate / 100 * n / 12; }}
+    else {{ o.pay = r ? S * r / (1 - Math.pow(1 + r, -n)) : S / n; o.total = o.pay * n - S; }}
+    const pros = [], cons = [];
+    if (o.sum[0] && S < o.sum[0]) cons.push('сумма меньше минимума банка (' + rub(o.sum[0]) + ')');
+    if (o.sum[1] && S > o.sum[1]) cons.push('сумма больше максимума банка (' + rub(o.sum[1]) + ')');
+    if (o.term[0] && n < o.term[0]) cons.push('срок меньше минимального (' + months(o.term[0]) + ')');
+    if (o.term[1] && n > o.term[1]) cons.push('срок больше максимального (' + months(o.term[1]) + ')');
+    if (o.apr) cons.push('ПСК ' + (o.apr[0] === o.apr[1] ? pc(o.apr[0]) : pc(o.apr[0]) + '–' + pc(o.apr[1])) + ' — с обязательными платежами дороже ставки');
+    for (const s of o.special) pros.push(s);
+    if (o.calc) pros.push('калькулятор на сайте: ' + o.calc);
+    o.pros = pros; o.cons = cons;
+  }}
+  rows.sort((a, b) => save ? b.total - a.total : a.total - b.total);
+  const top = rows[0], sber = rows.find(o => o.bank === D.home), max = Math.max(...rows.map(o => o.total)) || 1;
+  if (rows.length > 1) {{ rows[0].pros.unshift(save ? 'самый большой доход' : 'самая низкая переплата'); }}
+  let head = '';
+  if (sber && top && sber !== top) {{
+    const diff = Math.abs(sber.total - top.total);
+    head = save ? `Сбер: доход ${{rub(sber.total)}} — на ${{rub(diff)}} меньше, чем у ${{top.bank}}.`
+                : `Сбер: платёж ${{rub(sber.pay)}}, переплата ${{rub(sber.total)}} — на ${{rub(diff)}} больше, чем у ${{top.bank}}.`;
+  }} else if (sber) {{ head = save ? `Сбер — самый большой доход: ${{rub(sber.total)}}.` : `Сбер — самая низкая переплата: ${{rub(sber.total)}} (платёж ${{rub(sber.pay)}}).`; }}
+  else {{ head = 'У Сбера в этой программе нет проверенной базовой ставки — сравниваются конкуренты.'; }}
+  $('cHead').textContent = head;
+  $('cRows').innerHTML = rows.map(o => `
+    <div class="crow${{o.bank === D.home ? ' own' : ''}}">
+      <div class="cb"><b>${{esc(o.bank)}}</b><a href="${{esc(o.url)}}" target="_blank" rel="noopener">${{esc(o.title)}}</a></div>
+      <div class="cbar"><i style="width:${{Math.max(3, 100 * o.total / max)}}%"></i></div>
+      <div class="cv"><b>${{rub(o.total)}}</b><span>${{save ? 'доход' : 'переплата'}} · ставка ${{pc(o.rate)}}${{o.pay ? ' · платёж ' + rub(o.pay) : ''}}</span></div>
+      <div class="cpc">${{o.pros.map(p => '<span class="pro">+ ' + esc(p) + '</span>').join('')}}${{o.cons.map(c => '<span class="con">− ' + esc(c) + '</span>').join('')}}</div>
+    </div>`).join('');
+  $('cNote').textContent = save
+    ? 'Доход — простые проценты по витринной ставке «до» без капитализации и налога. Фактическая ставка зависит от суммы, срока и условий вклада.'
+    : 'Платёж — аннуитет по витринной ставке «от», без страховок и комиссий: это лучший случай. Фактическая ставка определяется банком индивидуально.';
+}}
+$('cProg').addEventListener('change', setup);
+$('cSum').addEventListener('input', draw); $('cTerm').addEventListener('input', draw);
+setup();
+}})();
+</script>"""
+
+
+CSS += """
+.calc-ctl{display:grid;grid-template-columns:1.2fr 1fr 1fr;gap:16px;margin-bottom:14px}
+.calc-ctl label{display:flex;flex-direction:column;gap:6px;font-size:13px;color:var(--ink-2)}
+.calc-ctl b{color:var(--ink);font-variant-numeric:tabular-nums}
+.calc-ctl select{font:inherit;font-size:14px;padding:7px 9px;border-radius:8px;
+  border:1px solid var(--border);background:var(--surface);color:var(--ink)}
+.calc-ctl input[type=range]{width:100%;accent-color:var(--s1)}
+.calc-sum{font-size:15px;font-weight:600;margin:4px 0 12px}
+.crow{display:grid;grid-template-columns:220px 1fr 230px;gap:6px 14px;align-items:center;
+  padding:10px 0;border-bottom:1px solid var(--grid)}
+.crow.own{background:var(--wash);border-radius:8px;padding:10px;margin:0 -10px}
+.cb b{display:block;font-size:14px}.cb a{font-size:12.5px;color:var(--ink-muted)}
+.cbar{height:12px;background:var(--grid);border-radius:6px;overflow:hidden}
+.cbar i{display:block;height:100%;background:var(--ink-muted);border-radius:6px}
+.crow.own .cbar i{background:var(--s1)}
+.cv b{font-variant-numeric:tabular-nums;font-size:15px}.cv span{display:block;font-size:12px;color:var(--ink-muted)}
+.cpc{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12.5px}
+.cpc .pro{color:var(--ink-2)}.cpc .con{color:var(--st-critical)}
+@media(max-width:640px){.calc-ctl{grid-template-columns:1fr}.crow{grid-template-columns:1fr}}
+"""
