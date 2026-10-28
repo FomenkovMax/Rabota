@@ -197,3 +197,20 @@ def test_refinance_salary_mention_in_terms_below_is_not_rate_condition():
         category="Кредиты", region="", collected_at="")
     assert (product.rate_min, product.apr_min, product.apr_max) == (19.4, 19.4, 50.2)
     assert conditions.kind_of(product)[0] == conditions.BASE
+
+
+def test_program_not_in_region_is_out_of_ranking():
+    """Вторичка Сбера в ЛНР недоступна (калькулятор сайта, 28.10.2026)."""
+    from src import pipeline
+    config = pipeline.Config(raw={"banks": {"sber": {"not_in_region": [
+        {"path": "/ru/person/credits/home/buying_complete_house", "note": "калькулятор"}]}}})
+    sber = _product("Сбер", "Ипотека на вторичное жильё", 22.4, category="Ипотека")
+    sber.url_path = "/ru/person/credits/home/buying_complete_house"
+    rival = _product("ВТБ", "Ипотека на вторичное жилье", 23.4, category="Ипотека")
+    rival.url_path = "/personal/ipoteka/vtorichnoe-zhile"
+    pipeline.mark_not_in_region(config, [sber, rival])
+    gaps = market.build_gaps([sber, rival], home="Сбер", key_rate=14.0,
+                             region_methods={"Сбер": "selector", "ВТБ": "federal"})
+    gap = next(g for g in gaps if g.program == "Вторичное жильё")
+    assert gap.sber is None and "недоступна в регионе: калькулятор" in gap.comment
+    assert [o.bank for o in gap.offers] == ["ВТБ"]

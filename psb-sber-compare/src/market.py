@@ -253,6 +253,11 @@ def _fmt(value: float) -> str:
     return f"{value:.2f}".rstrip("0").rstrip(",.").replace(".", ",")
 
 
+#: Ключ в `terms`: программа банка недоступна в регионе отчёта (по настройке
+#: banks.<код>.not_in_region — например, по калькулятору на сайте банка).
+REGION_KEY = "Недоступно в регионе"
+
+
 def assess(product: Any, *, key_rate: float | None, region_method: str) -> Assessment:
     """Проверки правдоподобия по правилам спецификации."""
     result = Assessment()
@@ -271,6 +276,8 @@ def assess(product: Any, *, key_rate: float | None, region_method: str) -> Asses
 
     if region_method == "not_confirmed":
         result.lower(LOW, "регион на сайте не выбран — условия не ЛНР")
+    if terms.get(REGION_KEY):
+        result.lower(LOW, f"программа недоступна в регионе: {terms[REGION_KEY]}")
 
     if _SECTION_PAGE.search(title) or title.strip().lower() == category.lower():
         result.lower(LOW, "похоже на страницу раздела, а не на продукт")
@@ -380,9 +387,15 @@ def build_gaps(products: Iterable[Any], *, home: str, key_rate: float | None,
         sber_listed = False
         skipped_home = 0
         special_home = 0
+        absent_home = ""
         for product in items:
             if product.bank == home:
                 sber_listed = True
+            # Недоступна в регионе — не сравниваем вовсе, ни у кого.
+            if (getattr(product, "terms", None) or {}).get(REGION_KEY):
+                if product.bank == home:
+                    absent_home = product.terms[REGION_KEY]
+                continue
             # Только базовые ставки: приветственные, премиальные, зарплатные
             # и нишевые — в блоке «Специальные условия» (аудит 07.10.2026).
             if not conditions.is_comparable(product):
@@ -417,6 +430,9 @@ def build_gaps(products: Iterable[Any], *, home: str, key_rate: float | None,
                 gap.status = NO_SBER if others else NO_DATA
                 gap.comment = ("сбор не нашёл программу на сайте Сбера — "
                                "проверить вручную, есть ли она" if others else "")
+            elif absent_home and not skipped_home and not special_home:
+                gap.status = NO_DATA
+                gap.comment = f"у Сбера программа недоступна в регионе: {absent_home}"
             elif special_home and not skipped_home:
                 gap.status = NO_DATA
                 gap.comment = ("у Сбера здесь только ставки на особых условиях "

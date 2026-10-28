@@ -255,6 +255,27 @@ def bank_region_methods(config: Config, codes: list[str] | None = None) -> dict[
     return out
 
 
+def mark_not_in_region(config: Config, products: list[Any]) -> None:
+    """Программы, недоступные в регионе, — из настройки banks.<код>.not_in_region.
+
+    Сайт банка показывает федеральные условия, а в ЛНР программу не выдают:
+    калькулятор Сбера на «Квартира на вторичном рынке» для Луганска пишет
+    «Программа недоступна в вашем регионе» (проверка 28.10.2026). Такую
+    ставку нельзя ставить в рейтинг рядом с луганскими условиями конкурентов.
+    """
+    titles = registry.titles()
+    by_bank: dict[str, dict[str, str]] = {}
+    for code in config.enabled_banks():
+        for item in (config.bank_settings(code) or {}).get("not_in_region") or []:
+            if isinstance(item, dict) and item.get("path"):
+                by_bank.setdefault(titles.get(code, code), {})[
+                    str(item["path"]).rstrip("/")] = str(item.get("note") or "по данным сайта")
+    for product in products:
+        note = by_bank.get(product.bank, {}).get((product.url_path or "").rstrip("/"))
+        if note:
+            product.terms[market.REGION_KEY] = note
+
+
 def load_report_data(config: Config, *, competitor: str = "") -> dict[str, Any] | None:
     """Собирает всё нужное для отчёта из последнего успешного сбора.
 
@@ -280,6 +301,7 @@ def load_report_data(config: Config, *, competitor: str = "") -> dict[str, Any] 
 
         all_products = [p for p in _rows_to_products(storage.products_of_run(run_id))
                         if not is_seo_page(p.source_url)]
+        mark_not_in_region(config, all_products)
         by_bank: dict[str, list[Any]] = {}
         for product in all_products:
             by_bank.setdefault(product.bank, []).append(product)
