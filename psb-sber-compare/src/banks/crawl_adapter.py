@@ -311,7 +311,9 @@ def _rate_conditions(body: list[str], index: int, best: float) -> list[str]:
 
 # Ставки выше этого не бывает: «Ипотека на новостройку 79,9 %» в сборе
 # 27.10.2026 — чужая цифра со страницы (доля, взнос), а не ставка.
-_MAX_RATE = {"Ипотека": 40.0}
+# «Кредит под залог недвижимости 60 %» (28.10.2026) — тоже доля стоимости.
+# Кредитные карты здесь не ограничиваем: у них 50–70 % — обычное дело.
+_MAX_RATE = {"Ипотека": 40.0, "Кредиты": 50.0}
 
 # Категории, где ключевой параметр — ставка. Дебетовым картам и страховке
 # ставка не нужна, их страницы в «Страницы без ставки» не идут.
@@ -365,8 +367,17 @@ def _worth_saving(product: Product) -> bool:
         return False
     if product.rate_min is None and product.apr_min is None:
         return True
-    return (product.category in _CREDIT_CATEGORIES
-            and not conditions.is_comparable(product))
+    if product.category not in _CREDIT_CATEGORIES:
+        return False
+    # Подозрительные цифры — проверка отчёта их отсеет, а без текста страницы
+    # не понять, почему: ипотека Сбера 28.10.2026 — «ставка 18,7 %, ПСК 18,01 %»,
+    # кредитная СберКарта — «10 %».
+    rate, apr = product.rate_min, product.apr_min
+    if rate is not None and apr is not None and apr < rate:
+        return True
+    if rate is not None and rate < 12 and product.category != "Ипотека":
+        return True
+    return not conditions.is_comparable(product)
 
 
 def _read_rates(product: Product, body: list[str]) -> None:
@@ -384,8 +395,6 @@ def _read_rates(product: Product, body: list[str]) -> None:
     for index, line in enumerate(body):
         values = rates_of(line)
         if values is None:
-            continue
-        if ceiling is not None and max(values) > ceiling:
             continue
         following = body[index + 1] if index + 1 < len(body) else ""
         # «от 20,1%» с подписью «первоначальный взнос» — не ставка. Подпись
@@ -433,6 +442,10 @@ def _read_rates(product: Product, body: list[str]) -> None:
             if fallback is None:
                 product.apr_min, product.apr_max = min(values), max(values)
                 product.apr_raw = f"{line} {following}".strip()
+            continue
+        # Ставка выше порога — доля или взнос, а не ставка (ПСК выше уже
+        # разобрана: у неё 50 % с лишним бывает законно).
+        if ceiling is not None and max(values) > ceiling:
             continue
         caption = body[index - 1] if index > 0 else ""
         own = conditions.scan(" ".join(_own_window(body, index)))

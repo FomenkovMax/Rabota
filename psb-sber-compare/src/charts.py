@@ -37,7 +37,7 @@ def pp(value: float) -> str:
 
 def genitive(bank: str) -> str:
     """«у Сбера», «у ПСБ»: склоняется только Сбер, аббревиатуры — нет."""
-    return {"Сбер": "Сбера"}.get(bank, bank)
+    return {"Сбер": "Сбера", "Т-Банк": "Т-Банка", "РостФинанс": "РостФинанса"}.get(bank, bank)
 
 
 def _short(text: str, limit: int) -> str:
@@ -74,7 +74,7 @@ def insights(gaps: list[Any], *, home: str, comparisons: list[Any] | None = None
             out.append(("--st-critical",
                         f"Сильнее всего {home} отстаёт в программе «{worst.program}»: "
                         f"{prefix} {pct(worst.sber.value)} против {prefix} "
-                        f"{pct(worst.best.value)} у {worst.best.bank} — разница "
+                        f"{pct(worst.best.value)} у {genitive(worst.best.bank)} — разница "
                         f"{pp(worst.delta_vs_best or 0)}"))
         if lead:
             best = max(lead, key=lambda g: g.advantage or 0)

@@ -214,3 +214,14 @@ def test_program_not_in_region_is_out_of_ranking():
     gap = next(g for g in gaps if g.program == "Вторичное жильё")
     assert gap.sber is None and "недоступна в регионе: калькулятор" in gap.comment
     assert [o.bank for o in gap.offers] == ["ВТБ"]
+
+
+def test_share_of_property_value_is_not_rate():
+    """Залог Сбера (28.10.2026): «до 60% оценочной стоимости» — не ставка."""
+    page = _page("Кредит под залог недвижимости", "Сумма кредита",
+                 "Не должна превышать меньшую из величин:", "60% оценочной стоимости",
+                 "Процентные ставки", "Ставка", "от 18,9%")
+    product = crawl.product_from_page(
+        page, bank="Сбер", url="https://www.sberbank.ru/ru/person/credits/money/credit_zalog",
+        category="Кредиты", region="", collected_at="")
+    assert product.rate_min == 18.9
