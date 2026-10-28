@@ -589,7 +589,10 @@ class PageReader:
         self.limit_s = limit_s or (
             (settings.timeout_ms * 2 + settings.settle_ms) / 1000 + 20)
         if settings.calculator_region:
-            self.limit_s += CALCULATOR_LIMIT_S
+            # Запас сверх калькулятора: страница с ним ещё грузится и
+            # раскрывает вкладки. Без запаса витрина ипотеки Сбера (28.10.2026)
+            # не отдалась за 240 с и выпала из сбора целиком.
+            self.limit_s += CALCULATOR_LIMIT_S + 60
         self.start_limit_s = start_limit_s
         self._process: Any = None
         self._channel: Any = None

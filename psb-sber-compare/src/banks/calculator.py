@@ -30,7 +30,10 @@ log = logging.getLogger(__name__)
 # Подписи сверяются целиком (с двоеточием или «*» в конце): у Т-Банка
 # 28.10.2026 «Партнёрская программа» из подвала сошла за список цели, у
 # Сбера — «Программа для семей с детьми» из карточки.
-REGION_LABEL = r"^(?:регион(?:\s+покупки(?:\s+недвижимости)?)?|ваш\s+регион|регион\s+приобретения)\s*[:*]?$"
+# «Регион», «Регион покупки недвижимости», «Выберите регион», «Город» — с
+# начала строки и коротко: в сборе 28.10.2026 строгий список упустил поле
+# ВТБ (в прошлом сборе регион там выбирался).
+REGION_LABEL = (r"^(?:выберите\s+|ваш\s+)?(?:регион|город)(?:\s+[а-яё]+){0,3}\s*[:*]?$")
 GOAL_LABEL = (r"^(?:цель(?:\s+(?:кредита|ипотеки|кредитования))?|программа|тип\s+недвижимости|"
               r"тип\s+жилья|что\s+(?:покупаете|хотите\s+купить)|вид\s+кредита|"
               r"объект\s+недвижимости)\s*[:*]?$")
@@ -53,6 +56,16 @@ _MARK_FIELD_JS = """
   const re = new RegExp(label, 'i');
   const visible = el => { const r = el.getBoundingClientRect();
     return r.width > 0 && r.height > 0 && getComputedStyle(el).visibility !== 'hidden'; };
+  // Подпись бывает только в placeholder или aria-label самого поля.
+  for (const field of document.querySelectorAll('input, [role=combobox]')) {
+    const hint = (field.getAttribute('placeholder') || field.getAttribute('aria-label') || '').trim();
+    if (hint && hint.length <= 60 && re.test(hint) && visible(field)
+        && (!field.dataset.agent || field.dataset.agent === mark)
+        && !field.closest('header, footer, nav')) {
+      field.setAttribute('data-agent', mark);
+      return {tag: field.tagName, value: field.value || field.innerText || '', label: hint};
+    }
+  }
   const labels = Array.from(document.querySelectorAll('body *')).filter(el => {
     const t = (el.textContent || '').trim();
     return t.length > 0 && t.length <= 60 && re.test(t) && el.children.length === 0 && visible(el)
