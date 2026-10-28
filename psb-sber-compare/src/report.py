@@ -201,7 +201,7 @@ svg{display:block;max-width:100%;overflow:visible}
 .catrow .r{font-variant-numeric:tabular-nums;white-space:nowrap;font-weight:600}
 .catrow .r.none{color:var(--ink-muted);font-weight:500}
 .lnr{cursor:help}
-table.lnrt td.lnrc{white-space:nowrap;cursor:help}
+table.lnrt td.lnrc{cursor:help;min-width:110px}
 table.lnrt td.none{color:var(--ink-muted)}
 @media(max-width:640px){
   .vs{grid-template-columns:1fr;gap:10px;text-align:left}
@@ -299,10 +299,13 @@ def _lnr_section(rows: list[Any], total: dict[str, int], banks: list[str], home:
         f'<div class="k">{e(av.LABELS[code])} · {round(100 * total.get(code, 0) / n)} %</div></div>'
         for code in (av.LNR, av.FEDERAL, av.ABSENT, av.UNKNOWN))
 
-    def cell(st: Any, rate: float | None, title: str = "") -> str:
+    from . import card_terms
+
+    def cell(st: Any, rate: float | None, title: str = "", product: Any = None) -> str:
         if st is None:
             return '<td class="lnrc none" title="у банка не найден продукт той же программы">—</td>'
-        value = fmt_rate(rate) if rate is not None else ""
+        value = (fmt_rate(rate) if rate is not None
+                 else card_terms.summary(getattr(product, "terms", None) or {}))
         name = f'<div class="pmeta">{e(title)}</div>' if title else ""
         return (f'<td class="lnrc" title="{e(st.label)}: {e(st.reason)}">'
                 f'{st.icon} <span class="num">{e(value)}</span>{name}</td>')
@@ -313,12 +316,13 @@ def _lnr_section(rows: list[Any], total: dict[str, int], banks: list[str], home:
         rate = p.rate_max if p.category in ("Вклады", "Накопительные счета") else p.rate_min
         cells = "".join(
             cell(row.cells[b].status, row.cells[b].rate,
-                 row.cells[b].product.title if row.cells[b].product else "")
+                 row.cells[b].product.title if row.cells[b].product else "",
+                 row.cells[b].product)
             for b in rivals)
         groups.setdefault(p.category or "Прочее", []).append(
             f'<tr><td><div class="pname">{e(p.title)}</div>'
             f'<div class="pmeta">{e(row.program)}</div></td>'
-            f'{cell(row.own, rate)}{cells}</tr>')
+            f'{cell(row.own, rate, "", p)}{cells}</tr>')
     head = "".join(f"<th>{e(b)}</th>" for b in [home] + rivals)
     blocks = "".join(
         f'<details class="cat"{" open" if i == 0 else ""}><summary>{e(cat)}'
@@ -748,6 +752,11 @@ def _catalog_rate(product: Any) -> tuple[str, bool]:
         return f"{fmt_rate(low)[:-1]}–{fmt_rate(high)}", True
     if product.apr_min is not None:
         return f"ПСК {fmt_rate(product.apr_min)}", False
+    # Карта без ставки — её главные параметры (обслуживание, кешбэк).
+    from . import card_terms
+    cards = card_terms.summary(product.terms or {})
+    if cards:
+        return cards, False
     return "не найдена", False
 
 

@@ -62,6 +62,9 @@ _SEO_PAGES = {
     "tbank.ru": re.compile(
         r"^/loans/cash-loan/(?:na-[\w-]+|pensioneram|studentam|selfemployed|"
         r"nizkij-proczent|srochnyj-kredit-nalichnymi|nopledge|how-repay|form/[\w-]+)/?$"
+        # «Дебетовая карта Black в Москве / Уфе / …» (сбор 28.10.2026) — города.
+        r"|^/cards/debit-cards/tinkoff-black/(?!pension|junior|selfemployed|mir|youth-card)"
+        r"[\w-]+/?$"
     ),
     "vtb.ru": re.compile(
         r"^/personal/ipoteka/(?:dlja-[\w-]+|mnogodetnym|ipoteka-s-pervym-vznosom|"

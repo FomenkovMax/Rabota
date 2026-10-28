@@ -31,7 +31,7 @@ from .browser import (BrowserSettings, BrowserUnavailable, PageFailed,
                       PageReader, PageTooSlow)
 from .generic_site import caption_rules_out, category_for, extract_products, rates_of
 from .seo import is_seo_page
-from .. import conditions, coverage, market
+from .. import card_terms, conditions, coverage, market
 from ..availability import find_clause
 
 log = logging.getLogger(__name__)
@@ -676,6 +676,11 @@ def product_from_page(data: dict[str, Any], *, bank: str, url: str,
     if body:
         product.terms["Контекст на странице"] = " · ".join(body[:8])[:300]
     base_rate_without_service(product, data.get("text") or "")
+    # Карты: обслуживание, кешбэк, переводы, беспроцентный период — из
+    # описания карты (не из меню и подвала).
+    if product.category in card_terms.CARD_CATEGORIES:
+        for key, value in card_terms.extract(body).items():
+            product.terms.setdefault(key, value)
     # Ставка — результат калькулятора на странице с его настройками по
     # умолчанию (ВТБ: «Расчёт произведён … Ставка 20,4 %»), а условия «от N %»
     # на странице нет. Сравнивать можно, но с пометкой.

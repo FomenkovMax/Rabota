@@ -23,7 +23,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
-from .. import conditions, market
+from .. import card_terms, conditions, market
 from ..compare import GREEN, GREY, LIGHT_LABEL, RED, YELLOW
 
 log = logging.getLogger(__name__)
@@ -164,8 +164,10 @@ def _sheet_products(book: Workbook, data: dict[str, Any]) -> None:
         ["Банк", "Категория", "Продукт", "Ставка от", "Ставка до",
          "Условия лучшей ставки", "ПСК от", "Сумма до", "Срок до, мес",
          "Источник", "product_id", "Привязка к региону", "Достоверность",
-         "Замечания", "Тип ставки", "Условие ставки", "Наличие в ЛНР", "Основание"],
-        [10, 22, 40, 12, 12, 40, 11, 14, 14, 44, 30, 14, 13, 50, 22, 50, 30, 60],
+         "Замечания", "Тип ставки", "Условие ставки", "Наличие в ЛНР", "Основание",
+         "Обслуживание", "Кешбэк до", "Беспроцентный период", "Переводы без комиссии"],
+        [10, 22, 40, 12, 12, 40, 11, 14, 14, 44, 30, 14, 13, 50, 22, 50, 30, 60,
+         16, 12, 16, 22],
     )
     lnr = data.get("lnr_status") or {}
 
@@ -195,6 +197,9 @@ def _sheet_products(book: Workbook, data: dict[str, Any]) -> None:
             reason,
             lnr[id(product)].label if id(product) in lnr else "",
             lnr[id(product)].reason if id(product) in lnr else "",
+            *((product.terms or {}).get(key, "") for key in (
+                card_terms.SERVICE, card_terms.CASHBACK, card_terms.GRACE,
+                card_terms.TRANSFERS)),
         ])
         for column in (4, 5, 7):
             cell = sheet.cell(row=sheet.max_row, column=column)
@@ -204,7 +209,7 @@ def _sheet_products(book: Workbook, data: dict[str, Any]) -> None:
         if isinstance(cell.value, (int, float)):
             cell.number_format = "# ##0"
 
-    _finish(sheet, 18)
+    _finish(sheet, 22)
 
 
 def _sheet_lnr(book: Workbook, data: dict[str, Any]) -> None:
