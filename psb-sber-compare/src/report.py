@@ -904,6 +904,27 @@ BLOCK_NAME = {
 }
 
 
+def _crawl_block(crawl: dict[str, dict[str, Any]]) -> str:
+    """Полнота обхода: все ли страницы розницы банка прочитаны."""
+    if not crawl:
+        return ""
+    rows = []
+    for bank, c in crawl.items():
+        left = c["unread"] + c["failed"]
+        state = "✅ полный" if c["complete"] else f"⚠️ не прочитано {len(left)}"
+        pages = "".join(f'<div class="pmeta">{_linkify(u)}</div>' for u in left[:15])
+        more = (f'<div class="pmeta">… и ещё {len(left) - 15}</div>' if len(left) > 15 else "")
+        rows.append(f'<tr><td class="pname">{e(bank)}</td><td class="num">{c["read"]}</td>'
+                    f'<td class="num">{c["sitemap"] or "—"}</td><td>{state}{pages}{more}</td></tr>')
+    return ('<h3 style="margin:4px 0 10px;font-size:15px">Полнота обхода сайтов</h3>'
+            '<p class="hint">Прочитано — страниц розницы за сбор; карта сайта — сколько '
+            'страниц розницы банк сам перечислил в sitemap.xml. Не прочитанные продукты '
+            'перечислены: их цифры взяты из прошлого сбора с его датой (до 14 дней).</p>'
+            '<div class="scroll"><table><thead><tr><th>Банк</th><th>Прочитано</th>'
+            '<th>В карте сайта</th><th>Итог</th></tr></thead><tbody>' + "".join(rows)
+            + '</tbody></table></div><div style="height:18px"></div>')
+
+
 def _quality_block(rows: list[Any], manual: list[Any]) -> str:
     if not rows:
         return '<p class="empty">Данных пока нет.</p>'
@@ -1036,6 +1057,7 @@ def render_report(
     lnr_total: dict[str, int] | None = None,
     lnr_status: dict[int, Any] | None = None,
     presence: dict[str, str] | None = None,
+    crawl: dict[str, dict[str, Any]] | None = None,
 ) -> str:
     total_promos = promo_active_total
     delta_chart = _delta_chart(comparisons)
@@ -1149,6 +1171,7 @@ def render_report(
   вклад не выше ключевой ЦБ больше чем на 3 п.п., кредит не дешевле ключевой без
   госпрограммы, ПСК не ниже ставки, регион подтверждён. Для карт без ставки,
   страховки и акций покрытие не считается — у них ключевой параметр не ставка.</p>
+  {_crawl_block(crawl or {})}
   {_quality_block(quality_rows or [], manual or [])}
 </section>
 

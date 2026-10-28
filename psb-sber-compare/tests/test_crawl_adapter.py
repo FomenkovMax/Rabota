@@ -731,3 +731,51 @@ def test_yield_is_not_a_deposit_rate():
                                       category="Вклады", region="", collected_at="")
     assert product.title == "ВТБ-Вклад «Ключевой»"
     assert product.rate_min is None
+
+
+def test_sitemap_adds_pages_and_completeness_is_reported(monkeypatch):
+    """Карта сайта даёт страницы, на которые нет ссылок с витрин; в охвате —
+    сколько прочитано и какие продукты остались непрочитанными."""
+    hidden = f"{BASE}/ru/person/credits/money/credit_zalog"
+    sitemap = {"h1": "", "title": "", "links": [], "text": "\n".join([
+        f"{BASE}/ru/person/credits/money/consumer_refinance_b",   # A/B-копия — мусор
+        hidden, f"{BASE}/ru/person/credits/money/avtokredit/zayavka",
+        "https://other.ru/ru/person/credits/money/x"])}
+    calls: list[str] = []
+
+    class WithSitemap(FakeReader):
+        def read(self, url):
+            calls.append(url)
+            if url.endswith("/sitemap.xml"):
+                return sitemap
+            return super().read(url)
+
+    monkeypatch.setattr(crawl, "PageReader", WithSitemap)
+    result = OnlyCredits(region=None, settings={
+        "region_cookies": [{"name": "r", "value": "9"}], "max_pages": 50,
+        "sitemap": True}).collect()
+    assert hidden in calls
+    assert not any(c.endswith("_b") or c.endswith("/zayavka") for c in calls)
+    assert int(result.coverage[crawl.CRAWL_SITEMAP_KEY]) == 1
+    assert int(result.coverage[crawl.CRAWL_READ_KEY]) >= 1
+
+
+def test_closed_product_is_not_compared():
+    from src import conditions
+    page = {"h1": "Золотая карта", "title": "Золотая карта", "links": [],
+            "text": "Меню\nЗолотая карта\nКарта больше не выпускается с 1 марта 2025 года.\n"}
+    product = crawl.product_from_page(page, bank="Сбер", url=f"{BASE}/x/gold-card",
+                                      category="Дебетовые карты", region="", collected_at="")
+    kind, reason = conditions.kind_of(product)
+    assert kind == conditions.NICHE and "больше не выпускается" in reason
+
+
+def test_crawl_completeness_from_coverage():
+    from src.pipeline import crawl_completeness
+    links = {"Сбер": {crawl.CRAWL_READ_KEY: "180", crawl.CRAWL_SITEMAP_KEY: "190",
+                      crawl.CRAWL_UNREAD_KEY: f"{BASE}/a {BASE}/b", crawl.CRAWL_FAILED_KEY: ""},
+             "ВТБ": {crawl.CRAWL_READ_KEY: "60", crawl.CRAWL_UNREAD_KEY: "",
+                     crawl.CRAWL_FAILED_KEY: ""}}
+    out = crawl_completeness(links)
+    assert out["Сбер"]["unread"] == [f"{BASE}/a", f"{BASE}/b"] and not out["Сбер"]["complete"]
+    assert out["ВТБ"]["complete"]

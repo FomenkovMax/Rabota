@@ -255,6 +255,26 @@ def bank_region_methods(config: Config, codes: list[str] | None = None) -> dict[
     return out
 
 
+def crawl_completeness(links: dict[str, dict[str, str]]) -> dict[str, dict[str, Any]]:
+    """Полнота обхода сайта по банкам: прочитано, в карте сайта, не прочитано.
+
+    Ответ на вопрос «собраны ли все данные с сайта»: не прочитанные
+    продуктовые страницы (лимит, защита сайта, ошибки) перечислены поимённо."""
+    from .banks.crawl_adapter import (CRAWL_FAILED_KEY, CRAWL_READ_KEY,
+                                      CRAWL_SITEMAP_KEY, CRAWL_UNREAD_KEY)
+    out: dict[str, dict[str, Any]] = {}
+    for bank, own in links.items():
+        if CRAWL_READ_KEY not in own:
+            continue
+        unread = [u for u in (own.get(CRAWL_UNREAD_KEY) or "").split() if u]
+        failed = [u for u in (own.get(CRAWL_FAILED_KEY) or "").split() if u.startswith("http")]
+        out[bank] = {"read": int(own.get(CRAWL_READ_KEY) or 0),
+                     "sitemap": int(own.get(CRAWL_SITEMAP_KEY) or 0),
+                     "unread": unread, "failed": failed,
+                     "complete": not unread and not failed}
+    return out
+
+
 def bank_presence(config: Config, codes: list[str],
                   links: dict[str, dict[str, str]]) -> dict[str, str]:
     """Чем подтверждено, что банк работает в ЛНР: банк → основание.
@@ -429,6 +449,7 @@ def load_report_data(config: Config, *, competitor: str = "") -> dict[str, Any] 
                                        banks=[home_title] + competitor_titles,
                                        status=lnr_status)
         lnr_total = availability.completeness(scope, lnr_status, home=home_title)
+        crawl = crawl_completeness(storage.coverage_of_run(run_id))
 
         html = render_report(
             comparisons=comparisons, counts=counts, changes=changes,
@@ -446,7 +467,7 @@ def load_report_data(config: Config, *, competitor: str = "") -> dict[str, Any] 
             gaps=gaps, quality_rows=quality_rows, manual=manual, home=home_title,
             specials=special_rows, coverage_matrix=coverage_matrix,
             calculator=calc_offers, lnr_rows=lnr_rows, lnr_total=lnr_total,
-            lnr_status=lnr_status, presence=presence,
+            lnr_status=lnr_status, presence=presence, crawl=crawl,
         )
 
         return {
@@ -480,6 +501,7 @@ def load_report_data(config: Config, *, competitor: str = "") -> dict[str, Any] 
             "lnr_rows": lnr_rows,
             "lnr_total": lnr_total,
             "presence": presence,
+            "crawl": crawl,
             "product_ids": market.product_ids(all_products),
         }
     finally:

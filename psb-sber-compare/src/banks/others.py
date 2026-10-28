@@ -99,7 +99,14 @@ class SberAdapter(CrawlAdapter):
         r"/vklad-v-|/bez-|/bez_|/po-pasportu|/na-kartu|/v-den-|/na-otpusk|"
         r"/credit-na-svadbu|/na-telefon|/na-lecheniye|/tehnika$|/remont$|"
         r"/necelevoy|/na-pokupku|/ekspress|/dlya-samozanyat|/dlya_samozanyat|"
-        r"/gallery|/izmenenie|onlajn-zayavka|/design_konstructor|/services/)",
+        r"/gallery|/izmenenie|onlajn-zayavka|/design_konstructor|/services/|"
+        # Очередь сбора 28.10.2026: A/B-копии страниц («_b»), заявки и заказ
+        # карты, склеенные адреса («…/home/ru/person/…»), магазины приложений,
+        # каникулы, урегулирование долга, права заёмщика, таблицы расчёта,
+        # SEO-подборки и партнёрские списки — не продукты.
+        r"_b$|/zayavka|/order_|/ru/person/.*/ru/person|/ru/person_new|/rustore|"
+        r"/app-gallery|/galaxy-store|kanikul|/uregulirovanie|/mirovoe|/moi-prava|"
+        r"/tablica|/seo/|/pos/|/transfer_payments|/collection|_sticker$|/sberfest)",
         re.I,
     )
 

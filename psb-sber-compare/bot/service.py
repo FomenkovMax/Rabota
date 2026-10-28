@@ -204,6 +204,16 @@ def collect_summary(bank_code: str, returncode: int, tail: list[str]) -> str:
              f"{statuses.get('не найдено у Сбера', 0)}")
     manual = len(data.get("manual") or [])
     tail = f"\nНужна ручная проверка: {manual} знач." if manual else ""
+    # Все ли страницы сайтов прочитаны — главный вопрос к сбору.
+    crawl = data.get("crawl") or {}
+    if crawl:
+        lines = []
+        for bank, c in crawl.items():
+            left = len(c["unread"]) + len(c["failed"])
+            lines.append(f"✅ {bank}: обход полный, {c['read']} стр." if c["complete"] else
+                         f"⚠️ {bank}: прочитано {c['read']} стр., не прочитано {left} — "
+                         "список в своде, цифры по ним из прошлого сбора")
+        tail += "\nПолнота обхода:\n" + "\n".join(lines)
     return (f"{head}\nПродуктов: {banks}.\n"
             f"Место Сбера по программам: {place}{tail}\n"
             "Подробно — в «📊 Выгрузить общий свод».")

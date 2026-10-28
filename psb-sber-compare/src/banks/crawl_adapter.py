@@ -311,6 +311,10 @@ def _rate_conditions(body: list[str], index: int, best: float) -> list[str]:
 
 
 _FROM_RATE = re.compile(r"^\s*(?:ставка\s+)?от\s+\d", re.I)
+_CLOSED = re.compile(
+    r"[^.\n]{0,60}(?:(?:больше|уже)\s+не\s+(?:выпуска|оформля|открыва|выда|принима)\w*|"
+    r"прекращ\w+\s+(?:выпуск|оформлени|при[её]м|открыти)\w*|"
+    r"не\s+доступ\w+\s+для\s+(?:оформления|открытия))[^.\n]{0,60}", re.I)
 _RATE_CAPTION = re.compile(r"^\s*(?:процентная\s+|базовая\s+)?ставка\s*[:*\d]*\s*$", re.I)
 
 
@@ -386,6 +390,15 @@ def _found(product: Product | None) -> str:
 
 #: Ставка, выведенная из платежа калькулятора (оценка, в рейтинг не идёт).
 IMPLIED_KEY = "Ставка по платежу калькулятора"
+
+#: Служебные строки охвата: полнота обхода сайта банка.
+CRAWL_READ_KEY = "Обход: прочитано страниц"
+CRAWL_SITEMAP_KEY = "Обход: страниц в карте сайта"
+CRAWL_UNREAD_KEY = "Обход: не прочитаны"
+CRAWL_FAILED_KEY = "Обход: ошибки чтения"
+# Витрины разделов — не продукты: в «не прочитаны» не попадают.
+_LISTING = re.compile(r"/(?:deposits|money|home|homenew|credit_cards|debit|bank_cards|"
+                      r"credits|contributions|ipoteka|kredit|karty|vklady-i-scheta)/?$", re.I)
 
 #: Служебные строки охвата: страница офисов и что на ней про Луганск.
 OFFICES_KEY = "Офисы в ЛНР"
@@ -679,6 +692,11 @@ def product_from_page(data: dict[str, Any], *, bank: str, url: str,
     if body:
         product.terms["Контекст на странице"] = " · ".join(body[:8])[:300]
     base_rate_without_service(product, data.get("text") or "")
+    # «Карта больше не выпускается», «приём заявок прекращён» — продукт есть
+    # на сайте, но оформить его нельзя: в сравнение не идёт.
+    closed = _CLOSED.search("\n".join(body[:40]))
+    if closed:
+        product.terms[conditions.CLOSED_KEY] = " ".join(closed.group(0).split())[:160]
     # Карты: обслуживание, кешбэк, переводы, беспроцентный период — из
     # описания карты (не из меню и подвала).
     if product.category in card_terms.CARD_CATEGORIES:
@@ -778,6 +796,7 @@ class CrawlAdapter(BankAdapter):
         visited = 0
         self._clear_missing()
         calc_blocked: dict[str, str] = {}      # программа → что сказал калькулятор
+        sitemap_found: set[str] = set()         # страницы из карты сайта
         office_url = ""                         # страница «Офисы и банкоматы»
         site_sections: dict[str, str] = {}
         retried: set[str] = set()
@@ -793,6 +812,14 @@ class CrawlAdapter(BankAdapter):
         try:
             with PageReader(settings, cookies=region_cookies or None,
                             wait_for=self.wait_for, limit_s=limit_s) as reader:
+                # Карта сайта — все страницы розницы, а не только те, на
+                # которые есть ссылки с витрин: так видно, что существует,
+                # даже если до страницы не дошли.
+                for url in self._sitemap_urls(reader):
+                    if url not in seen:
+                        seen.add(url)
+                        queue.append(url)
+                        sitemap_found.add(url)
                 while queue and visited < max_pages:
                     url = self._next(queue, popularity)
                     visited += 1
@@ -886,6 +913,16 @@ class CrawlAdapter(BankAdapter):
                 if office_url and not blocked:
                     site_sections.update(self._presence(reader, office_url, visited + 1))
             self._save_summary(visited, queue, failures)
+            # Полнота обхода — в охват: сколько страниц прочитано и какие
+            # продуктовые остались непрочитанными (лимит, защита, ошибки).
+            unread = [u for u in queue if not _LISTING.search(urlsplit(u).path)]
+            site_sections.update({
+                CRAWL_READ_KEY: str(visited),
+                CRAWL_SITEMAP_KEY: str(len(sitemap_found)),
+                CRAWL_UNREAD_KEY: " ".join(unread[:60]),
+                CRAWL_FAILED_KEY: " ".join(f.split(":")[0] + ":" + f.split(":")[1]
+                                           for f in failures if f.startswith("http"))[:3000],
+            })
         except BrowserUnavailable as exc:
             if not products and not showcase:
                 return self._failed(str(exc))
@@ -1025,6 +1062,41 @@ class CrawlAdapter(BankAdapter):
                     json.dumps(data["network"], ensure_ascii=False), encoding="utf-8")
         except OSError as exc:
             log.debug("Калькулятор не сохранился: %s", exc)
+
+    def _sitemap_urls(self, reader: Any) -> list[str]:
+        """Адреса розницы из карты сайта банка (sitemap.xml и вложенные).
+
+        Только разделы этого банка, без служебных и SEO-страниц. Карты нет
+        или не открылась — пусто, обход идёт по ссылкам, как раньше."""
+        if not self.settings.get("sitemap"):
+            return []
+        host = urlsplit(self.base_url).netloc
+        todo, found, read = [self.base_url.rstrip("/") + "/sitemap.xml"], [], 0
+        while todo and read < 6:
+            url = todo.pop(0)
+            read += 1
+            try:
+                data = reader.read(url)
+            except Exception as exc:                # noqa: BLE001
+                log.info("%s: карта сайта %s не прочиталась — %s", self.title, url,
+                         str(exc)[:80])
+                continue
+            if not data or is_blocked(data):
+                continue
+            for link in re.findall(r"https?://[^\s<>\"']+", data.get("text") or ""):
+                link = link.rstrip(".,;")
+                if urlsplit(link).netloc != host:
+                    continue
+                if link.endswith(".xml"):
+                    # Вложенные карты — только про частных клиентов.
+                    if re.search(r"person|private|retail|chastn|fiz|main|ru", link, re.I):
+                        todo.append(link)
+                    continue
+                if self._links([link]):
+                    found.append(self._normalize(link))
+        if found:
+            log.info("%s: карта сайта — страниц розницы %s", self.title, len(set(found)))
+        return list(dict.fromkeys(found))
 
     def _presence(self, reader: Any, url: str, number: int) -> dict[str, str]:
         """Страница офисов банка: найден ли там Луганск — с цитатой адреса.

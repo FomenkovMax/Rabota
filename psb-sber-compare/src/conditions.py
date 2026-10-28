@@ -41,6 +41,8 @@ LABELS = {
 
 #: Ключ в `terms`, куда сборщик кладёт найденные рядом со ставкой условия.
 TERMS_KEY = "Условия ставки"
+#: Ключ в `terms`: продукт есть на сайте, но больше не оформляется (цитата).
+CLOSED_KEY = "Не оформляется"
 
 # Условия рядом со ставкой. Порядок — по силе: приветственная ставка
 # ограничена сроком и кругом клиентов сильнее, чем надбавка за подписку.
@@ -103,6 +105,9 @@ def remember(product: Any, found: Iterable[str]) -> None:
 def kind_of(product: Any) -> tuple[str, str]:
     """(тип ставки, причина). Базовая — («base», «»)."""
     title = getattr(product, "title", "") or ""
+    closed = (getattr(product, "terms", None) or {}).get(CLOSED_KEY)
+    if closed:
+        return NICHE, f"продукт больше не оформляется: «{closed}»"
     niche = _NICHE_TITLE.search(title)
     if niche:
         return NICHE, f"нишевый продукт: «{niche.group(0)}» в названии"
