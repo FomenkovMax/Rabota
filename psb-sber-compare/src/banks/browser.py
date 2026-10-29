@@ -433,10 +433,13 @@ def _json_bodies(responses: list[Any], url: str, *, limit: int = 1_500_000) -> l
     """JSON-ответы того же сайта, что и страница, — с телом, не больше limit байт."""
     from urllib.parse import urlsplit
     site = ".".join(urlsplit(url).netloc.split(".")[-2:])
+    # Калькуляторы-виджеты партнёров: ипотека Сбера — калькулятор Домклик
+    # во встроенном окне (сбор 29.10.2026). Его данные тоже нужны.
+    sites = (site, "domclick.ru")
     out, total = [], 0
     for response in responses:
         try:
-            if site not in urlsplit(response.url).netloc:
+            if not any(s in urlsplit(response.url).netloc for s in sites):
                 continue
             if "json" not in (response.headers.get("content-type") or ""):
                 continue

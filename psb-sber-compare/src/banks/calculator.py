@@ -331,6 +331,15 @@ _PAYMENT_BLOCK_JS = """
 _PAYMENTS = re.compile(r"плат[её]ж[^\n]{0,40}\n?\s*(\d[\d\s  ]{2,})\s?₽", re.I)
 
 
+_FIELD_HTML_JS = """
+(mark) => {
+  let box = document.querySelector('[data-agent="' + mark + '"]');
+  for (let i = 0; i < 3 && box && box.parentElement; i++) box = box.parentElement;
+  return box ? box.outerHTML.slice(0, 6000) : '';
+}
+"""
+
+
 def _money(text: str) -> int | None:
     match = re.search(r"(\d[\d\s ]{3,})", text or "")
     return int(re.sub(r"\D", "", match.group(1))) if match else None
@@ -412,6 +421,10 @@ def explore(page: Any, region: str, *, max_options: int = 12,
         return out
 
     options = _list_options(page, "goal", max_options)
+    if not options:
+        # Список не открылся — сохраняем вёрстку вокруг поля: по ней видно,
+        # как устроен выпадающий список (калькулятор Домклик у Сбера).
+        out["goal_html"] = page.evaluate(_FIELD_HTML_JS, "goal") or ""
     # Калькулятор ипотеки у банка один на все страницы программ: тот же
     # список целей уже перебран в этом сборе — второй раз не перебираем.
     key = (out["region"], tuple(options))
