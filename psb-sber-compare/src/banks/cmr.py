@@ -363,6 +363,12 @@ class CmrAdapter(BankAdapter):
 
         for product in products:
             product.region_method = method
+        # Полнота обхода — как у браузерных банков: что прочитано, что нет.
+        from .crawl_adapter import CRAWL_FAILED_KEY, CRAWL_READ_KEY, CRAWL_UNREAD_KEY
+        site_sections.update({
+            CRAWL_READ_KEY: str(visited), CRAWL_UNREAD_KEY: "",
+            CRAWL_FAILED_KEY: " ".join(f.split(": ")[0] for f in failures
+                                       if f.startswith("http"))})
         if not products:
             return self._failed("ни одного продукта: " + "; ".join(failures[:3]))
         return self._result(products=products, pages_visited=visited,

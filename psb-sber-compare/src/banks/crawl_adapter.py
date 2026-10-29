@@ -895,6 +895,9 @@ class CrawlAdapter(BankAdapter):
                             region=region_label, collected_at=now)
                         if product is not None:
                             products.setdefault(normalize_title(product.title), product)
+                            if (product.rate_min is None
+                                    and product.category in _RATE_CATEGORIES):
+                                self._rate_from_tariff(product, data, visited)
                             if _worth_saving(product):
                                 self._save_missing(url, data, product)
                     # Калькулятор бывает и на витрине (ипотека Сбера — на
@@ -1062,6 +1065,45 @@ class CrawlAdapter(BankAdapter):
                     json.dumps(data["network"], ensure_ascii=False), encoding="utf-8")
         except OSError as exc:
             log.debug("Калькулятор не сохранился: %s", exc)
+
+    def _rate_from_tariff(self, product: Product, data: dict[str, Any], number: int) -> None:
+        """Ставки на странице нет — ищем её в PDF-тарифе по ссылке со страницы.
+
+        Текст тарифа сохраняется в снимок страниц: по нему видно, верно ли
+        взята цифра. Тарифов за сбор — не больше 25, чтобы не растягивать сбор."""
+        from .. import tariffs
+        if not self.settings.get("tariff_pdf", True):
+            return
+        self._tariffs_read = getattr(self, "_tariffs_read", 0)
+        for url in tariffs.tariff_links(data.get("links") or []):
+            if self._tariffs_read >= 25:
+                return
+            self._tariffs_read += 1
+            try:
+                text = tariffs.pdf_text(url)
+            except Exception as exc:                # noqa: BLE001
+                log.info("%s: тариф %s не прочитался — %s", self.title, url, str(exc)[:100])
+                continue
+            folder = self._pages_dir()
+            if folder is not None:
+                try:
+                    folder.mkdir(parents=True, exist_ok=True)
+                    name = re.sub(r"[^a-z0-9]+", "-", urlsplit(url).path.lower()).strip("-")[-60:]
+                    (folder / f"{number:03d}-pdf-{name}.txt").write_text(
+                        f"URL: {url}\nПРОДУКТ: {product.title}\n\nТЕКСТ:\n{text}",
+                        encoding="utf-8")
+                except OSError:
+                    pass
+            found = tariffs.rate_from_text(text, ceiling=_MAX_RATE.get(product.category, 60.0))
+            if found:
+                low, high, quote = found
+                product.rate_min, product.rate_max = low, high
+                product.rate_raw = quote
+                product.terms[tariffs.SOURCE_KEY] = url
+                product.terms[tariffs.QUOTE_KEY] = quote
+                product.terms["Источник ставки на странице"] = "тариф банка (PDF)"
+                product.terms.pop("Ставка", None)
+                return
 
     def _sitemap_urls(self, reader: Any) -> list[str]:
         """Адреса розницы из карты сайта банка (sitemap.xml и вложенные).

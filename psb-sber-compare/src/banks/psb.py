@@ -52,6 +52,8 @@ class PsbAdapter(BankAdapter):
         products, promos = [], []
         site_sections: dict[str, str] = {}
         missing = failed = visited = 0
+        failed_urls: list[str] = []
+        left: list[str] = []
 
         try:
             with client:
@@ -66,6 +68,7 @@ class PsbAdapter(BankAdapter):
                     pages = [p for p in pages
                              if p.section in sections or p.is_promo]
                 if max_pages:
+                    left = [p.url_path for p in pages[max_pages:]]
                     pages = pages[:max_pages]
 
                 log.info("ПСБ: к обходу %s страниц", len(pages))
@@ -78,6 +81,7 @@ class PsbAdapter(BankAdapter):
                         continue
                     except RuntimeError as exc:
                         failed += 1
+                        failed_urls.append(f"https://www.psbank.ru{page.url_path}")
                         log.warning("ПСБ пропускает %s: %s", page.url_path, exc)
                         continue
 
@@ -96,6 +100,13 @@ class PsbAdapter(BankAdapter):
             log.info("ПСБ: узлов без страницы %s (это нормально)", missing)
         if failed:
             log.warning("ПСБ: страниц с ошибкой %s", failed)
+
+        # Полнота обхода: каталог ПСБ читается целиком, непрочитанное — поимённо.
+        from .crawl_adapter import CRAWL_FAILED_KEY, CRAWL_READ_KEY, CRAWL_UNREAD_KEY
+        site_sections.update({
+            CRAWL_READ_KEY: str(visited),
+            CRAWL_UNREAD_KEY: " ".join(f"https://www.psbank.ru{u}" for u in left[:60]),
+            CRAWL_FAILED_KEY: " ".join(failed_urls)})
 
         unique: dict[str, object] = {}
         for promo in promos:

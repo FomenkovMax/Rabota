@@ -289,6 +289,8 @@ def assess(product: Any, *, key_rate: float | None, region_method: str) -> Asses
 
     if rated and terms.get("Источник ставки"):
         result.lower(MEDIUM, "ставка взята с карточки на витрине, а не со страницы продукта")
+    if str(terms.get("Источник ставки на странице", "")).startswith("тариф банка"):
+        result.lower(MEDIUM, "ставка из тарифа банка (PDF), на странице продукта её нет")
     if str(terms.get("Источник ставки на странице", "")).startswith("расчёт калькулятора"):
         result.lower(MEDIUM, "ставка — расчёт калькулятора на странице по умолчанию, "
                              "условия «от N %» на странице нет")
