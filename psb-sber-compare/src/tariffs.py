@@ -74,8 +74,39 @@ def pdf_text(url: str, *, timeout: int = 30, max_bytes: int = 6_000_000,
     return "\n".join(pages)
 
 
+# Тарифы Т-Банка (сбор 29.10.2026): заголовок «1. Процентная ставка»
+# отдельной строкой, цифры — ниже: «от 16,9% до 22% годовых».
+_HEADING = re.compile(r"^\s*\d+\.?\s*процентн\w+\s+ставк\w*\s*:?\s*$", re.I | re.M)
+# Следующий раздел верхнего уровня: «2. Плата…», но не подпункт «1.1. базовая».
+_NEXT_SECTION = re.compile(r"^\s*\d+\.\s+\S", re.M)
+# Первое число диапазона бывает без «%»: «от 0,01 до 31,0% годовых» (автокредит).
+_FROM_TO = re.compile(r"^\s*(?:от\s+)?(\d{1,2}(?:[,.]\d{1,3})?)\s?%?\s*"
+                      r"(?:(?:до|[-–—])\s*(\d{1,2}(?:[,.]\d{1,3})?)\s?%)?\s*(?:годовых)?\s*$",
+                      re.I | re.M)
+
+
+def _rate_under_heading(text: str, ceiling: float) -> tuple[float, float, str] | None:
+    for heading in _HEADING.finditer(text):
+        tail = text[heading.end():heading.end() + 1200]
+        stop = _NEXT_SECTION.search(tail)
+        block = tail[:stop.start()] if stop else tail
+        for match in _FROM_TO.finditer(block):
+            if "%" not in match.group(0):
+                continue
+            low = float(match.group(1).replace(",", "."))
+            high = float((match.group(2) or match.group(1)).replace(",", "."))
+            if 0 < low <= high <= ceiling:
+                quote = f"{heading.group(0).strip().rstrip(':')}: {' '.join(match.group(0).split())}"
+                return low, high, quote[:200]
+    return None
+
+
 def rate_from_text(text: str, *, ceiling: float = 60.0) -> tuple[float, float, str] | None:
-    """(от, до, цитата) — первая строка, где процентная ставка подписана прямо."""
+    """(от, до, цитата) — ставка, прямо подписанная как процентная ставка:
+    в одной строке с подписью или под заголовком «N. Процентная ставка»."""
+    under = _rate_under_heading(text or "", ceiling)
+    if under:
+        return under
     for match in _RATE.finditer(text or ""):
         quote = " ".join(match.group(0).split())
         line_start = text.rfind("\n", 0, match.start()) + 1

@@ -779,3 +779,60 @@ def test_crawl_completeness_from_coverage():
     out = crawl_completeness(links)
     assert out["Сбер"]["unread"] == [f"{BASE}/a", f"{BASE}/b"] and not out["Сбер"]["complete"]
     assert out["ВТБ"]["complete"]
+
+
+def _card(category, h1, *lines):
+    return crawl.product_from_page(_page(h1, *lines), bank="Т-Банк", url="https://x/cards/c",
+                                   category=category, region="ЛНР", collected_at="")
+
+
+def test_debit_card_cashback_is_not_a_rate():
+    """Детская СберКарта «11%», ЦСКА «до 50%» — кешбэк и скидки, не ставка."""
+    product = _card("Дебетовые карты", "Детская карта", "Экономия на билетах",
+                    "до 50%", "в клубном магазине")
+    assert product.rate_min is None
+    assert "не ставка на остаток" in product.terms["Процент в описании карты"]
+
+
+def test_debit_card_balance_rate_is_kept():
+    product = _card("Дебетовые карты", "Карта для пенсионеров", "До 10% кешбэк",
+                    "5% годовых на\xa0остаток")
+    assert (product.rate_min, product.terms["Ставка"]) == (5.0, "процент на остаток по карте")
+
+
+def test_credit_card_category_cashback_is_not_a_rate():
+    """«2% в супермаркетах», «До 7% за авиабилеты», «до 50% / за покупки у
+    партнеров» — кешбэк; ставка «29,9 — 61,9% годовых» с нижней границей."""
+    product = _card("Кредитные карты", "Карта для путешествий", "До 7% за авиабилеты",
+                    "2% в супермаркетах, кафе", "до 50%", "за покупки у партнеров",
+                    "9% годовых по накопительному счету", "Ставка на покупки",
+                    "29,9 — 61,9% годовых")
+    assert (product.rate_min, product.rate_max) == (29.9, 61.9)
+
+
+def test_psk_and_rate_in_one_line_are_split():
+    """Образовательный кредит Т-Банка: ПСК и ставка в одной строке, ниже —
+    пример «полная ставка … 23,88%» про господдержку."""
+    product = _card("Кредиты", "Образовательный кредит",
+                    "Полная стоимость кредита — 2,950% — 3,000% годовых, ставка — 3% на весь срок",
+                    "Например, полная ставка, по которой банк выдает кредит, — 23,88% годовых.")
+    assert (product.rate_min, product.apr_min, product.apr_max) == (3.0, 2.95, 3.0)
+
+
+def test_closed_card_in_title_is_marked():
+    from src import conditions
+    product = _card("Дебетовые карты", "Карты Visa в Т‑Банке сейчас не выпускаются",
+                    "Подберем действующую?")
+    assert product is None or "не выпускаются" in product.terms[conditions.CLOSED_KEY]
+
+
+def test_sber_service_pages_are_skipped_and_credit_cards_categorised():
+    adapter = SberAdapter(region=None, settings={})
+    base = "https://www.sberbank.ru"
+    for path in ("/ru/person/contributions/media/howto", "/ru/person/contributions/finder",
+                 "/ru/person/bank_cards/debit/onboarding",
+                 "/ru/person/bank_cards/debit/sberkarta_kids/school_services",
+                 "/ru/person/bank_cards/debit/foreign/uz"):
+        assert adapter._links([base + path]) == [], path
+    assert adapter._family(base + "/ru/person/bank_cards/credit_cards/credit_sberkarta_fix") \
+        == "Кредитные карты"

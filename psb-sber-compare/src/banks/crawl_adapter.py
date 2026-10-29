@@ -119,6 +119,12 @@ _LABEL = re.compile(
 _PSK = re.compile(r"\bпск\b|полн\w*\s+стоимост", re.I)
 _OWN_RATE = re.compile(r"\bставк\w*\b[^%]*\d", re.I)
 _RANGE = re.compile(r"(\d{1,3}(?:[,.]\d{1,3})?)\s*[–—-]\s*(\d{1,3}(?:[,.]\d{1,3})?)\s*%")
+# «Полная стоимость кредита — 2,950% — 3,000% годовых, ставка — 3% на весь
+# срок» (образовательный кредит Т-Банка, 29.10.2026): ПСК и ставка в одной
+# строке — делим, иначе ставка уходила в ПСК, а ставкой бралось 23,88 % из
+# примера про господдержку ниже.
+_PSK_THEN_RATE = re.compile(r"[,.;]\s+(?=(?:процентн\w+\s+)?ставк\w*\s*[—–:-]?\s*(?:от\s+|до\s+)?\d)",
+                            re.I)
 _FILE = re.compile(r"\.(pdf|docx?|xlsx?|zip|rar)$", re.I)
 _QUOTES = re.compile(r"[«»\"'„“”+]")
 
@@ -312,7 +318,8 @@ def _rate_conditions(body: list[str], index: int, best: float) -> list[str]:
 
 _FROM_RATE = re.compile(r"^\s*(?:ставка\s+)?от\s+\d", re.I)
 _CLOSED = re.compile(
-    r"[^.\n]{0,60}(?:(?:больше|уже)\s+не\s+(?:выпуска|оформля|открыва|выда|принима)\w*|"
+    # «Карты Visa/Mastercard сейчас не выпускаются» (Т-Банк, 29.10.2026).
+    r"[^.\n]{0,60}(?:(?:больше|уже|сейчас|временно)\s+не\s+(?:выпуска|оформля|открыва|выда|принима)\w*|"
     r"прекращ\w+\s+(?:выпуск|оформлени|при[её]м|открыти)\w*|"
     # «Прием заявок завершен» (Сельская ипотека Сбера, 29.10.2026).
     r"при[её]м\s+заявок\s+(?:завершен|прекращ|приостановл)\w*|"
@@ -372,12 +379,45 @@ def base_rate_without_service(product: Product, text: str) -> None:
 # «Кредит под залог недвижимости 60 %» (28.10.2026) — тоже доля стоимости.
 # Кредитные карты здесь не ограничиваем: у них 50–70 % — обычное дело.
 _MAX_RATE = {"Ипотека": 40.0, "Кредиты": 50.0}
+# В тарифе ставка прямо подписана «Процентная ставка», ПСК с ней не спутать:
+# у кредитных карт Т-Банка (29.10.2026) — «от 29,9% до 61,9% годовых».
+_TARIFF_MAX = {**_MAX_RATE, "Кредитные карты": 70.0}
 
 # Категории, где ключевой параметр — ставка. Дебетовым картам и страховке
 # ставка не нужна, их страницы в «Страницы без ставки» не идут.
 _RATE_CATEGORIES = {"Вклады", "Накопительные счета", "Кредиты", "Ипотека",
                     "Кредитные карты"}
 _CREDIT_CATEGORIES = {"Кредиты", "Ипотека", "Кредитные карты"}
+_RATE_WORD = re.compile(r"годов|ставк|\bпск\b|полн\w*\s+стоимост|процентн", re.I)
+_OTHER_PRODUCT = re.compile(r"накопительн\w*\s+сч[её]т|по\s+вклад|ставк\w*\s+по\s+вклад|на\s+остат", re.I)
+_DEBIT_CATEGORIES = card_terms.CARD_CATEGORIES - {"Кредитные карты"}
+# Процент у дебетовой карты — ставка только «на остаток»; кешбэк, скидки
+# партнёров и «до 50 % баллами» ставкой не являются (сбор 29.10.2026:
+# «Детская СберКарта — 11 %», «Карта болельщика ЦСКА — 50 %»).
+_ON_BALANCE = re.compile(r"на\s+остат|остаток|на\s+(?:сво[йи]|минимальн\w*)\s+остат|"
+                         r"доход\w*\s+на\s+(?:остат|деньги)|процент\w*\s+на\s+(?:остат|сумм)", re.I)
+_CASHBACK_WORD = re.compile(r"кешб|кэшб|cashback|бонус|балл|скидк|милл|мил[еь]", re.I)
+
+
+def _keep_balance_rate(product: Product, body: list[str]) -> None:
+    """У дебетовой карты оставляет только процент на остаток — или ничего."""
+    if product.rate_min is None:
+        return
+    for i, line in enumerate(body):
+        if not _ON_BALANCE.search(line):
+            continue
+        for near in (line, *body[i + 1:i + 2], *body[max(0, i - 1):i]):
+            values = rates_of(near)
+            if values and not _CASHBACK_WORD.search(near):
+                product.rate_min, product.rate_max = min(values), max(values)
+                product.rate_raw = near
+                product.terms["Ставка"] = "процент на остаток по карте"
+                return
+    product.terms["Процент в описании карты"] = (
+        f"{product.rate_raw or product.rate_min} — не ставка на остаток (кешбэк, бонусы "
+        "или скидка), в ставки не идёт")[:200]
+    product.rate_min = product.rate_max = None
+    product.rate_raw = ""
 
 
 def _found(product: Product | None) -> str:
@@ -490,6 +530,17 @@ def _worth_saving(product: Product) -> bool:
     return not conditions.is_comparable(product)
 
 
+def _split_psk_and_rate(body: list[str]) -> list[str]:
+    out: list[str] = []
+    for line in body:
+        match = _PSK_THEN_RATE.search(line) if _PSK.search(line) else None
+        if match and _PSK.search(line[:match.start()]):
+            out += [line[:match.start()].strip(), line[match.end():].strip()]
+        else:
+            out.append(line)
+    return out
+
+
 def _read_rates(product: Product, body: list[str]) -> None:
     """Ставка и ПСК из строк описания — первая базовая ставка.
 
@@ -508,11 +559,16 @@ def _read_rates(product: Product, body: list[str]) -> None:
     # выше условий «От 18,0 % · Ставка»), их не берём.
     def is_condition(i: int) -> bool:
         return _is_condition(body, i)
+    body = _split_psk_and_rate(body)
     from_only = product.category in _CREDIT_CATEGORIES and any(
         is_condition(i) for i in range(len(body)))
     for index, line in enumerate(body):
         values = rates_of(line)
         if values is None:
+            continue
+        # На странице кредитки — реклама соседних продуктов: «9% годовых по
+        # накопительному счету» (S7 Premium Т-Банка, 29.10.2026).
+        if product.category in _CREDIT_CATEGORIES and _OTHER_PRODUCT.search(line):
             continue
         # Вёрстка ВТБ дублирует цифру для мобильной и полной версии:
         # «от 19.144 до 23.705%» и сразу «19,144-23,705%». Второй экземпляр
@@ -575,6 +631,18 @@ def _read_rates(product: Product, body: list[str]) -> None:
                 product.apr_min, product.apr_max = min(values), max(values)
                 product.apr_raw = f"{line} {following}".strip()
             continue
+        # У кредитки ставка всегда подписана «годовых» или «ставка».
+        # Без этих слов рядом — кешбэк: «2% в супермаркетах, кафе»,
+        # «До 10% за покупки на АЗС», «до 50% / за покупки у партнеров»
+        # (Т-Банк, ВТБ, 29.10.2026).
+        if product.category == "Кредитные карты" and not _RATE_WORD.search(
+                " ".join(body[max(0, index - 1):index + 2])):
+            continue
+        # «29,9 — 61,9% годовых» (кредитки Т-Банка, 29.10.2026): знак процента
+        # только у второго числа — нижняя граница терялась.
+        span = _RANGE.search(line)
+        if span and len(values) == 1 and float(span.group(2).replace(",", ".")) == values[0]:
+            values = [float(span.group(1).replace(",", ".")), values[0]]
         # Ставка выше порога — доля или взнос, а не ставка (ПСК выше уже
         # разобрана: у неё 50 % с лишним бывает законно).
         if ceiling is not None and max(values) > ceiling:
@@ -687,6 +755,9 @@ def product_from_page(data: dict[str, Any], *, bank: str, url: str,
     for key, value in _amount_and_term(body).items():
         setattr(product, key, value)
 
+    if product.category in _DEBIT_CATEGORIES:
+        _keep_balance_rate(product, body)
+
     if product.rate_min is None:
         product.terms["Ставка"] = ("на странице указана только ПСК"
                                    if product.apr_min is not None
@@ -696,7 +767,8 @@ def product_from_page(data: dict[str, Any], *, bank: str, url: str,
     base_rate_without_service(product, data.get("text") or "")
     # «Карта больше не выпускается», «приём заявок прекращён» — продукт есть
     # на сайте, но оформить его нельзя: в сравнение не идёт.
-    closed = _CLOSED.search("\n".join(body[:40]))
+    # Оговорка бывает прямо в заголовке страницы — его тоже смотрим.
+    closed = _CLOSED.search("\n".join([product.title or "", *body[:40]]))
     if closed:
         product.terms[conditions.CLOSED_KEY] = " ".join(closed.group(0).split())[:160]
     # Карты: обслуживание, кешбэк, переводы, беспроцентный период — из
@@ -1077,14 +1149,24 @@ class CrawlAdapter(BankAdapter):
         if not self.settings.get("tariff_pdf", True):
             return
         self._tariffs_read = getattr(self, "_tariffs_read", 0)
+        # Один тариф висит на многих страницах (рефинансирование Т-Банка —
+        # пять страниц, один PDF): скачиваем его один раз за сбор.
+        cache: dict[str, str] = self.__dict__.setdefault("_tariff_cache", {})
         for url in tariffs.tariff_links(data.get("links") or []):
-            if self._tariffs_read >= 25:
-                return
-            self._tariffs_read += 1
-            try:
-                text = tariffs.pdf_text(url)
-            except Exception as exc:                # noqa: BLE001
-                log.info("%s: тариф %s не прочитался — %s", self.title, url, str(exc)[:100])
+            if url in cache:
+                text = cache[url]
+            else:
+                if self._tariffs_read >= 40:
+                    return
+                self._tariffs_read += 1
+                try:
+                    text = tariffs.pdf_text(url)
+                except Exception as exc:            # noqa: BLE001
+                    log.info("%s: тариф %s не прочитался — %s", self.title, url, str(exc)[:100])
+                    cache[url] = ""
+                    continue
+                cache[url] = text
+            if not text:
                 continue
             folder = self._pages_dir()
             if folder is not None:
@@ -1096,7 +1178,7 @@ class CrawlAdapter(BankAdapter):
                         encoding="utf-8")
                 except OSError:
                     pass
-            found = tariffs.rate_from_text(text, ceiling=_MAX_RATE.get(product.category, 60.0))
+            found = tariffs.rate_from_text(text, ceiling=_TARIFF_MAX.get(product.category, 60.0))
             if found:
                 low, high, quote = found
                 product.rate_min, product.rate_max = low, high

@@ -73,6 +73,10 @@ class SberAdapter(CrawlAdapter):
         ("/ru/person/contributions", "Вклады"),
         ("/ru/person/credits/home", "Ипотека"),
         ("/ru/person/credits", "Кредиты"),
+        # Префикс сравнивается по целому сегменту пути: «…/credit» не ловит
+        # «…/credit_cards/credit_sberkarta_fix» (29.10.2026 «Карта Фикс» ушла
+        # в «Банковские карты»).
+        ("/ru/person/bank_cards/credit_cards", "Кредитные карты"),
         ("/ru/person/bank_cards/credit", "Кредитные карты"),
         ("/ru/person/bank_cards/debit", "Дебетовые карты"),
         ("/ru/person/bank_cards", "Банковские карты"),
@@ -111,7 +115,13 @@ class SberAdapter(CrawlAdapter):
         # кредите, условия погашения, заявки, отсрочка, комиссии, обременение,
         # оценщики, калькуляторы.
         r"/otkaz|delivery_and|/trns$|/order$|/sn_obr|/oc_org|pogashen|otsrochka|"
-        r"commission|/calk$|zayvka|/avtokredit/dc)",
+        r"commission|/calk$|zayvka|/avtokredit/dc|"
+        # Снимок 29.10.2026: статьи и видео («/media»), розыск счетов,
+        # совместный доступ, счета для недееспособных, памятки для новых
+        # держателей карт и перевыпуска на «Мир», школьные сервисы, переводы
+        # страниц для нерезидентов на другие языки — не продукты.
+        r"/media(?:/|$)|/finder$|nedeesposob|sovmestnyi_dostup|nonresident-friendly_|"
+        r"/onboarding$|/debet_new/|school_services|/foreign/(?:en|tj|uz|kr|kg|kz)$)",
         re.I,
     )
 
