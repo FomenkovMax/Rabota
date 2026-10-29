@@ -106,7 +106,12 @@ class SberAdapter(CrawlAdapter):
         # SEO-подборки и партнёрские списки — не продукты.
         r"_b$|/zayavka|/order_|/ru/person/.*/ru/person|/ru/person_new|/rustore|"
         r"/app-gallery|/galaxy-store|kanikul|/uregulirovanie|/mirovoe|/moi-prava|"
-        r"/tablica|/seo/|/pos/|/transfer_payments|/collection|_sticker$|/sberfest)",
+        r"/tablica|/seo/|/pos/|/transfer_payments|/collection|_sticker$|/sberfest|"
+        # Сбор 29.10.2026 (карта сайта): статьи и служебные страницы — отказ в
+        # кредите, условия погашения, заявки, отсрочка, комиссии, обременение,
+        # оценщики, калькуляторы.
+        r"/otkaz|delivery_and|/trns$|/order$|/sn_obr|/oc_org|pogashen|otsrochka|"
+        r"commission|/calk$|zayvka|/avtokredit/dc)",
         re.I,
     )
 
@@ -251,7 +256,7 @@ class TbankAdapter(CrawlAdapter):
         # Сбор 28.10.2026: «как погасить», карты сайта, формы заявок и
         # оплаты, партнёрские рассрочки в магазинах — не продукты.
         r"how-repay|/sitemap|/form/|/new-form|/payment$|/purpose$|/service$|"
-        r"/pos-loans/[\w/-]+"), re.I)
+        r"/pos-loans/[\w/-]+|/credit-history|/payments/|/specialty-check"), re.I)
 
 
 @registry.register

@@ -63,3 +63,17 @@ def test_seo_pages(url):
 ])
 def test_real_products_stay(url):
     assert not is_seo_page(url)
+
+
+@pytest.mark.parametrize("url", [
+    "https://www.tbank.ru/mortgage/na-studiyu",
+    "https://www.tbank.ru/mortgage/na-5000000-rublej",
+    "https://www.tbank.ru/loans/auto-loan/programs/haval",
+])
+def test_tbank_mortgage_and_brand_copies_are_seo(url):
+    assert is_seo_page(url)
+
+
+def test_tbank_real_mortgage_and_gosprogram_stay():
+    assert not is_seo_page("https://www.tbank.ru/mortgage/secondary-property")
+    assert not is_seo_page("https://www.tbank.ru/loans/auto-loan/programs/gosprogramma")

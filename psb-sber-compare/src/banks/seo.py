@@ -66,6 +66,9 @@ _SEO_PAGES = {
         # «на 3 месяца / для пенсионеров / в рублях», посадочные кредитных
         # карт («без процентов», «по паспорту», «за 5 минут»…) — копии продуктов.
         r"|^/loans/auto-loan/[\w-]+-v-kredit/?$"
+        # Сбор 29.10.2026: ипотека «на студию / на 2-комнатную / на 5 000 000
+        # рублей», автокредит «на HAVAL / GEELY…» от производителя — копии.
+        r"|^/mortgage/na-[\w-]+/?$|^/loans/auto-loan/programs/(?!gosprogramma)[\w-]+/?$"
         r"|^/savings/deposit/(?:vklad[\w-]*|vklady[\w-]*|dolgosrochnyi-vklad)/?$"
         r"|^/cards/credit-cards/(?:without-[\w-]+|ot-5-minut|v-den-[\w-]+|po-pasportu|"
         r"home-delivery|cashback|virtual-credit-card|with-[\w-]+|shopping|travel|driver|"

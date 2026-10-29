@@ -154,7 +154,10 @@ def test_calculator_read_before_tabs_hide_it(tmp_path, monkeypatch):
         '</script></body>',
         "document.getElementById('t2').onclick = () => {"
         " document.getElementById('about').style.display = 'none';"
-        " document.getElementById('cond').style.display = 'block'; };\n</script></body>")
+        " document.getElementById('cond').style.display = 'block'; };\n"
+        "document.getElementById('t1').onclick = () => {"
+        " document.getElementById('about').style.display = 'flex';"
+        " document.getElementById('cond').style.display = 'none'; };\n</script></body>")
     (tmp_path / "index.html").write_text(tabs, encoding="utf-8")
     handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(tmp_path))
     server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
@@ -215,3 +218,30 @@ def test_implied_rate_math():
     # 1 000 000 ₽ на 12 мес под 12 % годовых — платёж 88 849 ₽.
     assert calculator.implied_rate(1_000_000, 12, 88_849) == 12.0
     assert calculator.implied_rate(1_000_000, 12, 50_000) is None
+
+
+def test_page_survives_hanging_calculator(monkeypatch):
+    """28.10.2026: калькулятор «Кредита наличными» Сбера работал дольше 300 с,
+    и страница пропадала целиком. Теперь она отдаётся до калькулятора."""
+    import contextlib
+    import time as _time
+
+    from src.banks import browser
+
+    class Hanging:
+        def inspect(self, url, *, wait_for="", on_partial=None):
+            on_partial({"text": "Кредит наличными\nСтавка от 20,4%", "h1": "Кредит наличными"})
+            _time.sleep(30)                      # калькулятор завис
+            return {"text": "никогда"}
+
+    @contextlib.contextmanager
+    def fake_session(settings, cookies=None):
+        yield Hanging()
+
+    monkeypatch.setattr(browser, "browser_session", fake_session)
+    settings = browser.BrowserSettings(calculator_region="ЛНР")
+    with browser.PageReader(settings, limit_s=3, start_limit_s=10) as reader:
+        reader.limit_s = 3                       # без запаса на калькулятор — для скорости
+        data = reader.read("https://www.sberbank.ru/ru/person/credits/money/consumer_unsecured")
+    assert "20,4%" in data["text"]
+    assert "не успел" in data["calculator"]["error"]

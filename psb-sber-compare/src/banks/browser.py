@@ -266,15 +266,17 @@ class BrowserSession:
         data = self._visit(url, wait_for, _SNAPSHOT_JS)
         return data["html"], data["text"]
 
-    def inspect(self, url: str, *, wait_for: str = "") -> dict[str, Any]:
+    def inspect(self, url: str, *, wait_for: str = "",
+                on_partial: Any = None) -> dict[str, Any]:
         """Текст, заголовок и ссылки страницы — всё, что нужно обходу каталога.
 
         Разметку целиком не отдаём: у Сбера она весит полтора мегабайта, а
         обходу хватает текста и списка ссылок.
         """
-        return self._visit(url, wait_for, _INSPECT_JS)
+        return self._visit(url, wait_for, _INSPECT_JS, on_partial=on_partial)
 
-    def _visit(self, url: str, wait_for: str, script: str) -> dict[str, Any]:
+    def _visit(self, url: str, wait_for: str, script: str,
+               on_partial: Any = None) -> dict[str, Any]:
         """Открывает страницу, ждёт скрипты и снимает с неё данные сценарием.
 
         Данные снимаются через evaluate, а не через page.content(): у content
@@ -307,20 +309,6 @@ class BrowserSession:
             # Время на JS-проверку и на дозагрузку условий отдельными запросами.
             page.wait_for_timeout(self.settings.settle_ms)
 
-            # Калькулятор — до раскрытия вкладок: у Сбера (28.10.2026) он на
-            # вкладке «Об ипотеке», а раскрытие переключает на «Условия и
-            # требования», и калькулятор пропадает со страницы.
-            calc = None
-            if self.settings.calculator_region and re.search(
-                    self.settings.calculator_paths or ".", url):
-                try:
-                    with hard_limit(15, f"прокрутка {url}"):
-                        page.evaluate(_SCROLL_JS)
-                        page.wait_for_timeout(800)
-                except Exception:                   # noqa: BLE001
-                    pass
-                calc = self._calculator(page)
-
             clicked = self._expand(page) if self.settings.expand else 0
 
             with hard_limit(self._overall(), f"чтение страницы {url}"):
@@ -328,8 +316,28 @@ class BrowserSession:
             data["status"] = status
             data["url"] = page.url
             data["expanded"] = clicked
-            if calc is not None:
-                data["calculator"] = calc
+
+            # Калькулятор — после того, как страница прочитана и отдана: 28.10
+            # калькуляторы «Кредита наличными» и «Ипотеки для новых регионов»
+            # Сбера работали дольше 300 с, и страницы пропали целиком. Теперь
+            # страница уходит родителю сразу, а калькулятор — довеском.
+            if self.settings.calculator_region and re.search(
+                    self.settings.calculator_paths or ".", url):
+                if on_partial is not None:
+                    on_partial(dict(data))
+                try:
+                    with hard_limit(20, f"возврат вкладки {url}"):
+                        # Раскрытие переключило вкладку на «Условия»: калькулятор
+                        # Сбера на «Об ипотеке» — возвращаемся туда.
+                        page.evaluate(_FIRST_TAB_JS)
+                        page.wait_for_timeout(1200)
+                        page.evaluate(_SCROLL_JS)
+                        page.wait_for_timeout(800)
+                except Exception:                   # noqa: BLE001
+                    pass
+                calc = self._calculator(page)
+                if calc is not None:
+                    data["calculator"] = calc
             if responses and re.search(self.settings.calculator_paths or ".", url):
                 data["network"] = _json_bodies(responses, url)
             return data
@@ -398,6 +406,22 @@ class BrowserSession:
                 pass
         self._context = self._browser = self._playwright = None
 
+
+# Вкладка с описанием продукта, где обычно стоит калькулятор.
+_FIRST_TAB_JS = """
+() => {
+  const re = /^\\s*(об ипотеке|о кредите|о продукте|о вкладе|о карте|об автокредите|описание|основное)\\s*$/i;
+  for (const el of document.querySelectorAll('body *')) {
+    const t = (el.textContent || '').trim();
+    if (!t || t.length > 30 || !re.test(t)) continue;
+    if (Array.from(el.children).some(c => re.test((c.textContent || '').trim()))) continue;
+    const link = el.closest('a[href]');
+    if (link && !link.getAttribute('href').startsWith('#')) continue;
+    try { el.click(); return true; } catch (e) {}
+  }
+  return false;
+}
+"""
 
 #: Сколько секунд даём калькулятору: регион, до 12 целей и вложенные
 #: программы по ~4 с. Сам калькулятор останавливается раньше (бюджет на
@@ -570,7 +594,9 @@ def _serve_pages(settings: "BrowserSettings", cookies: list[dict] | None,
                 if url is None:
                     break
                 try:
-                    channel.send(("ok", session.inspect(url, wait_for=wait_for)))
+                    channel.send(("ok", session.inspect(
+                        url, wait_for=wait_for,
+                        on_partial=lambda part: channel.send(("part", part)))))
                 except Exception as exc:            # noqa: BLE001
                     channel.send(("fail", f"{type(exc).__name__}: {str(exc)[:200]}"))
     except Exception as exc:                        # noqa: BLE001
@@ -628,14 +654,30 @@ class PageReader:
             self._start()
 
         self._channel.send(url)
-        if not self._channel.poll(self.limit_s):
-            self._kill()
-            raise PageTooSlow(f"страница не отдалась за {self.limit_s:.0f} с: {url}")
-        try:
-            kind, payload = self._channel.recv()
-        except EOFError:
-            self._kill()
-            raise PageTooSlow(f"чтение страницы оборвалось: {url}") from None
+        deadline = time.monotonic() + self.limit_s
+        partial: dict[str, Any] | None = None
+        while True:
+            left = deadline - time.monotonic()
+            if left <= 0 or not self._channel.poll(left):
+                self._kill()
+                if partial is not None:
+                    # Страница прочитана, завис только калькулятор — отдаём
+                    # страницу, а калькулятор помечаем.
+                    partial["calculator"] = {"error": "калькулятор не успел за "
+                                             f"{self.limit_s:.0f} с — страница прочитана без него"}
+                    return partial
+                raise PageTooSlow(f"страница не отдалась за {self.limit_s:.0f} с: {url}")
+            try:
+                kind, payload = self._channel.recv()
+            except EOFError:
+                self._kill()
+                if partial is not None:
+                    return partial
+                raise PageTooSlow(f"чтение страницы оборвалось: {url}") from None
+            if kind == "part":
+                partial = payload
+                continue
+            break
 
         if kind == "ok":
             return payload
