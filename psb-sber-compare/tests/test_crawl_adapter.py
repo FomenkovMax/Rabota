@@ -836,3 +836,10 @@ def test_sber_service_pages_are_skipped_and_credit_cards_categorised():
         assert adapter._links([base + path]) == [], path
     assert adapter._family(base + "/ru/person/bank_cards/credit_cards/credit_sberkarta_fix") \
         == "Кредитные карты"
+
+
+def test_tiny_rate_with_caption_is_kept():
+    """Сберегательный счёт Сбера: «Ставка 0,01% годовых» — ставка, а не шум."""
+    from src.banks.generic_site import rates_of
+    assert rates_of("Ставка 0,01% годовых") == [0.01]
+    assert rates_of("Неустойка 0,05% в день") is None

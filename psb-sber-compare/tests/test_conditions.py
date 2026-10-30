@@ -298,3 +298,10 @@ def test_discount_and_reduction_are_not_rates(lines):
     product = crawl.product_from_page(page, bank="ВТБ", url="https://www.vtb.ru/c",
                                       category="Кредиты", region="", collected_at="")
     assert product.rate_min is None
+
+
+def test_premium_title_variants():
+    from types import SimpleNamespace
+    for title in ("Премиальная кредитная карта для путешествий", "Black Premium",
+                  "Новые высоты с премиальной кредитной картой"):
+        assert conditions.kind_of(SimpleNamespace(title=title, terms={}))[0] == conditions.PREMIUM

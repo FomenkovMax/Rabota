@@ -182,8 +182,15 @@ def rates_of(line: str) -> list[float] | None:
     measured = _NOT_A_RATE.sub(" ", _SHARE_AFTER.sub(" ", line))
     if not _RATE_LINE.search(measured):
         return None
-    values = [r for r in parse_rates(measured) if 0.1 <= r <= 100]
+    # 0,01 % — настоящая ставка счетов и валютных вкладов Сбера («Ставка —
+    # 0,01% годовых», 29.10.2026), но только с подписью: голые доли процента
+    # бывают комиссиями и неустойками.
+    floor = 0.01 if _TINY_RATE_OK.search(measured) else 0.1
+    values = [r for r in parse_rates(measured) if floor <= r <= 100]
     return values or None
+
+
+_TINY_RATE_OK = re.compile(r"ставк\w*|годовых", re.I)
 
 
 def _rate_above_title(lines: list[str], titles: list[int]) -> bool:

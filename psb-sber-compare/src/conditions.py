@@ -79,7 +79,10 @@ _NICHE_TITLE = re.compile(
     r"за\s+покупку|газификац|деньги\s+до\s+пенсии",
     re.I,
 )
-_PREMIUM_TITLE = re.compile(r"премиум|премьер|\bprime\b|прайм|private|привилеги", re.I)
+# «Премиальная кредитная карта», «Black Premium» (Т-Банк, 29.10.2026) — тоже
+# премиальный сегмент, а не только «премиум».
+_PREMIUM_TITLE = re.compile(r"премиум|премиальн|премьер|\bprime\b|\bpremium\b|прайм|private|"
+                            r"привилеги", re.I)
 
 
 def scan(text: str) -> list[str]:
