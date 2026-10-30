@@ -843,3 +843,93 @@ def test_tiny_rate_with_caption_is_kept():
     from src.banks.generic_site import rates_of
     assert rates_of("Ставка 0,01% годовых") == [0.01]
     assert rates_of("Неустойка 0,05% в день") is None
+
+
+def test_error_page_is_retried_once(monkeypatch):
+    """Т-Банк 30.10.2026: «Black» один раз отдал страницу ошибки — повтор её спасает."""
+    from src.banks.others import RostfinanceAdapter
+
+    good = {"h1": "Вклад «Доходный»", "title": "", "links": [],
+            "text": "Меню\nВклад «Доходный»\nСтавка до 15,5% годовых\nСрок 6 месяцев"}
+    calls: dict[str, int] = {}
+    pages = {
+        "https://www.rostfinance.ru/": {
+            "h1": "", "title": "РостФинанс", "text": "Частным лицам",
+            "links": [["https://www.rostfinance.ru/vklady/dohodny", "Вклад"]]},
+    }
+
+    class Reader:
+        def __init__(self, *a, **k):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            pass
+
+        def close(self):
+            pass
+
+        def read(self, url):
+            if url.endswith("/vklady/dohodny"):
+                calls[url] = calls.get(url, 0) + 1
+                if calls[url] == 1:
+                    return {"h1": "404", "title": "", "text": "Страница не найдена"}
+                return good
+            if url not in pages:
+                raise PageFailed(f"{url} → HTTP 404")
+            return pages[url]
+
+    monkeypatch.setattr(crawl, "PageReader", Reader)
+    result = RostfinanceAdapter(region=None, settings={"region_mode": "federal"}).collect()
+    assert [p.title for p in result.products] == ["Вклад «Доходный»"]
+    assert sum(calls.values()) == 2
+
+
+def test_same_title_in_two_categories_is_two_products(monkeypatch):
+    from src.banks.others import TbankAdapter
+
+    base = "https://www.tbank.ru"
+    card = "Меню\\nКарта ЛУКОЙЛ\\n{}"
+    pages = {
+        f"{base}/cards/debit-cards": {"h1": "Дебетовые карты", "title": "", "text": "Карты",
+                                       "links": [[f"{base}/cards/debit-cards/lukoil", ""],
+                                                 [f"{base}/cards/credit-cards/lukoil", ""]]},
+        f"{base}/cards/debit-cards/lukoil": {"h1": "Карта ЛУКОЙЛ", "title": "", "links": [],
+                                              "text": card.format("Обслуживание бесплатно")},
+        f"{base}/cards/credit-cards/lukoil": {"h1": "Карта ЛУКОЙЛ", "title": "", "links": [],
+                                               "text": card.format("Ставка от 29,9% годовых")},
+    }
+
+    class Reader:
+        def __init__(self, *a, **k):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            pass
+
+        def close(self):
+            pass
+
+        def read(self, url):
+            if url not in pages:
+                raise PageFailed(f"{url} → HTTP 404")
+            return pages[url]
+
+    monkeypatch.setattr(crawl, "PageReader", Reader)
+    adapter = TbankAdapter(region=None, settings={"region_mode": "federal", "sitemap": False})
+    adapter.seeds = (f"{base}/cards/debit-cards",)
+    result = adapter.collect()
+    assert sorted((p.title, p.category) for p in result.products) == [
+        ("Карта ЛУКОЙЛ", "Дебетовые карты"), ("Карта ЛУКОЙЛ", "Кредитные карты")]
+
+
+def test_rate_word_after_adjective_stays_in_name():
+    assert crawl.product_name("Кредит с пониженной ставкой до 3% в первый месяц") == \
+        "Кредит с пониженной ставкой"
+    assert crawl.product_name("ВТБ-Вклад в рублях до 13,7% годовых") == "ВТБ-Вклад в рублях"
+    assert crawl.product_name("Вклад «Сбер Рядом» со ставкой до 14%") == "Вклад «Сбер Рядом»"

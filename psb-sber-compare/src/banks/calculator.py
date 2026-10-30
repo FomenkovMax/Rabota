@@ -257,14 +257,73 @@ def set_region(page: Any, region: str) -> str:
         return ""
 
 
+# Видимые короткие тексты «листьев» страницы: что появилось после клика по
+# полю — то и пункты списка, как бы он ни был свёрстан (Домклик у Сбера,
+# 30.10.2026: ни role=option, ни li — классы с хешами).
+_VISIBLE_TEXTS_JS = """
+() => {
+  const out = [];
+  for (const el of document.querySelectorAll('body *')) {
+    if (/^(SCRIPT|STYLE|SVG|PATH|INPUT|TEXTAREA)$/i.test(el.tagName)) continue;
+    if (Array.from(el.children).some(c => (c.innerText || '').trim())) continue;
+    const t = (el.innerText || '').trim().replace(/\\s+/g, ' ');
+    if (!t || t.length > 90) continue;
+    const r = el.getBoundingClientRect();
+    if (r.width > 0 && r.height > 0 && getComputedStyle(el).visibility !== 'hidden') out.push(t);
+  }
+  return out;
+}
+"""
+
+# Стрелка или контейнер выпадающего списка рядом с полем.
+_OPEN_ARROW_JS = """
+(mark) => {
+  const f = document.querySelector('[data-agent="' + mark + '"]');
+  let box = f;
+  for (let i = 0; i < 4 && box; i++, box = box.parentElement) {
+    const arrow = box.querySelector('[data-e2e-id*=arrow i], [class*=arrow i], [class*=chevron i], ' +
+                                    '[class*=Arrow], button, [role=button]');
+    if (arrow && arrow !== f) { arrow.dispatchEvent(new MouseEvent('mousedown', {bubbles: true}));
+      arrow.click(); return true; }
+  }
+  return false;
+}
+"""
+
+_NOT_OPTION = re.compile(r"^(?:\d[\d\s ]*(?:₽|%|лет|год|мес)?|рассчитать|подробнее|оформить|"
+                         r"выбор значения.*)$", re.I)
+
+
+def _opened_options(page: Any, before: set[str]) -> list[str]:
+    options = page.evaluate(_OPTIONS_JS) or []
+    if options:
+        return options
+    fresh = [t for t in dict.fromkeys(page.evaluate(_VISIBLE_TEXTS_JS) or [])
+             if t not in before and not _NOT_OPTION.match(t)]
+    # Один новый текст — подсказка, а не список.
+    return fresh if len(fresh) >= 2 else []
+
+
 def _list_options(page: Any, mark: str, max_options: int) -> list[str]:
-    """Пункты выпадающего списка: кликом или из <select>."""
+    """Пункты выпадающего списка: кликом по полю, по стрелке, клавишей — или
+    из <select>."""
     field = page.locator(f'[data-agent="{mark}"]').first
     options: list[str] = []
     try:
-        field.click(timeout=3000)
-        page.wait_for_timeout(900)
-        options = (page.evaluate(_OPTIONS_JS) or [])[:max_options]
+        before = set(page.evaluate(_VISIBLE_TEXTS_JS) or [])
+        attempts = (lambda: field.click(timeout=3000),
+                    lambda: page.evaluate(_OPEN_ARROW_JS, mark),
+                    lambda: (field.focus(), page.keyboard.press("ArrowDown")))
+        for attempt in attempts:
+            try:
+                attempt()
+            except Exception as exc:                # noqa: BLE001
+                log.debug("Список %s: попытка открыть не удалась: %s", mark, exc)
+                continue
+            page.wait_for_timeout(900)
+            options = _opened_options(page, before)[:max_options]
+            if options:
+                break
         page.keyboard.press("Escape")
     except Exception as exc:                        # noqa: BLE001
         log.debug("Список %s не открылся: %s", mark, exc)
@@ -283,10 +342,16 @@ def _choose(page: Any, mark: str, option: str) -> bool:
     if tag == "SELECT":
         field.select_option(label=option)
         return True
-    field.click(timeout=3000)
-    page.wait_for_timeout(700)
-    if _pick_option(page, option):
-        return True
+    for opener in (lambda: field.click(timeout=3000),
+                   lambda: page.evaluate(_OPEN_ARROW_JS, mark),
+                   lambda: (field.focus(), page.keyboard.press("ArrowDown"))):
+        try:
+            opener()
+        except Exception:                           # noqa: BLE001
+            continue
+        page.wait_for_timeout(700)
+        if _pick_option(page, option):
+            return True
     page.keyboard.press("Escape")
     return False
 
@@ -369,7 +434,19 @@ def implied_rate(amount: float, months: int, payment: float) -> float | None:
         r = mid / 12
         calc = amount * r / (1 - (1 + r) ** -months)
         low, high = (mid, high) if calc < payment else (low, mid)
-    return round((low + high) / 2 * 100, 2)
+    rate = round((low + high) / 2 * 100, 2)
+    # Упёрлись в верхнюю границу поиска — платёж с суммой не сходится.
+    return None if rate >= 199 else rate
+
+
+_MAX_IMPLIED = 80.0
+
+
+def _field_number(page: Any, mark: str, parse: Any) -> Any:
+    """Число из значения поля; нет значения — из подписи вокруг поля."""
+    raw = page.evaluate(_FIELD_VALUE_JS, mark) or ""
+    value, _, around = raw.partition("\n")
+    return parse(value) if value.strip() and parse(value) else parse(around)
 
 
 def _plain_calculator(page: Any) -> dict[str, Any] | None:
@@ -378,10 +455,10 @@ def _plain_calculator(page: Any) -> dict[str, Any] | None:
         return None
     page.evaluate(_DISCOUNTS_OFF_JS, DISCOUNT_LABEL)
     result = _read(page, "sum")
-    amount = _money(page.evaluate(_FIELD_VALUE_JS, "sum") or "")
+    amount = _field_number(page, "sum", _money)
     term = None
     if page.evaluate(_MARK_FIELD_JS, [TERM_LABEL, "term"]):
-        term = _months(page.evaluate(_FIELD_VALUE_JS, "term") or "")
+        term = _field_number(page, "term", _months)
     block = page.evaluate(_PAYMENT_BLOCK_JS, "sum") or ""
     # Платежей бывает два: «в первый месяц» и «со 2-го месяца» — аннуитет второй,
     # он и больше (первый месяц короче).
@@ -391,7 +468,14 @@ def _plain_calculator(page: Any) -> dict[str, Any] | None:
         result["rate"] = _rate(block)
     out = {"option": "", **result, "payment": payment, "amount": amount, "term_months": term}
     if result.get("rate") is None and amount and term and payment:
-        out["rate_implied"] = implied_rate(amount, term, payment)
+        implied = implied_rate(amount, term, payment)
+        # Сумма или срок прочитаны не те (подпись ползунка «от 35 000 ₽»,
+        # сбор 30.10.2026 — «≈200 %»): неправдоподобную ставку не выводим.
+        if implied is not None and 1 <= implied <= _MAX_IMPLIED:
+            out["rate_implied"] = implied
+        else:
+            out["implied_rejected"] = (f"платёж {payment} за {amount} на {term} мес "
+                                       f"даёт неправдоподобную ставку — не используется")
     return {"region": "", "goal_label": "", "discounts_off": [], "options": [out],
             "complete": True, "kind": "сумма и срок"}
 
@@ -422,9 +506,17 @@ def explore(page: Any, region: str, *, max_options: int = 12,
 
     options = _list_options(page, "goal", max_options)
     if not options:
-        # Список не открылся — сохраняем вёрстку вокруг поля: по ней видно,
-        # как устроен выпадающий список (калькулятор Домклик у Сбера).
+        # Список не открылся — сохраняем вёрстку вокруг поля (для разбора) и
+        # читаем результат для цели, которая стоит по умолчанию: у Сбера
+        # калькулятор на странице программы открыт на её цели, так что ставка
+        # в регионе по программе всё равно будет.
         out["goal_html"] = page.evaluate(_FIELD_HTML_JS, "goal") or ""
+        current = page.evaluate(
+            "(m) => { const f = document.querySelector('[data-agent=\"' + m + '\"]');"
+            " return f ? (f.value || f.innerText || '').trim() : ''; }", "goal") or ""
+        out["options"].append({"option": f"{current} (по умолчанию)" if current else "",
+                               **_read(page, "goal")})
+        return out
     # Калькулятор ипотеки у банка один на все страницы программ: тот же
     # список целей уже перебран в этом сборе — второй раз не перебираем.
     key = (out["region"], tuple(options))

@@ -245,3 +245,87 @@ def test_page_survives_hanging_calculator(monkeypatch):
         data = reader.read("https://www.sberbank.ru/ru/person/credits/money/consumer_unsecured")
     assert "20,4%" in data["text"]
     assert "не успел" in data["calculator"]["error"]
+
+
+# Похоже на Домклик внутри страниц ипотеки Сбера (30.10.2026): поле цели —
+# readonly input, список открывается стрелкой и рисуется в отдельном слое
+# без role=option и li — только div с хешированными классами.
+DOMCLICK = """<!doctype html><html><head><meta charset="utf-8"><title>Ипотека</title></head><body>
+<div class="calc">
+  <div><label>Регион покупки недвижимости</label><input id="reg" value="Москва"></div>
+  <ul id="sug" role="listbox"></ul>
+  <div class="inpt-fluid-1"><div class="inpt-root-2"><input id="goal" readonly value="Построить дом">
+    <label>Цель кредита</label></div>
+    <div class="dd-sel-buttonArrow-486" id="arrow">v</div></div>
+</div>
+<div id="layer"></div>
+<div id="res"></div>
+<script>
+const st = {region: 'Москва', goal: 'Построить дом'};
+const reg = document.getElementById('reg'), sug = document.getElementById('sug');
+reg.addEventListener('input', () => { sug.innerHTML = reg.value.length > 2
+  ? '<li role="option">Луганская Народная Республика, Луганск</li>' : ''; });
+sug.addEventListener('click', e => { st.region = e.target.innerText; reg.value = st.region;
+  sug.innerHTML = ''; draw(); });
+const layer = document.getElementById('layer');
+document.getElementById('arrow').addEventListener('click', () => {
+  layer.innerHTML = ['Построить дом', 'Купить готовый дом', 'Квартира в новостройке']
+    .map(t => '<div class="dd-x-9f2"><div class="dd-t-1a">' + t + '</div></div>').join(''); });
+layer.addEventListener('click', e => { st.goal = e.target.innerText;
+  document.getElementById('goal').value = st.goal; layer.innerHTML = ''; draw(); });
+function draw() {
+  const lnr = st.region.startsWith('Луганская');
+  const rate = {'Построить дом': 21.5, 'Купить готовый дом': 20.9, 'Квартира в новостройке': 19.9}[st.goal];
+  document.getElementById('res').innerText = 'Ставка\\n' + (rate - (lnr ? 0 : 1)).toFixed(1)
+    .replace('.', ',') + '%\\nЕжемесячный платёж\\n95 000 ₽';
+}
+draw();
+</script></body></html>"""
+
+
+def _inspect(tmp_path, monkeypatch, html):
+    (tmp_path / "index.html").write_text(html, encoding="utf-8")
+    handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(tmp_path))
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    monkeypatch.setenv("NO_PROXY", "127.0.0.1,localhost")
+    from src.banks.browser import BrowserSettings, browser_session
+
+    settings = BrowserSettings(settle_ms=300, pause_s=0,
+                               calculator_region="Луганская Народная Республика, Луганск")
+    try:
+        with browser_session(settings) as session:
+            return session.inspect(f"http://127.0.0.1:{server.server_port}/index.html")
+    except Exception as exc:                        # noqa: BLE001
+        pytest.skip(f"браузер недоступен: {exc}")
+    finally:
+        server.shutdown()
+
+
+def test_domclick_like_dropdown_is_enumerated(tmp_path, monkeypatch):
+    calc = _inspect(tmp_path, monkeypatch, DOMCLICK)["calculator"]
+    assert calc["region"].startswith("Луганская")
+    rates = {o["option"]: o["rate"] for o in calc["options"]}
+    assert rates == {"Построить дом": 21.5, "Купить готовый дом": 20.9,
+                     "Квартира в новостройке": 19.9}
+
+
+def test_closed_dropdown_still_reads_default_goal(tmp_path, monkeypatch):
+    """Список не открылся вовсе — ставка по цели, стоящей по умолчанию."""
+    html = DOMCLICK.replace("document.getElementById('arrow').addEventListener",
+                            "document.getElementById('nothing')?.addEventListener")
+    calc = _inspect(tmp_path, monkeypatch, html)["calculator"]
+    assert [(o["option"], o["rate"]) for o in calc["options"]] == [
+        ("Построить дом (по умолчанию)", 21.5)]
+    assert calc["goal_html"]
+
+
+def test_implausible_implied_rate_is_dropped(tmp_path, monkeypatch):
+    """Рефинансирование Сбера 30.10.2026: сумма прочитана с подписи ползунка
+    «от 35 000 ₽» — вышло «≈200 %». Сумма берётся из значения поля."""
+    html = AUTO.replace('value="5 000 000"></div>',
+                        'value="5 000 000"><small>от 35 000 ₽ до 30 000 000 ₽</small></div>') \
+               .replace('value="4 года"></div>', 'value="4 года"><small>от 1 мес до 7 лет</small></div>')
+    item = _inspect(tmp_path, monkeypatch, html)["calculator"]["options"][0]
+    assert (item["amount"], item["term_months"]) == (5_000_000, 48)
+    assert calculator.implied_rate(35_000, 63, 29_293) is None

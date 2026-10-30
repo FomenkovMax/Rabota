@@ -139,8 +139,11 @@ _IMPERATIVE = re.compile(r"^(?:оформите|откройте)\s+(.+)$", re.I
 _TITLE_TAIL = re.compile(r"\s+(?:со\s+ставкой|с\s+кэшбэком|получайте|онлайн\b|до\s+\d).*$", re.I)
 
 
+# «ставкой» после прилагательного — часть названия: «Кредит с пониженной
+# ставкой до 3%» (Сбер, 30.10.2026) — это «Кредит с пониженной ставкой».
 _RATE_IN_TITLE = re.compile(
-    r"\s+(?:(?:доходност\w*|ставк\w*)\s+)?(?:до|от|со\s+ставкой)\s+\d[\d,.]*\s?%.*$", re.I)
+    r"(?:\s+доходност\w*|\s+со\s+ставк\w*|(?<!ой)(?<!ей)\s+ставк\w*)?\s+(?:до|от|со\s+ставкой)\s+\d[\d,.]*\s?%.*$",
+    re.I)
 
 
 def product_name(title: str) -> str:
@@ -918,6 +921,17 @@ class CrawlAdapter(BankAdapter):
                         failures.append(f"{url}: {str(exc)[:80]}")
                         continue
                     if data is not None and is_not_found(data):
+                        # Т-Банк 30.10.2026 отдал ошибку на «Кредитные карты» и
+                        # «Black», которые сутками раньше читались: сбой сайта, а
+                        # не удалённая страница. Одна повторная попытка в конце
+                        # очереди; настоящая 404 останется 404.
+                        if url not in retried:
+                            retried.add(url)
+                            queue.append(url)
+                            visited -= 1
+                            log.info("%s: страница ошибки — повторю позже: %s",
+                                     self.title, urlsplit(url).path)
+                            continue
                         # РостФинанс на неверный адрес отдаёт «Такой страницы нет» с
                         # блоком «Лучшие предложения» — из него получался
                         # продукт «Классический Рост» на каждой странице.
@@ -968,7 +982,12 @@ class CrawlAdapter(BankAdapter):
                             data, bank=self.title, url=url, category=family,
                             region=region_label, collected_at=now)
                         if product is not None:
-                            products.setdefault(normalize_title(product.title), product)
+                            key = normalize_title(product.title)
+                            # «Карта ЛУКОЙЛ» у Т-Банка — и дебетовая, и кредитная
+                            # (30.10.2026): одно название, разные продукты.
+                            if key in products and products[key].category != product.category:
+                                key = f"{key} · {product.category.lower()}"
+                            products.setdefault(key, product)
                             if (product.rate_min is None
                                     and product.category in _RATE_CATEGORIES):
                                 self._rate_from_tariff(product, data, visited)
