@@ -42,8 +42,8 @@ DISCOUNT_LABEL = r"зарплат|пенси|перевед[уё] зарплат
 #: Региональная / Семейная / Стандартная» (калькулятор Сбера, 28.10.2026).
 PROGRAM_LABEL = (r"^(?:программа|программа\s+кредитования|госпрограмма|вид\s+программы|"
                  r"ипотечная\s+программа)\s*[:*]?$")
-UNAVAILABLE = re.compile(r"недоступн\w*\s+в\s+(?:вашем|этом|выбранном)\s+регион|"
-                         r"не\s+выда[её]тся\s+в\s+(?:вашем|этом)\s+регион", re.I)
+UNAVAILABLE = re.compile(r"недоступн\w*\s+в\s+(?:вашем|этом|выбранном)\s+регион\w*|"
+                         r"не\s+выда[её]тся\s+в\s+(?:вашем|этом)\s+регион\w*", re.I)
 _RATE = re.compile(
     r"(?:процентная\s+)?ставк[аи][^\d\n%]{0,40}\n?\s*(?:от\s*|до\s*)?"
     r"(\d{1,2}(?:[,.]\d{1,3})?)\s?%", re.I)
@@ -155,6 +155,8 @@ _RESULT_JS = """
     const t = (node.textContent || '').trim();
     const el = node.parentElement;
     if (!t || t.length > 40 || !/\\d\\s?%/.test(t) || !el || !visible(el)) continue;
+    // «-1%», «до -1,5%» — скидки в «Услугах, влияющих на ставку», не ставка.
+    if (/^(?:до\\s*)?[-−–]\\s?\\d/.test(t)) continue;
     let box = el, ctx = '';
     for (let i = 0; i < 5 && box; i++, box = box.parentElement) {
       const c = (box.innerText || '').trim();
@@ -169,6 +171,11 @@ _RESULT_JS = """
   }
   // Предупреждение о регионе ищем по всей странице: другой такой фразы там нет.
   const body = document.body.innerText || '';
+  // Панель с подписью «Процентная ставка» и числом строкой ниже (Домклик у
+  // Сбера, 30.10.2026) — это и есть результат, ближайшая цифра к полю там —
+  // скидка «-1%» из «Услуг, влияющих на ставку».
+  const panel = body.match(/(?:^|\\n)(?:процентная\\s+)?ставка\\n\\s*[\\d.,]+\\s?%\\n[^]{0,120}/i);
+  if (panel) best = panel[0].trim();
   const warn = body.match(/[^\\n]{0,60}недоступн[^\\n]{0,80}регион[^\\n]{0,40}/i);
   return (warn ? warn[0] + '\\n' : '') + best;
 }
@@ -203,16 +210,66 @@ def read_result(text: str) -> dict[str, Any]:
     payment = _PAYMENT.search(text or "")
     blocked = UNAVAILABLE.search(text or "")
     return {
-        "available": not blocked,
+        # Доступна — только если калькулятор показал расчёт. Ни ставки, ни
+        # платежа, ни запрета (Домклик, «Семейная» в ЛНР, 30.10.2026) —
+        # неизвестно, а не «доступна».
+        "available": False if blocked else (True if _rate(text) is not None or payment else None),
         "rate": None if blocked else _rate(text),
         "payment": int(re.sub(r"\D", "", payment.group(1))) if payment else None,
         "note": blocked.group(0) if blocked else "",
     }
 
 
+# Самый внешний видимый элемент с ровно таким текстом — пункт целиком.
+_CLICK_TEXT_JS = """
+(text) => {
+  const norm = t => (t || '').trim().replace(/\\s+/g, ' ');
+  const visible = el => { const r = el.getBoundingClientRect();
+    return r.width > 0 && r.height > 0 && getComputedStyle(el).visibility !== 'hidden'; };
+  const hits = Array.from(document.querySelectorAll('body *'))
+    .filter(e => visible(e) && norm(e.innerText) === text);
+  const top = hits.find(e => !hits.includes(e.parentElement)) || hits[0];
+  if (!top) return false;
+  top.dispatchEvent(new MouseEvent('mousedown', {bubbles: true}));
+  top.click();
+  return true;
+}
+"""
+
+
+# Кнопки программ: короткий текст «Название от N%», не пункт открытого списка.
+_CHIPS_JS = """
+() => {
+  const norm = t => (t || '').trim().replace(/\\s+/g, ' ');
+  const re = /^[^%]{2,40}\\sот\\s?[\\d.,]+\\s?%$/;
+  const visible = el => { const r = el.getBoundingClientRect();
+    return r.width > 0 && r.height > 0 && getComputedStyle(el).visibility !== 'hidden'; };
+  const out = [];
+  for (const el of document.querySelectorAll('body *')) {
+    const t = norm(el.innerText);
+    if (!re.test(t) || !visible(el) || el.closest('[role=listbox], [data-e2e-id*=list_item]')) continue;
+    if (Array.from(el.children).some(c => norm(c.innerText) === t)) continue;
+    if (!out.includes(t)) out.push(t);
+  }
+  return out;
+}
+"""
+
+
+def _clean(option: str) -> str:
+    """«Квартира в новостройке от 2%» → «Квартира в новостройке»: «от N%» в
+    пункте — минимальная ставка, она меняется, а название — нет."""
+    return re.split(r"\s+от\s+\d", option or "")[0].strip() or option
+
+
 def _pick_option(page: Any, text: str) -> bool:
-    for selector in ("[role=option]", "li", "[class*=option]", "div", "span"):
-        loc = page.locator(selector, has_text=text)
+    # Домклик (30.10.2026): пункт — <label> «Квартира на вторичном рынке /
+    # от 15.5%», без role=option.
+    # Ищем по названию без «от 16.2%»: в разметке там неразрывный пробел и
+    # перенос строки, поиск Playwright по полному тексту их не находит.
+    probe = re.split(r"\s+от\s+\d", text)[0].strip() or text
+    for selector in ("[role=option]", "li", "label", "[class*=option]", "div", "span"):
+        loc = page.locator(selector, has_text=probe)
         try:
             count = min(loc.count(), 6)
         except Exception:                           # noqa: BLE001
@@ -220,12 +277,23 @@ def _pick_option(page: Any, text: str) -> bool:
         for i in range(count):
             item = loc.nth(i)
             try:
-                if item.is_visible() and (item.inner_text() or "").strip() == text:
-                    item.click(timeout=3000)
+                # Пункт Домклика — две строки: «Квартира в новостройке /
+                # от 4%»; сравниваем без учёта переносов.
+                if item.is_visible() and " ".join((item.inner_text() or "").split()) == text:
+                    # Клик у левого края: в центре пункта Домклика лежит
+                    # подсветка, клик по ней выбор не меняет (30.10.2026).
+                    box = item.bounding_box() or {}
+                    if box.get("width", 0) > 60:
+                        item.click(timeout=3000, position={"x": 20, "y": box["height"] / 2})
+                    else:
+                        item.click(timeout=3000)
                     return True
             except Exception:                       # noqa: BLE001
                 continue
-    return False
+    try:
+        return bool(page.evaluate(_CLICK_TEXT_JS, text))
+    except Exception:                               # noqa: BLE001
+        return False
 
 
 def set_region(page: Any, region: str) -> str:
@@ -311,7 +379,7 @@ def _list_options(page: Any, mark: str, max_options: int) -> list[str]:
     options: list[str] = []
     try:
         before = set(page.evaluate(_VISIBLE_TEXTS_JS) or [])
-        attempts = (lambda: field.click(timeout=3000),
+        attempts = (lambda: field.click(timeout=3000, force=True),
                     lambda: page.evaluate(_OPEN_ARROW_JS, mark),
                     lambda: (field.focus(), page.keyboard.press("ArrowDown")))
         for attempt in attempts:
@@ -342,7 +410,7 @@ def _choose(page: Any, mark: str, option: str) -> bool:
     if tag == "SELECT":
         field.select_option(label=option)
         return True
-    for opener in (lambda: field.click(timeout=3000),
+    for opener in (lambda: field.click(timeout=3000, force=True),
                    lambda: page.evaluate(_OPEN_ARROW_JS, mark),
                    lambda: (field.focus(), page.keyboard.press("ArrowDown"))):
         try:
@@ -532,12 +600,21 @@ def explore(page: Any, region: str, *, max_options: int = 12,
         try:
             if not _choose(page, "goal", option):
                 continue
-            out["options"].append({"option": option, **_read(page, "goal")})
+            out["options"].append({"option": _clean(option), **_read(page, "goal")})
             # Вложенный список программы — ищем заново после каждой цели:
             # у новостройки он есть, у вторички может не быть.
             page.evaluate("() => document.querySelectorAll('[data-agent=prog]')"
                           ".forEach(e => e.removeAttribute('data-agent'))")
             if not page.evaluate(_MARK_FIELD_JS, [PROGRAM_LABEL, "prog"]):
+                # Программы-кнопки под целью (Домклик у Сбера, 30.10.2026):
+                # «Базовая от 15,7%», «Семейная от 2%», «Региональная от 2%».
+                for chip in (page.evaluate(_CHIPS_JS) or [])[:8]:
+                    if time.monotonic() > deadline:
+                        out["complete"] = False
+                        break
+                    if _pick_option(page, chip):
+                        out["options"].append({"option": f"{_clean(option)} → {_clean(chip)}",
+                                               **_read(page, "goal")})
                 continue
             for program in _list_options(page, "prog", 6):
                 if time.monotonic() > deadline:
@@ -551,13 +628,31 @@ def explore(page: Any, region: str, *, max_options: int = 12,
     return out
 
 
+def blocked_goals(result: dict[str, Any]) -> list[tuple[str, str]]:
+    """Цели, недоступные в регионе: (цель, что написал калькулятор).
+
+    Цель недоступна, только если недоступны все её программы: у Сбера в ЛНР
+    «Квартира в новостройке» с программой по умолчанию — «недоступно», а с
+    «Региональной» — 3 % (30.10.2026)."""
+    groups: dict[str, list[dict[str, Any]]] = {}
+    for item in result.get("options") or []:
+        goal = (item.get("option") or "").split(" → ")[0].replace(" (по умолчанию)", "").strip()
+        if goal:
+            groups.setdefault(goal, []).append(item)
+    return [(goal, items[0].get("note") or "недоступно")
+            for goal, items in groups.items()
+            if all(i.get("available") is False for i in items)]
+
+
 def summary(result: dict[str, Any]) -> str:
     """Одна строка для условий продукта: что показал калькулятор."""
     parts = []
     for item in result.get("options") or []:
         name = item.get("option") or "калькулятор"
-        if not item.get("available"):
+        if item.get("available") is False:
             parts.append(f"{name}: недоступно в регионе")
+        elif item.get("available") is None and item.get("rate_implied") is None:
+            parts.append(f"{name}: калькулятор не показал расчёт")
         elif item.get("rate") is not None:
             parts.append(f"{name}: {str(item['rate']).replace('.', ',')} %")
         elif item.get("rate_implied") is not None:

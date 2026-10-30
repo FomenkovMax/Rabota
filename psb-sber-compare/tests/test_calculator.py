@@ -329,3 +329,23 @@ def test_implausible_implied_rate_is_dropped(tmp_path, monkeypatch):
     item = _inspect(tmp_path, monkeypatch, html)["calculator"]["options"][0]
     assert (item["amount"], item["term_months"]) == (5_000_000, 48)
     assert calculator.implied_rate(35_000, 63, 29_293) is None
+
+
+def test_goal_blocked_only_if_all_programs_blocked():
+    """Сбер в ЛНР (30.10.2026, живой Домклик): новостройка с программой по
+    умолчанию недоступна, с «Региональной» — 3 %; вторичка недоступна вся."""
+    result = {"region": "Луганская Народная Республика, Луганск", "options": [
+        {"option": "Квартира на вторичном рынке", "available": False, "note": "недоступна"},
+        {"option": "Квартира в новостройке", "available": False, "note": "недоступна"},
+        {"option": "Квартира в новостройке → Семейная", "available": None, "rate": None},
+        {"option": "Квартира в новостройке → Региональная", "available": True, "rate": 3.0},
+    ]}
+    assert calculator.blocked_goals(result) == [("Квартира на вторичном рынке", "недоступна")]
+    line = calculator.summary(result)
+    assert "Региональная: 3,0 %" in line and "Семейная: калькулятор не показал расчёт" in line
+
+
+def test_empty_panel_is_unknown_not_available():
+    assert calculator.read_result("Предварительный расчёт")["available"] is None
+    assert calculator.read_result("Процентная ставка\n3%\nЕжемесячный платёж\n25 296 ₽") == {
+        "available": True, "rate": 3.0, "payment": 25296, "note": ""}

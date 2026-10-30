@@ -98,3 +98,12 @@ def test_savings_account_titles_are_accounts():
     assert category_for("Сберегательный счёт", "Вклады") == "Накопительные счета"
     assert category_for("Вклад до востребования СберБанка России", "Вклады") == "Накопительные счета"
     assert category_for("Вклад Выгодный старт", "Вклады") == "Вклады"
+
+
+def test_calculator_without_any_rate_does_not_prove_lnr():
+    from types import SimpleNamespace
+    from src import availability
+    p = SimpleNamespace(terms={"Калькулятор на сайте":
+                               "Луганская Народная Республика, Луганск — Семейная: калькулятор не показал расчёт"},
+                        source_url="u")
+    assert availability.status_of(p, region_method="federal", presence="").code != availability.LNR

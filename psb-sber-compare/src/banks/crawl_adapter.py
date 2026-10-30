@@ -1134,17 +1134,13 @@ class CrawlAdapter(BankAdapter):
         if product is not None and implied and product.rate_min is None:
             product.terms[IMPLIED_KEY] = f"≈{implied:g} %".replace(".", ",")
         day = datetime.now().strftime("%d.%m.%Y")
-        for item in result.get("options") or []:
-            if item.get("available") or not item.get("option"):
-                continue
-            probe = Product(bank=self.title, title=item["option"],
-                            category=family or "Ипотека")
+        for goal, note in calculator.blocked_goals(result):
+            probe = Product(bank=self.title, title=goal, category=family or "Ипотека")
             program = market_program(probe)
             if program:
                 blocked.setdefault(program, (
                     f"калькулятор на сайте банка для «{result.get('region') or 'ЛНР'}» "
-                    f"на «{item['option']}» пишет «{item.get('note') or 'недоступно'}» "
-                    f"(сбор {day})"))
+                    f"на «{goal}» при всех программах пишет «{note}» (сбор {day})"))
         try:
             folder = self._missing_dir()
             folder.mkdir(parents=True, exist_ok=True)

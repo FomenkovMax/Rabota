@@ -88,7 +88,10 @@ def status_of(product: Any, *, region_method: str, presence: str = "") -> Status
     if absent:
         return Status(ABSENT, str(absent), url)
     calc = str(terms.get("Калькулятор на сайте") or "")
-    if calc and "регион не выбран" not in calc and re.search(r"луганск", calc, re.I):
+    # «Есть в ЛНР» — только если калькулятор для ЛНР показал хоть одну ставку:
+    # строка из одних «недоступно» и «не показал расчёт» этого не доказывает.
+    if (calc and "регион не выбран" not in calc and re.search(r"луганск", calc, re.I)
+            and re.search(r"\d\s?%", calc)):
         return Status(LNR, f"калькулятор на сайте банка: {calc}", url)
     if region_method == "selector":
         return Status(LNR, "условия получены на сайте банка с выбранным регионом ЛНР", url)
