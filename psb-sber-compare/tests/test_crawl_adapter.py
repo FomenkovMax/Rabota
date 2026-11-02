@@ -951,3 +951,12 @@ def test_calculator_offer_in_lnr_becomes_product():
     assert [(p.rate_min, market.program_of(p)) for p in made] == [(3.0, "Льготная для новых регионов")]
     moscow = {**result, "region": ""}
     assert crawl.calculator_products([], [("u", moscow)], bank="Сбер", region="", collected_at="") == []
+
+
+def test_sberblizhe_outside_person_section_is_crawled():
+    """«СберБлиже» — /ru/sberblizhe, вне /ru/person (адрес от заказчика 02.11.2026)."""
+    adapter = SberAdapter(region=None, settings={})
+    url = "https://www.sberbank.ru/ru/sberblizhe"
+    assert url in adapter.priority
+    assert adapter._links([url + "?ysclid=1"]) == [url]
+    assert adapter._family(url) == "Специальные предложения"

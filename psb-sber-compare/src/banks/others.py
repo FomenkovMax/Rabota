@@ -65,6 +65,10 @@ class SberAdapter(CrawlAdapter):
         "https://www.sberbank.ru/ru/person/contributions/deposits/vklad/vklad_luchshiy_procent",
         "https://www.sberbank.ru/ru/person/contributions/deposits/vklad_kluchevoy",
         "https://www.sberbank.ru/ru/person/contributions/deposits/nakopi",
+        # Подписка «СберБлиже» (вместе с ней — вклад «Сбер Рядом»): страница
+        # вне /ru/person, по ссылкам из разделов розницы до неё не дойти
+        # (сбор 02.11.2026 — не найдена, адрес прислал заказчик).
+        "https://www.sberbank.ru/ru/sberblizhe",
     )
     # Порядок важен: точный префикс раньше общего.
     families = (
@@ -80,6 +84,7 @@ class SberAdapter(CrawlAdapter):
         ("/ru/person/bank_cards/credit", "Кредитные карты"),
         ("/ru/person/bank_cards/debit", "Дебетовые карты"),
         ("/ru/person/bank_cards", "Банковские карты"),
+        ("/ru/sberblizhe", "Специальные предложения"),
     )
     # Служебное внутри розничных разделов: из меню Сбера это «Полезное» —
     # калькуляторы, вопросы, налоги, уведомления, компенсации, выплаты АСВ,
