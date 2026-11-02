@@ -55,10 +55,10 @@ def compare_text(bank_code: str) -> str:
         f"<b>Сбер и {_esc(title)}</b>",
         f"<i>Регион: {_esc(data['region'])} · сбор {_esc(data['collected_at'])}</i>",
         "",
-        f"🔴 проигрываем {counts[RED]}   🟡 паритет {counts[YELLOW]}   "
-        f"🟢 выигрываем {counts[GREEN]}   ⚪ нет данных {counts[GREY]}",
-        "",
     ]
+    if data["comparisons"]:
+        lines += [f"🔴 проигрываем {counts[RED]}   🟡 паритет {counts[YELLOW]}   "
+                  f"🟢 выигрываем {counts[GREEN]}   ⚪ нет данных {counts[GREY]}", ""]
 
     counts_by_bank = data["product_counts"]
     rival_count = sum(counts_by_bank.get(t, 0) for t in data["competitor_titles"])
@@ -75,10 +75,11 @@ def compare_text(bank_code: str) -> str:
             lines.append("Данных по Сберу в последнем сборе нет — "
                          "собери их в меню «Обновить данные».")
         else:
-            lines.append(f"Данные есть ({_esc(title)} — {rival_count}, "
-                         f"Сбер — {home_count}), но пары продуктов "
-                         "не сопоставлены.\n"
-                         "Заполни config/product_map.yaml.")
+            # Ручных пар нет — сравнение по программам, как в своде: ставка
+            # Сбера против ставки банка в одной программе (вклады, семейная
+            # ипотека, кредит наличными…). Раньше кнопка писала «пары не
+            # сопоставлены» и ничего не сравнивала (жалоба 03.11.2026).
+            lines += program_lines(data.get("gaps") or [], title)
     else:
         lines.append("<b>Продукты</b>")
         for c in comparisons[:12]:
@@ -116,6 +117,66 @@ def compare_text(bank_code: str) -> str:
                       "Цифры по этим банкам сверь с первоисточником.</i>"]
 
     return "\n".join(lines)
+
+
+_GAP_ICON = {"отстаёт": "🔴", "в рынке": "🟡", "лидер": "🟢",
+             "не найдено у Сбера": "⚪", "нет у конкурентов": "🔵"}
+
+
+def program_lines(gaps: list[Any], title: str, *, limit: int = 30) -> list[str]:
+    """Сравнение Сбера с одним банком по программам (строки для Telegram)."""
+    from src.market import BLOCK_LABEL
+
+    order = {b: i for i, b in enumerate(("DEP", "LOAN", "MTG", "CARD"))}
+    shown = sorted((g for g in gaps if g.status in _GAP_ICON),
+                   key=lambda g: order.get(g.block, 9))
+    if not shown:
+        return [f"Общих программ со ставками у Сбера и {_esc(title)} не нашлось."]
+    tally = {k: sum(1 for g in shown if g.status == k) for k in _GAP_ICON}
+    out = [f"🔴 проигрываем {tally['отстаёт']}   🟡 паритет {tally['в рынке']}   "
+           f"🟢 выигрываем {tally['лидер']}",
+           f"⚪ нет у Сбера {tally['не найдено у Сбера']}   "
+           f"🔵 нет у {_esc(title)} {tally['нет у конкурентов']}", "",
+           "<b>По программам</b> <i>(автоматически; ручные пары не заданы)</i>"]
+    block = ""
+    for g in shown[:limit]:
+        if g.block != block:
+            block = g.block
+            out.append(f"\n<u>{_esc(BLOCK_LABEL.get(block, block))}</u>")
+        prefix = "до" if g.metric == "rate_max" else "от"
+        rival = next((o for o in g.offers if o.bank != "Сбер"), None) if g.offers else None
+        rival = rival or (g.best if g.best and g.best.bank != "Сбер" else None)
+        def pct(v: float) -> str:
+            return f"{v:g}".replace(".", ",") + " %"
+        theirs = f"{prefix} {pct(rival.value)}" if rival else "—"
+        ours = f"{prefix} {pct(g.sber.value)}" if g.sber else "—"
+        delta = ""
+        if g.sber and rival:
+            diff = round(g.sber.value - rival.value, 2)
+            delta = f" ({f'{diff:+g}'.replace('.', ',')} п.п.)"
+        out.append(f"{_GAP_ICON[g.status]} <b>{_esc(g.program)}</b>: "
+                   f"Сбер {ours} · {_esc(title)} {theirs}{delta}")
+    if len(shown) > limit:
+        out.append(f"<i>…и ещё {len(shown) - limit} — в дашборде пары</i>")
+    return out
+
+
+def compare_dashboard(bank_code: str) -> Path | None:
+    """Дашборд «Сбер и <банк>» — тот же свод, но только по двум банкам."""
+    from datetime import datetime
+
+    from src.report import write_report
+
+    config = _config()
+    data = load_report_data(config, competitor=bank_code)
+    if data is None:
+        return None
+    title = BANK_TITLES.get(bank_code, bank_code)
+    out_dir = config.path("export", "dir", default="data/export")
+    out_dir.mkdir(parents=True, exist_ok=True)
+    path = out_dir / f"Сбер_и_{title}_{datetime.now():%Y-%m-%d}.html"
+    write_report(path, data["html"])
+    return path
 
 
 # --- выгрузка --------------------------------------------------------------

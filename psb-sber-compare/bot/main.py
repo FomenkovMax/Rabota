@@ -162,6 +162,16 @@ async def on_compare(call: CallbackQuery) -> None:
 
     await call.message.edit_text(text, reply_markup=kb.back_to_menu(),
                                  disable_web_page_preview=True)
+    # Дашборд пары — файлом сразу за текстом: подробности, графики, калькулятор.
+    try:
+        path = await asyncio.to_thread(service.compare_dashboard, code)
+    except Exception:                             # noqa: BLE001
+        log.exception("Дашборд пары %s не собрался", code)
+        path = None
+    if path is not None:
+        await call.message.answer_document(
+            BufferedInputFile(Path(path).read_bytes(), filename=Path(path).name),
+            caption="Дашборд пары — открой файл", reply_markup=kb.back_to_menu())
 
 
 # --- выгрузка --------------------------------------------------------------
