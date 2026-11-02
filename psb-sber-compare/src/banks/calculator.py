@@ -45,7 +45,9 @@ PROGRAM_LABEL = (r"^(?:программа|программа\s+кредитов�
 UNAVAILABLE = re.compile(r"недоступн\w*\s+в\s+(?:вашем|этом|выбранном)\s+регион\w*|"
                          r"не\s+выда[её]тся\s+в\s+(?:вашем|этом)\s+регион\w*", re.I)
 _RATE = re.compile(
-    r"(?:процентная\s+)?ставк[аи][^\d\n%]{0,40}\n?\s*(?:от\s*|до\s*)?"
+    # «Ставка ниже на 0,5%» (ВТБ, кредит пенсионерам, 02.11.2026) — скидка.
+    r"(?:процентная\s+)?ставк[аи](?![^\d\n%]{0,40}(?:ниже|выше|меньше|больше)\s+на)"
+    r"[^\d\n%]{0,40}\n?\s*(?:от\s*|до\s*)?"
     r"(\d{1,2}(?:[,.]\d{1,3})?)\s?%", re.I)
 _PAYMENT = re.compile(r"(?:ежемесячный\s+)?плат[её]ж[^\d\n]{0,30}\n?\s*([\d\s ]{3,})\s?₽", re.I)
 
@@ -248,6 +250,8 @@ _CHIPS_JS = """
   for (const el of document.querySelectorAll('body *')) {
     const t = norm(el.innerText);
     if (!re.test(t) || !visible(el) || el.closest('[role=listbox], [data-e2e-id*=list_item]')) continue;
+    // «Процентная ставка от 21,3%» — подпись результата, а не программа.
+    if (/^(?:процентная\\s+)?ставк/i.test(t)) continue;
     if (Array.from(el.children).some(c => norm(c.innerText) === t)) continue;
     if (!out.includes(t)) out.push(t);
   }
@@ -279,10 +283,10 @@ def _pick_option(page: Any, text: str) -> bool:
             try:
                 # Пункт Домклика — две строки: «Квартира в новостройке /
                 # от 4%»; сравниваем без учёта переносов.
-                if item.is_visible() and " ".join((item.inner_text() or "").split()) == text:
+                if item.is_visible() and " ".join((item.inner_text(timeout=1500) or "").split()) == text:
                     # Клик у левого края: в центре пункта Домклика лежит
                     # подсветка, клик по ней выбор не меняет (30.10.2026).
-                    box = item.bounding_box() or {}
+                    box = item.bounding_box(timeout=1500) or {}
                     if box.get("width", 0) > 60:
                         item.click(timeout=3000, position={"x": 20, "y": box["height"] / 2})
                     else:
@@ -308,8 +312,8 @@ def set_region(page: Any, region: str) -> str:
     try:
         field.click(timeout=3000)
         if found.get("tag") == "INPUT":
-            field.fill("")
-            field.type(region.split(",")[-1].strip() or head, delay=60)
+            field.fill("", timeout=5000)
+            field.type(region.split(",")[-1].strip() or head, delay=60, timeout=8000)
         page.wait_for_timeout(1500)
         options = page.evaluate(_OPTIONS_JS) or []
         choice = next((o for o in options if head.lower() in o.lower()), None) or next(
@@ -381,7 +385,7 @@ def _list_options(page: Any, mark: str, max_options: int) -> list[str]:
         before = set(page.evaluate(_VISIBLE_TEXTS_JS) or [])
         attempts = (lambda: field.click(timeout=3000, force=True),
                     lambda: page.evaluate(_OPEN_ARROW_JS, mark),
-                    lambda: (field.focus(), page.keyboard.press("ArrowDown")))
+                    lambda: (field.focus(timeout=2000), page.keyboard.press("ArrowDown")))
         for attempt in attempts:
             try:
                 attempt()
@@ -412,7 +416,7 @@ def _choose(page: Any, mark: str, option: str) -> bool:
         return True
     for opener in (lambda: field.click(timeout=3000, force=True),
                    lambda: page.evaluate(_OPEN_ARROW_JS, mark),
-                   lambda: (field.focus(), page.keyboard.press("ArrowDown"))):
+                   lambda: (field.focus(timeout=2000), page.keyboard.press("ArrowDown"))):
         try:
             opener()
         except Exception:                           # noqa: BLE001
@@ -600,7 +604,13 @@ def explore(page: Any, region: str, *, max_options: int = 12,
         try:
             if not _choose(page, "goal", option):
                 continue
-            out["options"].append({"option": _clean(option), **_read(page, "goal")})
+            # Поле региона бывает не у всех целей: у Домклика «Наличные под
+            # залог жилья» (prod=7, 02.11.2026) его нет, у остальных целей оно
+            # появляется после выбора — тогда и выбираем ЛНР.
+            if not out["region"] and page.evaluate(_MARK_FIELD_JS, [REGION_LABEL, "region"]):
+                out["region"] = set_region(page, region)
+            out["options"].append({"option": _clean(option), **_read(page, "goal"),
+                                   "no_region": not out["region"]})
             # Вложенный список программы — ищем заново после каждой цели:
             # у новостройки он есть, у вторички может не быть.
             page.evaluate("() => document.querySelectorAll('[data-agent=prog]')"
@@ -614,7 +624,8 @@ def explore(page: Any, region: str, *, max_options: int = 12,
                         break
                     if _pick_option(page, chip):
                         out["options"].append({"option": f"{_clean(option)} → {_clean(chip)}",
-                                               **_read(page, "goal")})
+                                               **_read(page, "goal"),
+                                               "no_region": not out["region"]})
                 continue
             for program in _list_options(page, "prog", 6):
                 if time.monotonic() > deadline:
@@ -636,6 +647,8 @@ def blocked_goals(result: dict[str, Any]) -> list[tuple[str, str]]:
     «Региональной» — 3 % (30.10.2026)."""
     groups: dict[str, list[dict[str, Any]]] = {}
     for item in result.get("options") or []:
+        if item.get("no_region"):
+            continue
         goal = (item.get("option") or "").split(" → ")[0].replace(" (по умолчанию)", "").strip()
         if goal:
             groups.setdefault(goal, []).append(item)
@@ -648,6 +661,10 @@ def summary(result: dict[str, Any]) -> str:
     """Одна строка для условий продукта: что показал калькулятор."""
     parts = []
     for item in result.get("options") or []:
+        # Прочитано до того, как калькулятор дал выбрать регион, — это
+        # условия региона по умолчанию (Москва), к ЛНР не относятся.
+        if item.get("no_region") and result.get("region"):
+            continue
         name = item.get("option") or "калькулятор"
         if item.get("available") is False:
             parts.append(f"{name}: недоступно в регионе")

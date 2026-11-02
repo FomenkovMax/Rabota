@@ -933,3 +933,21 @@ def test_rate_word_after_adjective_stays_in_name():
         "Кредит с пониженной ставкой"
     assert crawl.product_name("ВТБ-Вклад в рублях до 13,7% годовых") == "ВТБ-Вклад в рублях"
     assert crawl.product_name("Вклад «Сбер Рядом» со ставкой до 14%") == "Вклад «Сбер Рядом»"
+
+
+def test_calculator_offer_in_lnr_becomes_product():
+    """Сбер 02.11.2026: в ЛНР доступна только «Новостройка → Региональная» 3 % —
+    своей страницы нет, продукт берётся из калькулятора; «без региона» и
+    недоступные пункты в продукты не идут."""
+    from src import market
+    result = {"region": "Луганская Народная Республика, Луганск", "options": [
+        {"option": "Квартира в новостройке → Базовая", "available": False, "rate": None},
+        {"option": "Квартира в новостройке → Региональная", "available": True, "rate": 3.0},
+        {"option": "Рефинансирование → Семейная", "available": True, "rate": 7.0,
+         "no_region": True},
+    ]}
+    made = crawl.calculator_products([], [("https://www.sberbank.ru/ru/person/credits/home/family",
+                                           result)], bank="Сбер", region="ЛНР", collected_at="")
+    assert [(p.rate_min, market.program_of(p)) for p in made] == [(3.0, "Льготная для новых регионов")]
+    moscow = {**result, "region": ""}
+    assert crawl.calculator_products([], [("u", moscow)], bank="Сбер", region="", collected_at="") == []

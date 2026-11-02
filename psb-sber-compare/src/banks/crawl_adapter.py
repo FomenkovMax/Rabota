@@ -497,6 +497,53 @@ def market_program(product: Product) -> str:
     return "" if program in market._DEFAULT_PROGRAM.values() else program
 
 
+def calculator_products(products: list[Product], found: list[tuple[str, dict[str, Any]]],
+                        *, bank: str, region: str, collected_at: str) -> list[Product]:
+    """Программы, которые калькулятор для ЛНР показал доступными со ставкой,
+    а своей страницы продукта у банка под них нет.
+
+    Сбер, 02.11.2026: на всех страницах ипотеки Домклик для «Луганская
+    Народная Республика, Луганск» пишет «недоступно», кроме «Квартира в
+    новостройке → Региональная» — 3 %. Это и есть продукт Сбера в ЛНР, но
+    страницы «Региональная ипотека» на сайте нет — без этого программа «Льготная
+    для новых регионов» у Сбера выходила «не найдено».
+    """
+    from .. import market
+    from . import calculator
+    present = {market.program_of(p) for p in products
+               if not (p.terms or {}).get(market.REGION_KEY)}
+    out: list[Product] = []
+    for url, result in found:
+        if not re.search(r"луганск", result.get("region") or "", re.I):
+            continue
+        for item in result.get("options") or []:
+            rate, option = item.get("rate"), item.get("option") or ""
+            if item.get("no_region") or item.get("available") is not True or rate is None:
+                continue
+            goal, _, program_name = option.partition(" → ")
+            # «Региональная» в ЛНР — программа для новых регионов.
+            title = (f"Ипотека для новых регионов «{program_name}» ({goal.lower()})"
+                     if re.search(r"региональн", program_name, re.I)
+                     else f"{program_name or goal} ({goal.lower()})" if program_name else goal)
+            probe = Product(bank=bank, title=title, category="Ипотека")
+            program = market.program_of(probe)
+            if program in present or program in market._DEFAULT_PROGRAM.values():
+                continue
+            present.add(program)
+            product = Product(
+                bank=bank, url_path=f"{urlsplit(url).path}#calc-{normalize_title(option)}",
+                title=title, category="Ипотека", region=region,
+                rate_min=float(rate), rate_max=float(rate),
+                rate_raw=f"калькулятор: {option} — {rate:g} %",
+                source_url=url, collected_at=collected_at)
+            product.terms["Калькулятор на сайте"] = calculator.summary(result)
+            product.terms["Источник ставки"] = (
+                f"калькулятор на сайте банка с выбранным регионом «{result['region']}»: "
+                f"{option} — {rate:g} %; отдельной страницы продукта на сайте нет")
+            out.append(product)
+    return out
+
+
 def mark_blocked(products: list[Product], blocked: dict[str, str]) -> None:
     """Продукты программ, которые калькулятор назвал недоступными в регионе."""
     if not blocked:
@@ -873,6 +920,7 @@ class CrawlAdapter(BankAdapter):
         visited = 0
         self._clear_missing()
         calc_blocked: dict[str, str] = {}      # программа → что сказал калькулятор
+        calc_found: list[tuple[str, dict[str, Any]]] = []   # (адрес, результат калькулятора)
         sitemap_found: set[str] = set()         # страницы из карты сайта
         office_url = ""                         # страница «Офисы и банкоматы»
         site_sections: dict[str, str] = {}
@@ -998,6 +1046,8 @@ class CrawlAdapter(BankAdapter):
                     if data.get("calculator") or data.get("network"):
                         self._save_calculator(url, data, family,
                                               None if is_listing else product, calc_blocked)
+                        if data.get("calculator"):
+                            calc_found.append((url, data["calculator"]))
 
                     for link in links:
                         popularity[link] = popularity.get(link, 0) + 1
@@ -1028,6 +1078,8 @@ class CrawlAdapter(BankAdapter):
 
         merged = self._merge(products, showcase, region_label, now)
         mark_blocked(merged, calc_blocked)
+        merged += calculator_products(merged, calc_found, bank=self.title,
+                                      region=region_label, collected_at=now)
         if blocked:
             log.warning("%s: обход остановлен — сайт закрыл доступ после %s страниц, "
                         "в очереди осталось %s. Собранное сохранено; при следующем "

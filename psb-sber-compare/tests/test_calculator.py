@@ -349,3 +349,15 @@ def test_empty_panel_is_unknown_not_available():
     assert calculator.read_result("Предварительный расчёт")["available"] is None
     assert calculator.read_result("Процентная ставка\n3%\nЕжемесячный платёж\n25 296 ₽") == {
         "available": True, "rate": 3.0, "payment": 25296, "note": ""}
+
+
+def test_rate_lower_by_is_not_a_rate():
+    assert calculator.read_result("Ставка ниже на\xa00,5%")["rate"] is None
+
+
+def test_items_read_before_region_are_left_out():
+    result = {"region": "Луганская Народная Республика, Луганск", "options": [
+        {"option": "Наличные под залог жилья", "available": True, "rate": 16.2, "no_region": True},
+        {"option": "Купить дом", "available": False, "note": "недоступна"}]}
+    assert "16,2" not in calculator.summary(result)
+    assert calculator.blocked_goals(result) == [("Купить дом", "недоступна")]
