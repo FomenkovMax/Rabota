@@ -514,7 +514,12 @@ def calculator_offers(products: Iterable[Any], *, key_rate: float | None,
 
 
 def calculator_block(offers: list[dict[str, Any]], *, home: str) -> str:
-    """Калькулятор с ползунками: платёж и переплата или доход — по всем банкам."""
+    """Калькулятор по всем банкам: сумма и срок — полем, кнопками или
+    ползунком; результат — таблица банков (платёж, переплата или доход).
+
+    Переделан 03.11.2026 по замечаниям: ползунки на телефоне неудобны и
+    сумму нельзя было вписать, карточки перегружены текстом, не было
+    платежа в месяц крупно и дохода с капитализацией."""
     import json
     if not offers:
         return ""
@@ -530,99 +535,215 @@ def calculator_block(offers: list[dict[str, Any]], *, home: str) -> str:
         list(CALC_KINDS).index(programs[p]), p))
     options = "".join(f'<option value="{e(p)}">{e(p)} · {counts[p]} банк.</option>'
                       for p in order)
-    data = json.dumps({"offers": offers, "kinds": CALC_KINDS, "home": home},
-                      ensure_ascii=False).replace("</", "<\\/")
-    return f"""
+    data = json.dumps({"offers": offers, "kinds": CALC_KINDS, "presets": CALC_PRESETS,
+                       "home": home}, ensure_ascii=False).replace("</", "<\\/")
+    return (_CALC_HTML.replace("__OPTIONS__", options).replace("__DATA__", data))
+
+
+#: Быстрые кнопки: суммы в рублях, сроки в месяцах.
+CALC_PRESETS = {
+    "Кредиты": {"sum": [100_000, 300_000, 500_000, 1_000_000, 3_000_000],
+                "term": [12, 24, 36, 60, 84]},
+    "Ипотека": {"sum": [3_000_000, 5_000_000, 8_000_000, 12_000_000],
+                "term": [120, 180, 240, 300, 360]},
+    "Вклады": {"sum": [100_000, 500_000, 1_000_000, 3_000_000], "term": [3, 6, 12, 24]},
+    "Накопительные счета": {"sum": [100_000, 500_000, 1_000_000, 3_000_000],
+                            "term": [3, 6, 12, 24]},
+}
+
+_CALC_HTML = """
 <div class="calc">
   <div class="calc-ctl">
-    <label>Продукт<select id="cProg">{options}</select></label>
-    <label><span>Сумма: <b id="cSumV"></b></span><input id="cSum" type="range"></label>
-    <label><span>Срок: <b id="cTermV"></b></span><input id="cTerm" type="range"></label>
+    <label class="cf cf-prog"><span>Продукт</span><select id="cProg">__OPTIONS__</select></label>
+    <div class="cf">
+      <span>Сумма, ₽</span>
+      <input id="cSumIn" class="cin" inputmode="decimal" autocomplete="off" aria-label="Сумма">
+      <div class="chips" id="cSumChips"></div>
+      <input id="cSum" type="range" aria-label="Сумма ползунком">
+    </div>
+    <div class="cf">
+      <span>Срок</span>
+      <div class="cterm"><input id="cTermIn" class="cin" inputmode="numeric" autocomplete="off"
+        aria-label="Срок"><select id="cUnit" aria-label="Единица срока"><option value="12">лет</option>
+        <option value="1">мес</option></select></div>
+      <div class="chips" id="cTermChips"></div>
+      <input id="cTerm" type="range" aria-label="Срок ползунком">
+    </div>
   </div>
+  <label class="cchk" id="cCapBox"><input type="checkbox" id="cCap" checked>
+    проценты каждый месяц добавляются к вкладу (капитализация)</label>
   <p class="calc-sum" id="cHead"></p>
-  <div id="cRows"></div>
+  <div class="scroll"><table class="ctab"><thead id="cThead"></thead><tbody id="cRows"></tbody></table></div>
   <p class="hint" id="cNote"></p>
 </div>
 <script>
-(function(){{
-const D = {data};
+(function(){
+const D = __DATA__;
 const $ = id => document.getElementById(id);
-const esc = t => String(t).replace(/[&<>"']/g, c => ({{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}})[c]);
+const esc = t => String(t).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]);
 const rub = v => Math.round(v).toLocaleString('ru-RU') + ' ₽';
+const short = v => v >= 1e6 ? (v / 1e6).toLocaleString('ru-RU') + ' млн' : (v / 1e3).toLocaleString('ru-RU') + ' тыс';
 const pc = v => v.toFixed(2).replace('.', ',') + ' %';
-const months = m => m % 12 === 0 ? (m / 12) + ' ' + (m / 12 === 1 ? 'год' : m / 12 < 5 ? 'года' : 'лет') : m + ' мес';
-function setup() {{
-  const kind = D.offers.find(o => o.program === $('cProg').value).kind, k = D.kinds[kind];
-  Object.assign($('cSum'), {{min: k.sum[0], max: k.sum[1], step: k.sum[3]}});
-  Object.assign($('cTerm'), {{min: k.term[0], max: k.term[1], step: 1}});
-  if (+$('cSum').value < k.sum[0] || +$('cSum').value > k.sum[1] || !$('cSum').dataset.k || $('cSum').dataset.k !== kind) {{
-    $('cSum').value = k.sum[2]; $('cTerm').value = k.term[2]; $('cSum').dataset.k = kind; }}
-  draw();
-}}
-function draw() {{
-  const prog = $('cProg').value, S = +$('cSum').value, n = +$('cTerm').value;
-  $('cSumV').textContent = rub(S); $('cTermV').textContent = months(n);
-  const rows = D.offers.filter(o => o.program === prog), save = ['Вклады', 'Накопительные счета'].includes(rows[0].kind);
-  for (const o of rows) {{
+const yrs = y => y + ' ' + (y % 10 === 1 && y % 100 !== 11 ? 'год' : [2,3,4].includes(y % 10) && ![12,13,14].includes(y % 100) ? 'года' : 'лет');
+const months = m => m % 12 === 0 ? yrs(m / 12) : m + ' мес';
+// «1,5 млн», «300 тыс», «2 500 000» → рубли
+function parseSum(t) {
+  t = String(t).toLowerCase().replace(/\\s|₽|руб\\.?/g, '').replace(',', '.');
+  const m = t.match(/^(\\d+(?:\\.\\d+)?)(млн|м|тыс|т|k|к)?$/);
+  if (!m) return NaN;
+  const mult = {'млн': 1e6, 'м': 1e6, 'тыс': 1e3, 'т': 1e3, 'k': 1e3, 'к': 1e3}[m[2]] || 1;
+  return Math.round(parseFloat(m[1]) * mult);
+}
+let S = 0, N = 0, kind = '';
+function kindOf() { return D.offers.find(o => o.program === $('cProg').value).kind; }
+function chips(box, values, fmt, pick, current) {
+  box.innerHTML = values.map(v => `<button type="button" class="chip${v === current ? ' on' : ''}" data-v="${v}">${fmt(v)}</button>`).join('');
+  box.querySelectorAll('button').forEach(b => b.onclick = () => pick(+b.dataset.v));
+}
+function setup() {
+  const k = kindOf();
+  if (k !== kind) {
+    kind = k; const c = D.kinds[k];
+    S = c.sum[2]; N = c.term[2];
+    $('cUnit').value = k === 'Ипотека' ? '12' : '1';
+  }
+  const c = D.kinds[k];
+  Object.assign($('cSum'), {min: c.sum[0], max: c.sum[1], step: c.sum[3]});
+  Object.assign($('cTerm'), {min: c.term[0], max: c.term[1], step: 1});
+  $('cCapBox').style.display = ['Вклады', 'Накопительные счета'].includes(k) ? '' : 'none';
+  sync(); draw();
+}
+function sync() {
+  $('cSumIn').value = S.toLocaleString('ru-RU');
+  $('cSum').value = S;
+  const u = +$('cUnit').value;
+  $('cTermIn').value = u === 12 && N % 12 === 0 ? N / 12 : (u === 12 ? (N / 12).toFixed(1).replace('.', ',') : N);
+  $('cTerm').value = N;
+  const p = D.presets[kind];
+  chips($('cSumChips'), p.sum, short, v => { S = v; sync(); draw(); }, S);
+  chips($('cTermChips'), p.term, months, v => { N = v; sync(); draw(); }, N);
+}
+function draw() {
+  const prog = $('cProg').value, cap = $('cCap').checked;
+  const rows = D.offers.filter(o => o.program === prog).map(o => Object.assign({}, o));
+  const save = ['Вклады', 'Накопительные счета'].includes(rows[0].kind);
+  for (const o of rows) {
     const r = o.rate / 100 / 12;
-    if (save) {{ o.pay = null; o.total = S * o.rate / 100 * n / 12; }}
-    else {{ o.pay = r ? S * r / (1 - Math.pow(1 + r, -n)) : S / n; o.total = o.pay * n - S; }}
-    const pros = [], cons = [];
-    if (o.sum[0] && S < o.sum[0]) cons.push('сумма меньше минимума банка (' + rub(o.sum[0]) + ')');
-    if (o.sum[1] && S > o.sum[1]) cons.push('сумма больше максимума банка (' + rub(o.sum[1]) + ')');
-    if (o.term[0] && n < o.term[0]) cons.push('срок меньше минимального (' + months(o.term[0]) + ')');
-    if (o.term[1] && n > o.term[1]) cons.push('срок больше максимального (' + months(o.term[1]) + ')');
-    if (o.apr) cons.push('ПСК ' + (o.apr[0] === o.apr[1] ? pc(o.apr[0]) : pc(o.apr[0]) + '–' + pc(o.apr[1])) + ' — с обязательными платежами дороже ставки');
-    for (const s of o.special) pros.push(s);
-    if (o.calc) pros.push('калькулятор на сайте: ' + o.calc);
-    o.pros = pros; o.cons = cons;
-  }}
-  rows.sort((a, b) => save ? b.total - a.total : a.total - b.total);
-  const top = rows[0], sber = rows.find(o => o.bank === D.home), max = Math.max(...rows.map(o => o.total)) || 1;
-  if (rows.length > 1) {{ rows[0].pros.unshift(save ? 'самый большой доход' : 'самая низкая переплата'); }}
-  let head = '';
-  if (sber && top && sber !== top) {{
-    const diff = Math.abs(sber.total - top.total);
-    head = save ? `Сбер: доход ${{rub(sber.total)}} — на ${{rub(diff)}} меньше, чем у ${{top.bank}}.`
-                : `Сбер: платёж ${{rub(sber.pay)}}, переплата ${{rub(sber.total)}} — на ${{rub(diff)}} больше, чем у ${{top.bank}}.`;
-  }} else if (sber) {{ head = save ? `Сбер — самый большой доход: ${{rub(sber.total)}}.` : `Сбер — самая низкая переплата: ${{rub(sber.total)}} (платёж ${{rub(sber.pay)}}).`; }}
-  else {{ head = 'У Сбера в этой программе нет проверенной базовой ставки — сравниваются конкуренты.'; }}
+    if (save) {
+      o.income = cap ? S * (Math.pow(1 + r, N) - 1) : S * o.rate / 100 * N / 12;
+      o.end = S + o.income;
+    } else {
+      o.pay = r ? S * r / (1 - Math.pow(1 + r, -N)) : S / N;
+      o.over = o.pay * N - S; o.all = o.pay * N;
+    }
+    const warn = [];
+    if (o.sum[0] && S < o.sum[0]) warn.push('сумма меньше минимума банка — ' + rub(o.sum[0]));
+    if (o.sum[1] && S > o.sum[1]) warn.push('сумма больше максимума банка — ' + rub(o.sum[1]));
+    if (o.term[0] && N < o.term[0]) warn.push('срок меньше минимального — ' + months(o.term[0]));
+    if (o.term[1] && N > o.term[1]) warn.push('срок больше максимального — ' + months(o.term[1]));
+    o.warn = warn;
+  }
+  // Банк, которому сумма или срок не подходят, этот кредит не выдаст:
+  // такие — вниз и не «лучшие», даже если ставка ниже.
+  rows.sort((a, b) => (a.warn.length > 0) - (b.warn.length > 0)
+    || (save ? b.income - a.income : a.over - b.over));
+  const fit = rows.filter(o => !o.warn.length);
+  const sber = rows.find(o => o.bank === D.home), best = fit[0] || rows[0];
+  const val = o => save ? o.income : o.over;
+  // заголовок — одна строка: место Сбера и разница с лучшим
+  let head;
+  if (!sber) head = 'У Сбера в этой программе нет проверенной базовой ставки — сравниваются конкуренты.';
+  else if (rows.length === 1) head = 'Сравнить не с кем: в этой программе ставка есть только у Сбера.';
+  else if (sber.warn.length) head = 'Сбер такую сумму или срок не выдаёт: ' + sber.warn.join('; ') + '.';
+  else {
+    const place = fit.indexOf(sber) + 1;
+    const of = fit.length + (fit.length < rows.length ? ` (ещё ${rows.length - fit.length} не подходят по сумме или сроку)` : '');
+    if (place === 1) head = `Сбер — 1-е место из ${of}` + (save
+      ? `: доход ${rub(sber.income)}.` : `: платёж ${rub(sber.pay)}/мес, переплата ${rub(sber.over)}.`);
+    else head = `Сбер — ${place}-е место из ${of}. ` + (save
+      ? `${best.bank} даёт на ${rub(best.income - sber.income)} больше дохода.`
+      : `У ${best.bank} платёж на ${rub(sber.pay - best.pay)}/мес меньше, за срок — на ${rub(sber.over - best.over)}.`);
+  }
   $('cHead').textContent = head;
-  $('cRows').innerHTML = rows.map(o => `
-    <div class="crow${{o.bank === D.home ? ' own' : ''}}">
-      <div class="cb"><b>${{esc(o.bank)}}</b><a href="${{esc(o.url)}}" target="_blank" rel="noopener">${{esc(o.title)}}</a></div>
-      <div class="cbar"><i style="width:${{Math.max(3, 100 * o.total / max)}}%"></i></div>
-      <div class="cv"><b>${{rub(o.total)}}</b><span>${{save ? 'доход' : 'переплата'}} · ставка ${{pc(o.rate)}}${{o.pay ? ' · платёж ' + rub(o.pay) : ''}}</span></div>
-      <div class="cpc">${{o.pros.map(p => '<span class="pro">+ ' + esc(p) + '</span>').join('')}}${{o.cons.map(c => '<span class="con">− ' + esc(c) + '</span>').join('')}}</div>
-    </div>`).join('');
+  $('cThead').innerHTML = save
+    ? '<tr><th>Банк</th><th class="num">Ставка</th><th class="num">Доход</th><th class="num hide-s">В конце срока</th><th class="num">К Сберу</th></tr>'
+    : '<tr><th>Банк</th><th class="num">Ставка</th><th class="num">Платёж/мес</th><th class="num hide-s">Переплата</th><th class="num hide-s">Всего</th><th class="num">К Сберу</th></tr>';
+  const cols = save ? 5 : 6;
+  $('cRows').innerHTML = rows.map((o, i) => {
+    const d = sber && o !== sber ? val(o) - val(sber) : null;
+    const better = d !== null && (save ? d > 0 : d < 0);
+    const vs = d === null ? (o === sber ? '—' : '') :
+      `<span class="${better ? 'up' : 'down'}">${d > 0 ? '+' : '−'}${rub(Math.abs(d))}</span>`;
+    const cells = save
+      ? `<td class="num"><b>${rub(o.income)}</b></td><td class="num hide-s">${rub(o.end)}</td>`
+      : `<td class="num"><b>${rub(o.pay)}</b><span class="sub">перепл. ${rub(o.over)}</span></td><td class="num hide-s">${rub(o.over)}</td><td class="num hide-s">${rub(o.all)}</td>`;
+    const info = [];
+    for (const w of o.warn) info.push('<span class="con">⚠ ' + esc(w) + '</span>');
+    if (o.apr) info.push('<span>ПСК ' + (o.apr[0] === o.apr[1] ? pc(o.apr[0]) : pc(o.apr[0]) + '–' + pc(o.apr[1])) + ' — со страховками и комиссиями дороже ставки</span>');
+    for (const s of o.special) info.push('<span>особые условия: ' + esc(s) + '</span>');
+    if (o.calc) info.push('<span>калькулятор на сайте банка: ' + esc(o.calc) + '</span>');
+    info.push(`<a href="${esc(o.url)}" target="_blank" rel="noopener">${esc(o.title)} — страница банка ↗</a>`);
+    return `<tr class="cr${o.bank === D.home ? ' own' : ''}${o.warn.length ? ' nofit' : ''}" data-i="${i}">
+      <td><span class="arr">▸</span> <b>${esc(o.bank)}</b>${o === best && fit.length > 1 ? ' <span class="star" title="лучший вариант">★</span>' : ''}${o.warn.length ? ' <span class="warn" title="' + esc(o.warn.join('; ')) + '">⚠</span>' : ''}<div class="ct">${esc(o.title)}</div></td>
+      <td class="num">${pc(o.rate)}</td>${cells}<td class="num">${vs}</td></tr>
+      <tr class="cd" id="cd${i}" hidden><td colspan="${cols}">${info.join('')}</td></tr>`;
+  }).join('');
+  $('cRows').querySelectorAll('tr.cr').forEach(tr => tr.onclick = () => {
+    const det = $('cd' + tr.dataset.i); det.hidden = !det.hidden; tr.classList.toggle('open', !det.hidden); });
   $('cNote').textContent = save
-    ? 'Доход — простые проценты по витринной ставке «до» без капитализации и налога. Фактическая ставка зависит от суммы, срока и условий вклада.'
-    : 'Платёж — аннуитет по витринной ставке «от», без страховок и комиссий: это лучший случай. Фактическая ставка определяется банком индивидуально.';
-}}
+    ? 'По витринной ставке «до», без налога. Нажми на строку — подробности по банку.'
+    : 'Аннуитет по витринной ставке «от», без страховок и комиссий — лучший случай. Нажми на строку — подробности.';
+}
 $('cProg').addEventListener('change', setup);
-$('cSum').addEventListener('input', draw); $('cTerm').addEventListener('input', draw);
+$('cSum').addEventListener('input', () => { S = +$('cSum').value; sync(); draw(); });
+$('cTerm').addEventListener('input', () => { N = +$('cTerm').value; sync(); draw(); });
+$('cSumIn').addEventListener('change', () => { const v = parseSum($('cSumIn').value); if (v > 0) S = v; sync(); draw(); });
+$('cSumIn').addEventListener('keydown', ev => { if (ev.key === 'Enter') $('cSumIn').blur(); });
+$('cTermIn').addEventListener('change', () => {
+  const v = parseFloat(String($('cTermIn').value).replace(',', '.'));
+  if (v > 0) N = Math.max(1, Math.round(v * +$('cUnit').value)); sync(); draw(); });
+$('cTermIn').addEventListener('keydown', ev => { if (ev.key === 'Enter') $('cTermIn').blur(); });
+$('cUnit').addEventListener('change', sync);
+$('cCap').addEventListener('change', draw);
 setup();
-}})();
+})();
 </script>"""
 
 
 CSS += """
-.calc-ctl{display:grid;grid-template-columns:1.2fr 1fr 1fr;gap:16px;margin-bottom:14px}
-.calc-ctl label{display:flex;flex-direction:column;gap:6px;font-size:13px;color:var(--ink-2)}
-.calc-ctl b{color:var(--ink);font-variant-numeric:tabular-nums}
-.calc-ctl select{font:inherit;font-size:14px;padding:7px 9px;border-radius:8px;
-  border:1px solid var(--border);background:var(--surface);color:var(--ink)}
-.calc-ctl input[type=range]{width:100%;accent-color:var(--s1)}
-.calc-sum{font-size:15px;font-weight:600;margin:4px 0 12px}
-.crow{display:grid;grid-template-columns:220px 1fr 230px;gap:6px 14px;align-items:center;
-  padding:10px 0;border-bottom:1px solid var(--grid)}
-.crow.own{background:var(--wash);border-radius:8px;padding:10px;margin:0 -10px}
-.cb b{display:block;font-size:14px}.cb a{font-size:12.5px;color:var(--ink-muted)}
-.cbar{height:12px;background:var(--grid);border-radius:6px;overflow:hidden}
-.cbar i{display:block;height:100%;background:var(--ink-muted);border-radius:6px}
-.crow.own .cbar i{background:var(--s1)}
-.cv b{font-variant-numeric:tabular-nums;font-size:15px}.cv span{display:block;font-size:12px;color:var(--ink-muted)}
-.cpc{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12.5px}
-.cpc .pro{color:var(--ink-2)}.cpc .con{color:var(--st-critical)}
-@media(max-width:640px){.calc-ctl{grid-template-columns:1fr}.crow{grid-template-columns:1fr}}
+.calc{max-width:100%;overflow:hidden}
+.calc-ctl{display:grid;grid-template-columns:1fr 1.2fr 1.2fr;gap:16px;margin-bottom:10px}
+.cf{display:flex;flex-direction:column;gap:7px;font-size:13px;color:var(--ink-2);min-width:0}
+.cf select{width:100%}
+.cf select,.cin{font:inherit;font-size:16px;padding:9px 11px;border-radius:9px;
+  border:1px solid var(--border);background:var(--surface);color:var(--ink);min-width:0}
+.cin{font-variant-numeric:tabular-nums;font-weight:600}
+.cterm{display:flex;gap:8px;min-width:0}.cterm .cin{flex:1;width:0}.cterm select{width:84px;flex:none}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{font:inherit;font-size:13px;padding:7px 11px;border-radius:999px;cursor:pointer;
+  border:1px solid var(--border);background:var(--surface);color:var(--ink-2);min-height:34px}
+.chip.on{background:var(--s1);border-color:var(--s1);color:#fff}
+.cf input[type=range]{width:100%;accent-color:var(--s1);height:28px}
+.cchk{display:flex;gap:8px;align-items:center;font-size:13px;color:var(--ink-2);margin:2px 0 8px}
+.cchk input{width:18px;height:18px;accent-color:var(--s1)}
+.calc-sum{font-size:15px;font-weight:600;margin:6px 0 10px}
+.ctab{width:100%;border-collapse:collapse}
+.ctab th{font-size:12px;color:var(--ink-muted);font-weight:500;text-align:left;padding:6px 8px;
+  border-bottom:1px solid var(--grid)}
+.ctab td{padding:9px 8px;border-bottom:1px solid var(--grid);vertical-align:top;font-size:14px}
+.ctab .num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.ctab tr.cr{cursor:pointer}.ctab tr.cr:hover td{background:var(--wash)}
+.ctab tr.own td{background:var(--wash)}.ctab tr.own td:first-child{box-shadow:inset 3px 0 var(--s1)}
+.ctab .ct{font-size:12px;color:var(--ink-muted);margin-top:2px}
+.ctab .arr{display:inline-block;color:var(--ink-muted);transition:transform .15s}
+.ctab tr.open .arr{transform:rotate(90deg)}
+.ctab .star{color:#d4a017}.ctab .warn{color:var(--st-critical)}
+.ctab tr.nofit td{opacity:.55}
+.ctab .sub{display:none;font-size:11.5px;color:var(--ink-muted);font-weight:400}
+.ctab .up{color:var(--st-good,#1a7f37);font-weight:600}.ctab .down{color:var(--st-critical);font-weight:600}
+.ctab tr.cd td{font-size:12.5px;color:var(--ink-2);display:table-cell}
+.ctab tr.cd td>*{display:block;margin:2px 0}.ctab tr.cd .con{color:var(--st-critical)}
+@media(max-width:640px){.calc-ctl{grid-template-columns:1fr}.ctab .hide-s{display:none}
+  .ctab .sub{display:block}.ctab td,.ctab th{padding:8px 4px}.ctab td{font-size:13px}
+  .ctab .ct{display:none}}
 """

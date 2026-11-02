@@ -979,3 +979,16 @@ def test_pages_outside_sections_become_candidates():
     adapter._links([base + "/ru/sber_novyi_produkt", base + "/ru/s_m_business/credits",
                     base + "/ru/about/today", base + "/ru/person/credits/money"])
     assert adapter._candidates == {base + "/ru/sber_novyi_produkt"}
+
+
+def test_amount_and_term_bounds():
+    """ВТБ 02.11.2026: «От 30 тыс. ₽ / Минимальная сумма / До 7 млн ₽» — пределы
+    на разных строках; «До 5 лет» — только максимум, а не «от 5 лет»."""
+    f = crawl._amount_and_term
+    got = f(["От 30 тыс. ₽", "Минимальная сумма", "До 7 млн ₽", "Максимальная сумма", "До 5 лет"])
+    assert (got["amount_min"], got["amount_max"]) == (30_000, 7_000_000)
+    assert (got["term_min_months"], got["term_max_months"]) == (None, 60)
+    got = f(["от 100 000 до 3 000 000 ₽, от 3 до 60 месяцев"])
+    assert (got["amount_min"], got["amount_max"], got["term_min_months"], got["term_max_months"]) == \
+        (100_000, 3_000_000, 3, 60)
+    assert f(["до 5 млн ₽"])["amount_min"] is None

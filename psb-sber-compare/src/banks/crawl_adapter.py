@@ -109,10 +109,14 @@ _GENERIC_TITLE = re.compile(
     re.I,
 )
 
+# «от 100 000 до 3 000 000 ₽», «от 3 до 60 месяцев» — диапазон с единицей
+# только в конце тоже сумма и срок.
 _AMOUNT_PART = re.compile(
-    r"^(от|до)?\s*\d[\d\s]*(?:[,.]\d+)?\s*(₽|руб|млн|млрд|тыс)", re.I)
+    r"^(от|до)?\s*\d[\d\s]*(?:[,.]\d+)?\s*(?:(?:тыс\.?|млн)\s*(?:₽|руб\.?)?\s*)?"
+    r"(?:до\s*\d[\d\s]*(?:[,.]\d+)?\s*)?(₽|руб|млн|млрд|тыс)", re.I)
 _TERM_PART = re.compile(
-    r"^(от|до|на)?\s*\d+\s*(лет|года|год|мес|дн|день|дня)", re.I)
+    r"^(от|до|на)?\s*\d+\s*(?:(?:года?|лет|мес\w*)\s*)?(?:до\s*\d+\s*)?"
+    r"(лет|года|год|мес|дн|день|дня)", re.I)
 # Подпись перед числом: «Сумма до 5 млн ₽», «Срок кредита: до 5 лет».
 _LABEL = re.compile(
     r"^(сумма|срок|лимит|размер)(\s+(кредита|вклада|займа|лимита))?\s*:?\s*", re.I)
@@ -195,20 +199,43 @@ def _amount_and_term(lines: list[str]) -> dict[str, Any]:
     знака рубля на карточке банка — тоже рубли.
     """
     found: dict[str, Any] = {}
+    open_end = ""                # «от 30 тыс.» без «до» — ждём максимум ниже
     for line in lines[:15]:
         for part in (_LABEL.sub("", p.strip()) for p in line.split(",")):
-            if "amount_raw" not in found and _AMOUNT_PART.match(part):
+            if (open_end and _AMOUNT_PART.match(part)
+                    and re.match(r"до\b", part, re.I)):
+                # ВТБ (02.11.2026): «От 30 тыс. ₽ / Минимальная сумма / До 7 млн ₽ /
+                # Максимальная сумма» — пределы на разных строках. Раньше
+                # выходило «от 30 тыс. до 30 тыс.», и калькулятор писал, что
+                # 1,5 млн больше максимума банка.
+                values = parse_money(part if re.search(r"₽|руб", part, re.I) else f"{part} ₽")
+                if values and max(values) > found["amount_min"]:
+                    found.update(amount_max=max(values), amount_raw=f"{open_end} {part}")
+                open_end = ""
+            elif "amount_raw" not in found and _AMOUNT_PART.match(part):
                 money = part if re.search(r"₽|руб", part, re.I) else f"{part} ₽"
                 values = parse_money(money)
                 if values:
-                    found.update(amount_raw=part, amount_min=min(values),
-                                 amount_max=max(values))
+                    low, high = min(values), max(values)
+                    # Одна граница: «до 7 млн» — минимум неизвестен, «от 30 тыс.»
+                    # — максимум неизвестен (может найтись строкой ниже).
+                    if len(values) == 1 and re.match(r"до\b", part, re.I):
+                        low = None
+                    elif len(values) == 1 and re.match(r"от\b", part, re.I):
+                        high, open_end = None, part
+                    found.update(amount_raw=part, amount_min=low, amount_max=high)
             elif "term_raw" not in found and _TERM_PART.match(part):
                 values = parse_term_months(part)
                 if values:
-                    found.update(term_raw=part, term_min_months=min(values),
-                                 term_max_months=max(values))
-        if "amount_raw" in found and "term_raw" in found:
+                    low, high = min(values), max(values)
+                    # «До 5 лет» — это не «от 5 лет»: калькулятор писал, что
+                    # 3 года меньше минимального срока.
+                    if len(values) == 1 and re.match(r"до\b", part, re.I):
+                        low = None
+                    elif len(values) == 1 and re.match(r"от\b", part, re.I):
+                        high = None
+                    found.update(term_raw=part, term_min_months=low, term_max_months=high)
+        if "amount_raw" in found and "term_raw" in found and not open_end:
             break
     return found
 

@@ -74,3 +74,14 @@ def test_calculator_takes_base_checked_rates_and_keeps_specials_as_pros():
     assert sber["rate"] == 20.4 and "18,40 %" in sber["special"][0]
     html = charts.calculator_block(offers, home="Сбер")
     assert 'id="cSum"' in html and "Потребительский кредит" in html
+
+
+def test_calculator_inputs_presets_and_table():
+    offers = [{"program": "Новостройки", "kind": "Ипотека", "bank": "Сбер", "title": "Ипотека",
+               "url": "u", "rate": 18.7, "apr": None, "sum": [None, None], "term": [None, None],
+               "special": [], "calc": ""}]
+    html = charts.calculator_block(offers, home="Сбер")
+    for part in ('id="cSumIn"', 'id="cTermIn"', 'id="cSumChips"', 'id="cCap"', 'class="ctab"',
+                 '"Ипотека": {"sum": [3000000'):
+        assert part in html, part
+    assert "</script>" in html and "__DATA__" not in html
