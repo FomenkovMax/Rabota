@@ -126,7 +126,12 @@ class SberAdapter(CrawlAdapter):
         # держателей карт и перевыпуска на «Мир», школьные сервисы, переводы
         # страниц для нерезидентов на другие языки — не продукты.
         r"/media(?:/|$)|/finder$|nedeesposob|sovmestnyi_dostup|nonresident-friendly_|"
-        r"/onboarding$|/debet_new/|school_services|/foreign/(?:en|tj|uz|kr|kg|kz)$)",
+        r"/onboarding$|/debet_new/|school_services|/foreign/(?:en|tj|uz|kr|kg|kz)$|"
+        # Сверка с эталоном 03.11.2026: памятки, игры, страховка «в подарок»,
+        # замена карт, старые копии страниц, акции и функции карты — не продукты.
+        r"/lost_cards|/kids_day|/sberkarta_kids/sberkids|/sberterritoria|/visa_electron|"
+        r"/card_classic/maestro|/sberkarta/insurance|/pack/gold/zdorovie|/13-to-14|"
+        r"/vsp_1mln|/supreme_old|/credit_sberkarta/bnpl|/debet_new$)",
         re.I,
     )
 

@@ -260,7 +260,7 @@ def crawl_completeness(links: dict[str, dict[str, str]]) -> dict[str, dict[str, 
 
     Ответ на вопрос «собраны ли все данные с сайта»: не прочитанные
     продуктовые страницы (лимит, защита сайта, ошибки) перечислены поимённо."""
-    from .banks.crawl_adapter import (CRAWL_FAILED_KEY, CRAWL_READ_KEY,
+    from .banks.crawl_adapter import (CRAWL_CANDIDATES_KEY, CRAWL_FAILED_KEY, CRAWL_READ_KEY,
                                       CRAWL_SITEMAP_KEY, CRAWL_UNREAD_KEY)
     out: dict[str, dict[str, Any]] = {}
     for bank, own in links.items():
@@ -271,8 +271,46 @@ def crawl_completeness(links: dict[str, dict[str, str]]) -> dict[str, dict[str, 
         out[bank] = {"read": int(own.get(CRAWL_READ_KEY) or 0),
                      "sitemap": int(own.get(CRAWL_SITEMAP_KEY) or 0),
                      "unread": unread, "failed": failed,
+                     "candidates": [u for u in (own.get(CRAWL_CANDIDATES_KEY) or "").split() if u],
+                     "new_candidates": [],
                      "complete": not unread and not failed}
     return out
+
+
+CANDIDATES_SEEN = ROOT / "data" / "crawl_candidates.json"
+
+
+def mark_new_candidates(crawl: dict[str, dict[str, Any]], *, path: Path = CANDIDATES_SEEN,
+                        today: str | None = None, fresh_days: int = 8) -> None:
+    """Страницы вне разделов обхода, впервые замеченные за последнюю неделю.
+
+    Список кандидатов у банка длинный и от сбора к сбору почти тот же — смотреть
+    нужно только новые: так новый продукт («СберБлиже», 02.11.2026) виден в
+    итоге сбора, а не тогда, когда его найдёт заказчик. Дата первого появления
+    хранится в data/crawl_candidates.json."""
+    import json
+    from datetime import date, timedelta
+    day = today or date.today().isoformat()
+    try:
+        seen = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        seen = {}
+    first_run = not seen
+    border = (date.fromisoformat(day) - timedelta(days=fresh_days)).isoformat()
+    for bank, c in crawl.items():
+        known = seen.setdefault(bank, {})
+        # Первый сбор с этой проверкой — точка отсчёта, а не «новое»: иначе
+        # новым был бы весь список.
+        mark = "исходный" if first_run or not known else day
+        for url in c.get("candidates") or []:
+            known.setdefault(url, mark)
+        c["new_candidates"] = [u for u in c.get("candidates") or []
+                               if known[u] != "исходный" and known[u] > border]
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(seen, ensure_ascii=False, indent=1), encoding="utf-8")
+    except OSError:
+        pass
 
 
 def bank_presence(config: Config, codes: list[str],
@@ -450,6 +488,12 @@ def load_report_data(config: Config, *, competitor: str = "") -> dict[str, Any] 
                                        status=lnr_status)
         lnr_total = availability.completeness(scope, lnr_status, home=home_title)
         crawl = crawl_completeness(storage.coverage_of_run(run_id))
+        mark_new_candidates(crawl)
+        # Эталон продуктов: всё ли нашёл сбор (config/reference_<код>.yaml).
+        from . import reference
+        references = [c for c in (reference.check(reference.load(code),
+                                                  [p for ps in by_bank.values() for p in ps])
+                                  for code in [HOME_BANK] + competitor_codes) if c]
 
         html = render_report(
             comparisons=comparisons, counts=counts, changes=changes,
@@ -468,6 +512,7 @@ def load_report_data(config: Config, *, competitor: str = "") -> dict[str, Any] 
             specials=special_rows, coverage_matrix=coverage_matrix,
             calculator=calc_offers, lnr_rows=lnr_rows, lnr_total=lnr_total,
             lnr_status=lnr_status, presence=presence, crawl=crawl,
+            references=references,
         )
 
         return {
@@ -502,6 +547,7 @@ def load_report_data(config: Config, *, competitor: str = "") -> dict[str, Any] 
             "lnr_total": lnr_total,
             "presence": presence,
             "crawl": crawl,
+            "references": references,
             "product_ids": market.product_ids(all_products),
         }
     finally:

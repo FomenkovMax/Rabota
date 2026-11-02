@@ -922,7 +922,53 @@ def _crawl_block(crawl: dict[str, dict[str, Any]]) -> str:
             'перечислены: их цифры взяты из прошлого сбора с его датой (до 14 дней).</p>'
             '<div class="scroll"><table><thead><tr><th>Банк</th><th>Прочитано</th>'
             '<th>В карте сайта</th><th>Итог</th></tr></thead><tbody>' + "".join(rows)
-            + '</tbody></table></div><div style="height:18px"></div>')
+            + '</tbody></table></div><div style="height:18px"></div>' + _candidates_block(crawl))
+
+
+def _reference_block(checks: list[Any]) -> str:
+    """Сверка с эталоном продуктов: чего из списка банка сбор не нашёл."""
+    if not checks:
+        return ""
+    from .reference import SOURCES
+    parts = []
+    for c in checks:
+        rows = "".join(
+            f'<div class="pmeta">❌ {e(m.get("name", ""))} — {e(m.get("category", ""))}'
+            f'{" · " + _linkify("https://www.sberbank.ru" + m["path"]) if m.get("path") and c.bank == "Сбер" else ""}'
+            f' <i>({e(SOURCES.get(m.get("source", ""), m.get("source", "")))})</i></div>'
+            for m in c.missing)
+        parts.append(f'<p><b>{e(c.bank)}</b>: найдено {e(c.share)} продуктов эталона'
+                     f'{"" if c.missing else " ✅"}</p>{rows}')
+    return ('<h3 style="margin:4px 0 10px;font-size:15px">Сверка с эталоном продуктов</h3>'
+            '<p class="hint">Эталон — список продуктов банка (config/reference_&lt;банк&gt;.yaml). '
+            'Не найден — сбор не дошёл до продукта или продукт закрыт: проверить и либо '
+            'добавить раздел в обход, либо убрать продукт из эталона.</p>'
+            + "".join(parts) + '<div style="height:18px"></div>')
+
+
+def _candidates_block(crawl: dict[str, dict[str, Any]]) -> str:
+    """Страницы банка вне разделов обхода: новые — на виду, остальные — списком.
+
+    Так новый продукт вне привычного меню («СберБлиже», /ru/sberblizhe)
+    виден в своде, а не пропадает молча."""
+    parts = []
+    for bank, c in crawl.items():
+        every, new = c.get("candidates") or [], c.get("new_candidates") or []
+        if not every:
+            continue
+        fresh = "".join(f'<div class="pmeta">🆕 {_linkify(u)}</div>' for u in new[:30])
+        rest = "".join(f'<div class="pmeta">{_linkify(u)}</div>' for u in every[:150])
+        parts.append(
+            f'<p><b>{e(bank)}</b>: новых за неделю — {len(new)}, всего вне обхода — '
+            f'{len(every)}</p>{fresh}<details><summary class="pmeta">весь список</summary>'
+            f'{rest}</details>')
+    if not parts:
+        return ""
+    return ('<h3 style="margin:4px 0 10px;font-size:15px">Страницы вне разделов обхода</h3>'
+            '<p class="hint">Страницы сайта банка из карты сайта и ссылок, которые сбор не '
+            'читает: они вне разделов розницы в настройках. 🆕 — появились за неделю: '
+            'посмотреть, не новый ли это продукт. Если продукт — добавить раздел в обход.</p>'
+            + "".join(parts) + '<div style="height:18px"></div>')
 
 
 def _quality_block(rows: list[Any], manual: list[Any]) -> str:
@@ -1058,6 +1104,7 @@ def render_report(
     lnr_status: dict[int, Any] | None = None,
     presence: dict[str, str] | None = None,
     crawl: dict[str, dict[str, Any]] | None = None,
+    references: list[Any] | None = None,
 ) -> str:
     total_promos = promo_active_total
     delta_chart = _delta_chart(comparisons)
@@ -1171,6 +1218,7 @@ def render_report(
   вклад не выше ключевой ЦБ больше чем на 3 п.п., кредит не дешевле ключевой без
   госпрограммы, ПСК не ниже ставки, регион подтверждён. Для карт без ставки,
   страховки и акций покрытие не считается — у них ключевой параметр не ставка.</p>
+  {_reference_block(references or [])}
   {_crawl_block(crawl or {})}
   {_quality_block(quality_rows or [], manual or [])}
 </section>

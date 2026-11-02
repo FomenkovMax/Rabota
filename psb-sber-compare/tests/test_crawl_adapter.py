@@ -273,8 +273,7 @@ def test_share_of_property_value_is_not_a_rate():
 
 def test_service_pages_are_not_products():
     for title in ("Ипотечные каникулы", "Программы поддержки заёмщиков",
-                  "Управляйте списаниями за подписки и покупки",
-                  "Открыть СберВклад в СберБанке онлайн", "sberbank.ru"):
+                  "Управляйте списаниями за подписки и покупки", "sberbank.ru"):
         assert crawl.product_from_page(_page(title, "30%"), bank="Сбер", url="https://x/a",
                                        category="Кредиты", region="", collected_at="") is None
     assert crawl.is_product_title("Платёжный стикер от Сбера")
@@ -960,3 +959,23 @@ def test_sberblizhe_outside_person_section_is_crawled():
     assert url in adapter.priority
     assert adapter._links([url + "?ysclid=1"]) == [url]
     assert adapter._family(url) == "Специальные предложения"
+
+
+def test_infinitive_title_is_a_product():
+    """«Открыть СберВклад в СберБанке онлайн» (02.11.2026) — страница вклада,
+    а не служебная: раньше «Открыть» её отбрасывало."""
+    assert crawl.product_name("Открыть СберВклад в СберБанке онлайн") == "СберВклад"
+    data = _page("", "Вклады и счета", "СберВклад до 13,5% годовых",
+                 "Удобные сроки от 1 месяца до 3 лет")
+    data["title"] = "Открыть СберВклад в СберБанке онлайн — гибкие условия"
+    product = crawl.product_from_page(data, bank="Сбер", url="https://x/ru/person/contributions/deposits/sbervklad_a",
+                                      category="Вклады", region="ЛНР", collected_at="")
+    assert (product.title, product.rate_max) == ("СберВклад", 13.5)
+
+
+def test_pages_outside_sections_become_candidates():
+    adapter = SberAdapter(region=None, settings={})
+    base = "https://www.sberbank.ru"
+    adapter._links([base + "/ru/sber_novyi_produkt", base + "/ru/s_m_business/credits",
+                    base + "/ru/about/today", base + "/ru/person/credits/money"])
+    assert adapter._candidates == {base + "/ru/sber_novyi_produkt"}

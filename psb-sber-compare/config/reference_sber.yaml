@@ -1,0 +1,126 @@
+# Эталон розничных продуктов Сбера — с ним сверяется каждый сбор.
+#
+# Черновик собран 03.11.2026 из трёх источников (только названия, без цифр):
+#   site       — страница продукта, которую сбор видел на sberbank.ru (28.10–02.11.2026);
+#   aggregator — есть на sravni.ru (03.11.2026), сбор на сайте Сбера не нашёл — проверить;
+#   site-text  — упоминается в текстах sberbank.ru, своей страницы сбор не нашёл.
+# Продукт найден, если в сборе есть продукт Сбера с этим адресом (path) или с
+# названием, подходящим под match (регулярное выражение, без учёта регистра).
+# Как дополнять: новая строка в products. Продукт закрыт — удалить или
+# поставить active: false.
+bank: Сбер
+products:
+  - {name: "Пакеты услуг", category: "Банковские карты", path: "/ru/person/bank_cards/pack", source: site}
+  - {name: "Пакет услуг Золотой", category: "Банковские карты", path: "/ru/person/bank_cards/pack/gold", source: site}
+  - {name: "Пакет услуг СберПрайм Старт Зарплатный", category: "Банковские карты", path: "/ru/person/bank_cards/pack/zarp", source: site}
+  - {name: "Номинальный счёт для зачисления социальных выплат", category: "Вклады", path: "/ru/person/contributions/accounts/nomschet", source: site}
+  - {name: "Автонакопления", category: "Вклады", path: "/ru/person/contributions/avtonakopleniya", source: site}
+  - {name: "Детская копилка от Сбера", category: "Вклады", path: "/ru/person/contributions/deposits/detskaya_kopilka", source: site}
+  - {name: "Вклад Лучший % Золотой", category: "Вклады", path: "/ru/person/contributions/deposits/luchshiy_procent_zolotoy", source: site}
+  - {name: "СберВклад Молодёжный", category: "Вклады", path: "/ru/person/contributions/deposits/molodezh", source: site}
+  - {name: "Накопилка", category: "Вклады", path: "/ru/person/contributions/deposits/nakopilka", source: site}
+  - {name: "Вклад Пенсионный плюс", category: "Вклады", path: "/ru/person/contributions/deposits/pension_plus", source: site}
+  - {name: "Вклад «Сбер Рядом»", category: "Вклады", path: "/ru/person/contributions/deposits/sber_ryadom", source: site}
+  - {name: "СберВклад Рядом", category: "Вклады", path: "/ru/person/contributions/deposits/sbervklad_ryadom", source: site}
+  - {name: "Социальный вклад", category: "Вклады", path: "/ru/person/contributions/deposits/social", source: site}
+  - {name: "Вклад Лучший %", category: "Вклады", path: "/ru/person/contributions/deposits/vklad/vklad_luchshiy_procent", source: site}
+  - {name: "Вклад «Ключевой детский»", category: "Вклады", path: "/ru/person/contributions/deposits/vklad_kluchevoi_detskii", source: site}
+  - {name: "Вклад «Ключевой Управляй Детский»", category: "Вклады", path: "/ru/person/contributions/deposits/vklad_kluchevoi_upravlyay_detskii", source: site}
+  - {name: "Вклад Ключевой", category: "Вклады", path: "/ru/person/contributions/deposits/vklad_kluchevoy", source: site}
+  - {name: "Вклад Пенсионный Максимум", category: "Вклады", path: "/ru/person/contributions/deposits/vklad_pens", source: site}
+  - {name: "Вклад СберKids+", category: "Вклады", path: "/ru/person/contributions/deposits/vklad_sberkids", source: site}
+  - {name: "Вклад в дирхамах", category: "Вклады", path: "/ru/person/contributions/deposits/vklad_v_dirhamah", source: site}
+  - {name: "Вклад в индийских рупиях", category: "Вклады", path: "/ru/person/contributions/deposits/vklad_v_rupiyah", source: site}
+  - {name: "Вклад в юанях для физических лиц", category: "Вклады", path: "/ru/person/contributions/deposits/vklad_v_yuanyah", source: site}
+  - {name: "Вклад Выгодный старт", category: "Вклады", path: "/ru/person/contributions/deposits/vklad_vigodniy_start", source: site}
+  - {name: "Вклад Выгодный старт +", category: "Вклады", path: "/ru/person/contributions/deposits/vklad_vigodniy_start_plus", source: site}
+  - {name: "Вклад «Забота о будущем»", category: "Вклады", path: "/ru/person/contributions/deposits/zabota_o_budushchem", source: site}
+  - {name: "Классическая карта Аэрофлот", category: "Дебетовые карты", path: "/ru/person/bank_cards/debit/aeroflot-classic-mir", source: site}
+  - {name: "Золотая карта Аэрофлот", category: "Дебетовые карты", path: "/ru/person/bank_cards/debit/aeroflot-gold", source: site}
+  - {name: "Карта Аэрофлот Премиальная", category: "Дебетовые карты", path: "/ru/person/bank_cards/debit/aeroflot-prem-mir", source: site}
+  - {name: "Карта Аэрофлот Signature", category: "Дебетовые карты", path: "/ru/person/bank_cards/debit/aeroflot-signature", source: site}
+  - {name: "Классическая карта", category: "Дебетовые карты", path: "/ru/person/bank_cards/debit/card_classic", source: site}
+  - {name: "Единая карта петербуржца", category: "Дебетовые карты", path: "/ru/person/bank_cards/debit/card_ekp", source: site}
+  - {name: "Карта жителя Кузбасса", category: "Дебетовые карты", path: "/ru/person/bank_cards/debit/card_kuzbas", source: site}
+  - {name: "Классическая карта Подари жизнь", category: "Дебетовые карты", path: "/ru/person/bank_cards/debit/classic-pg", source: site}
+  - {name: "Карта болельщика баскетбольного клуба ЦСКА", category: "Дебетовые карты", path: "/ru/person/bank_cards/debit/club_cska", source: site}
+  - {name: "Дебетовая карта для стипендии", category: "Дебетовые карты", path: "/ru/person/bank_cards/debit/dlya-stipendii", source: site}
+  - {name: "Единая карта петербуржца Ленинградская", category: "Дебетовые карты", path: "/ru/person/bank_cards/debit/edinaya_karta_peterburzhca_leningradskaya", source: site}
+  - {name: "ЕКПшка для детей", category: "Дебетовые карты", path: "/ru/person/bank_cards/debit/ekpshka", source: site}
+  - {name: "ЕКПшка для подростков", category: "Дебетовые карты", path: "/ru/person/bank_cards/debit/ekpshka_young", source: site}
+  - {name: "Дебетовая карта для иностранных граждан", category: "Дебетовые карты", path: "/ru/person/bank_cards/debit/foreign", source: site}
+  - {name: "Золотая карта", category: "Дебетовые карты", path: "/ru/person/bank_cards/debit/gold-card", source: site}
+  - {name: "Золотая карта Подари жизнь", category: "Дебетовые карты", path: "/ru/person/bank_cards/debit/gold-pg", source: site}
+  - {name: "Карта с большими бонусами", category: "Дебетовые карты", path: "/ru/person/bank_cards/debit/karta-s-bolshimi-bonusami", source: site}
+  - {name: "Электронная карта трудового мигранта", category: "Дебетовые карты", path: "/ru/person/bank_cards/debit/karta_migranta", source: site}
+  - {name: "СберКарта с индивидуальным дизайном", category: "Дебетовые карты", path: "/ru/person/bank_cards/debit/major", source: site}
+  - {name: "Благотворительная карта Подари жизнь", category: "Дебетовые карты", path: "/ru/person/bank_cards/debit/mir-pz", source: site}
+  - {name: "Платёжный счёт", category: "Дебетовые карты", path: "/ru/person/bank_cards/debit/platezh", source: site}
+  - {name: "Платиновая карта Подари жизнь", category: "Дебетовые карты", path: "/ru/person/bank_cards/debit/platinum-pg", source: site}
+  - {name: "Карта СберПервый × Аэрофлот", category: "Дебетовые карты", path: "/ru/person/bank_cards/debit/premium_aeroflot", source: site}
+  - {name: "СберКарта", category: "Дебетовые карты", path: "/ru/person/bank_cards/debit/sberkarta", source: site}
+  - {name: "Карта Адафа", category: "Дебетовые карты", path: "/ru/person/bank_cards/debit/sberkarta_adafa", source: site}
+  - {name: "Детская СберКарта", category: "Дебетовые карты", path: "/ru/person/bank_cards/debit/sberkarta_kids", source: site}
+  - {name: "СберКарта Мир", category: "Дебетовые карты", path: "/ru/person/bank_cards/debit/sberkarta_mir", source: site}
+  - {name: "Зарплатная карта Мир от Сбера", category: "Дебетовые карты", path: "/ru/person/bank_cards/debit/sberkarta_mir_zp", source: site}
+  - {name: "Моментальная дебетовая СберКарта", category: "Дебетовые карты", path: "/ru/person/bank_cards/debit/sberkarta_momentum", source: site}
+  - {name: "СберКарта для пособий и пенсии", category: "Дебетовые карты", path: "/ru/person/bank_cards/debit/sberkarta_pens", source: site}
+  - {name: "Премиальная СберКарта", category: "Дебетовые карты", path: "/ru/person/bank_cards/debit/sberkarta_premium", source: site}
+  - {name: "Детская СберКарта со школьными сервисами", category: "Дебетовые карты", path: "/ru/person/bank_cards/debit/sberkarta_school", source: site}
+  - {name: "СберКарта для социальных выплат", category: "Дебетовые карты", path: "/ru/person/bank_cards/debit/sberkarta_social", source: site}
+  - {name: "Молодёжная СберКарта", category: "Дебетовые карты", path: "/ru/person/bank_cards/debit/sberkarta_young", source: site}
+  - {name: "СберКарта «Молодёжь Москвы»", category: "Дебетовые карты", path: "/ru/person/bank_cards/debit/sberkarta_young/moscow", source: site}
+  - {name: "Карта СберБанка для подростков", category: "Дебетовые карты", path: "/ru/person/bank_cards/debit/sberkarta_young_14-18", source: site}
+  - {name: "Дебетовая карта для студентов", category: "Дебетовые карты", path: "/ru/person/bank_cards/debit/sberkarta_young_18-21", source: site}
+  - {name: "Единый счёт для социальных выплат", category: "Дебетовые карты", path: "/ru/person/bank_cards/debit/social_schet", source: site}
+  - {name: "Mir Supreme", category: "Дебетовые карты", path: "/ru/person/bank_cards/debit/supreme", source: site}
+  - {name: "СберКарта Тревел", category: "Дебетовые карты", path: "/ru/person/bank_cards/debit/travel_card", source: site}
+  - {name: "СберКарта Ветерана", category: "Дебетовые карты", path: "/ru/person/bank_cards/debit/veteran", source: site}
+  - {name: "Цифровая карта Visa", category: "Дебетовые карты", path: "/ru/person/bank_cards/debit/visa-digital", source: site}
+  - {name: "Молодёжная карта", category: "Дебетовые карты", path: "/ru/person/bank_cards/debit/youth-card", source: site}
+  - {name: "Зарплатный проект для физических лиц", category: "Дебетовые карты", path: "/ru/person/bank_cards/debit/zarplata", source: site}
+  - {name: "Ипотека на строительство дома", category: "Ипотека", path: "/ru/person/credits/home/building", source: site}
+  - {name: "Ипотека на вторичное жильё", category: "Ипотека", path: "/ru/person/credits/home/buying_complete_house", source: site}
+  - {name: "Дальневосточная ипотека", category: "Ипотека", path: "/ru/person/credits/home/buying_complete_house_daln", source: site}
+  - {name: "Ипотека на загородную недвижимость и землю", category: "Ипотека", path: "/ru/person/credits/home/buying_cottage", source: site}
+  - {name: "Ипотека на новостройку", category: "Ипотека", path: "/ru/person/credits/home/buying_project", source: site}
+  - {name: "Домклик Плюс", category: "Ипотека", path: "/ru/person/credits/home/domklick_plus", source: site}
+  - {name: "Семейная ипотека", category: "Ипотека", path: "/ru/person/credits/home/family", source: site}
+  - {name: "Ипотека на гараж, машино-место или кладовую", category: "Ипотека", path: "/ru/person/credits/home/garage", source: site}
+  - {name: "Ипотека для иностранных граждан", category: "Ипотека", path: "/ru/person/credits/home/ipoteka-dlya-inostrancev", source: site}
+  - {name: "Ипотека на комнату", category: "Ипотека", path: "/ru/person/credits/home/komnata", source: site}
+  - {name: "Военная ипотека", category: "Ипотека", path: "/ru/person/credits/home/mil", source: site}
+  - {name: "Молодёжная ипотека", category: "Ипотека", path: "/ru/person/credits/home/molodezhnaya-ipoteka", source: site}
+  - {name: "Ипотека с материнским капиталом", category: "Ипотека", path: "/ru/person/credits/home/mot", source: site}
+  - {name: "Рефинансирование ипотеки", category: "Ипотека", path: "/ru/person/credits/home/refinancing_mortgages", source: site}
+  - {name: "Сельская ипотека", category: "Ипотека", path: "/ru/person/credits/home/selo", source: site}
+  - {name: "Кредитная СберКарта", category: "Кредитные карты", path: "/ru/person/bank_cards/credit_cards/credit_sberkarta", source: site}
+  - {name: "Карта Фикс", category: "Кредитные карты", path: "/ru/person/bank_cards/credit_cards/credit_sberkarta_fix", source: site}
+  - {name: "Кредитная карта для пенсионеров", category: "Кредитные карты", path: "/ru/person/bank_cards/credit_cards/credit_sberkarta_pens", source: site}
+  - {name: "Премиальные кредитные карты", category: "Кредитные карты", path: "/ru/person/bank_cards/credit_cards/credit_sberkarta_premium", source: site}
+  - {name: "Кредитная СберКарта Молодёжная", category: "Кредитные карты", path: "/ru/person/bank_cards/credit_cards/credit_sberkarta_young", source: site}
+  - {name: "Кредитная карта для студентов", category: "Кредитные карты", path: "/ru/person/bank_cards/credit_cards/dlya-studentov", source: site}
+  - {name: "Автокредит", category: "Кредиты", path: "/ru/person/credits/money/avtokredit", source: site}
+  - {name: "Рефинансирование", category: "Кредиты", path: "/ru/person/credits/money/consumer_refinance", source: site}
+  - {name: "Кредит наличными", category: "Кредиты", path: "/ru/person/credits/money/consumer_unsecured", source: site}
+  - {name: "Кредит на образование с господдержкой", category: "Кредиты", path: "/ru/person/credits/money/credit_na_obrazovanie", source: site}
+  - {name: "Кредит с пониженной ставкой", category: "Кредиты", path: "/ru/person/credits/money/credit_ps", source: site}
+  - {name: "Кредит под залог недвижимости", category: "Кредиты", path: "/ru/person/credits/money/credit_zalog", source: site}
+  - {name: "Деньги до пенсии", category: "Кредиты", path: "/ru/person/credits/money/dengi-do-pensii", source: site}
+  - {name: "Деньги за покупку", category: "Кредиты", path: "/ru/person/credits/money/dengi-za-pokupku", source: site}
+  - {name: "Кредит наличными пенсионерам", category: "Кредиты", path: "/ru/person/credits/money/kredity_dlya_pensionerov", source: site}
+  - {name: "Оплата частями", category: "Кредиты", path: "/ru/person/credits/money/oplata_chastiami", source: site}
+  - {name: "Кредит под залог земельного участка", category: "Кредиты", path: "/ru/person/credits/money/zemelnyj_uchastok", source: site}
+  - {name: "Вклад до востребования СберБанка России", category: "Накопительные счета", path: "/ru/person/contributions/accounts/accounts", source: site}
+  - {name: "Накопительный счёт", category: "Накопительные счета", path: "/ru/person/contributions/deposits/nakopi", source: site}
+  - {name: "Накопительный счёт Рядом", category: "Накопительные счета", path: "/ru/person/contributions/deposits/nakopitelnyj_schyot_ryadom", source: site}
+  - {name: "Накопительный счёт Пенсионный старт", category: "Накопительные счета", path: "/ru/person/contributions/deposits/pensionnyi_start", source: site}
+  - {name: "Сберегательный счёт", category: "Накопительные счета", path: "/ru/person/contributions/deposits/sb_schet", source: site}
+  - {name: "СберВклад", category: "Вклады", path: "/ru/person/contributions/deposits/sbervklad_a", match: 'сбервклад$', source: site}
+  - {name: "Зарплатный максимум", category: "Вклады", match: 'зарплатн\w*\s+максимум', source: aggregator}
+  - {name: "Образовательный кредит (без господдержки)", category: "Кредиты", match: 'образовательн(?!.*господдерж)', source: aggregator}
+  - {name: "СберПервый (пакет премиального обслуживания)", category: "Специальные предложения", match: '^(?:пакет\w*\s+(?:услуг\s+)?)?«?сберпервый»?$', source: site-text}
+  - {name: "СберПремьер (пакет премиального обслуживания)", category: "Специальные предложения", match: 'сберпремьер', source: site-text}
+  - {name: "Sber Private Banking", category: "Специальные предложения", match: 'private\s+banking', source: site-text}
+  - {name: "СберПрайм (подписка)", category: "Специальные предложения", match: 'сберпрайм(?!\s+старт\s+зарплатн)', source: site-text}
+  - {name: "СберБлиже (подписка)", category: "Специальные предложения", path: "/ru/sberblizhe", match: 'сберближе', source: site}

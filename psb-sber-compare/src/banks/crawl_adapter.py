@@ -135,8 +135,11 @@ def normalize_title(title: str) -> str:
     return " ".join(text.lower().split())
 
 
-_IMPERATIVE = re.compile(r"^(?:оформите|откройте)\s+(.+)$", re.I)
-_TITLE_TAIL = re.compile(r"\s+(?:со\s+ставкой|с\s+кэшбэком|получайте|онлайн\b|до\s+\d).*$", re.I)
+# «Открыть СберВклад в СберБанке онлайн» (Сбер, 02.11.2026) — инфинитив тоже:
+# страница отбрасывалась как служебная, и вклад «СберВклад» пропадал.
+_IMPERATIVE = re.compile(r"^(?:оформите|откройте|оформить|открыть)\s+(.+)$", re.I)
+_TITLE_TAIL = re.compile(r"\s+(?:со\s+ставкой|с\s+кэшбэком|получайте|онлайн\b|до\s+\d|"
+                         r"в\s+(?:сбер\w*|втб|т-банке|банке)\b).*$", re.I)
 
 
 # «ставкой» после прилагательного — часть названия: «Кредит с пониженной
@@ -243,6 +246,18 @@ def describe_page(data: dict[str, Any]) -> tuple[str, list[str]]:
             if len(short.split()) >= 2 and first.startswith(short):
                 start, head = index, [line]
                 break
+    if start < 0:
+        # Заголовок окна — призыв («Открыть СберВклад в СберБанке онлайн»), а
+        # на странице строка начинается с названия: «СберВклад до 13,5% годовых».
+        name = normalize_title(product_name(title))
+        if name != first and len(name) >= 4:
+            for index, line in enumerate(lines):
+                short = normalize_title(line)
+                if short.startswith(name) and len(short) <= len(name) + 40:
+                    # Строка с названием сама бывает описанием: «СберВклад до
+                    # 13,5% годовых» — её оставляем в теле.
+                    start, head = index, []
+                    break
     if start < 0:
         return title, []
 
@@ -441,6 +456,15 @@ CRAWL_READ_KEY = "Обход: прочитано страниц"
 CRAWL_SITEMAP_KEY = "Обход: страниц в карте сайта"
 CRAWL_UNREAD_KEY = "Обход: не прочитаны"
 CRAWL_FAILED_KEY = "Обход: ошибки чтения"
+CRAWL_CANDIDATES_KEY = "Обход: страницы вне разделов"
+# Не розница: бизнес, корпоративное, новости, помощь — в кандидаты не идут.
+_NOT_RETAIL = re.compile(
+    r"business|biznes|corporate|korporat|legal|/ul/|/ip/|s_m_|svoedelo|msb|/sme|investor|"
+    r"/ir/|/about|o-banke|o_banke|press|news|novost|career|karer|vakans|vacanc|job|"
+    r"compliance|sustainab|disclosure|raskryt|/blog|/media|/help|faq|/contacts|kontakt|"
+    r"offices|otdelen|bankomat|atm|/tariffs?$|/documents?|dokument|/promo/archive|"
+    r"partners?/|/sitemap|/search|/login|/auth|/app$|/apps?/|/eng?/|/en$|"
+    r"securit|bezopasn|/policy|politik|cookie|/oferta|/rules|/legal-info", re.I)
 # Витрины разделов — не продукты: в «не прочитаны» не попадают.
 _LISTING = re.compile(r"/(?:deposits|money|home|homenew|credit_cards|debit|bank_cards|"
                       r"credits|contributions|ipoteka|kredit|karty|vklady-i-scheta)/?$", re.I)
@@ -1066,6 +1090,7 @@ class CrawlAdapter(BankAdapter):
                 CRAWL_READ_KEY: str(visited),
                 CRAWL_SITEMAP_KEY: str(len(sitemap_found)),
                 CRAWL_UNREAD_KEY: " ".join(unread[:60]),
+                CRAWL_CANDIDATES_KEY: " ".join(sorted(self.__dict__.get("_candidates", ()))[:150]),
                 CRAWL_FAILED_KEY: " ".join(f.split(":")[0] + ":" + f.split(":")[1]
                                            for f in failures if f.startswith("http"))[:3000],
             })
@@ -1425,7 +1450,14 @@ class CrawlAdapter(BankAdapter):
             # «…/ipoteka/[…](https://…)») — не страницы сайта.
             if re.search(r"www\.|\+7|%20|\[|https?:", parts.path):
                 continue
-            if not self._family(url) or self.skip.search(parts.path) or is_seo_page(url):
+            if self.skip.search(parts.path) or is_seo_page(url):
+                continue
+            if not self._family(url):
+                # Своя страница вне разделов обхода — кандидат: так нашёлся бы
+                # «СберБлиже» (/ru/sberblizhe, 02.11.2026), который сбор молча
+                # пропускал. Бизнес, «о банке», новости — не кандидаты.
+                if not _NOT_RETAIL.search(parts.path):
+                    self.__dict__.setdefault("_candidates", set()).add(url)
                 continue
             if url not in out:
                 out.append(url)

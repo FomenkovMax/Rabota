@@ -214,6 +214,17 @@ def collect_summary(bank_code: str, returncode: int, tail: list[str]) -> str:
                          f"⚠️ {bank}: прочитано {c['read']} стр., не прочитано {left} — "
                          "список в своде, цифры по ним из прошлого сбора")
         tail += "\nПолнота обхода:\n" + "\n".join(lines)
+        # Новые страницы вне разделов обхода — возможно, новый продукт.
+        fresh = [f"{bank} — {len(c.get('new_candidates') or [])}" for bank, c in crawl.items()
+                 if c.get("new_candidates")]
+        if fresh:
+            tail += ("\n🆕 Новые страницы вне обхода (возможно, новые продукты): "
+                     + ", ".join(fresh) + " — список в своде")
+    for ref in data.get("references") or []:
+        missing = ", ".join(m.get("name", "") for m in ref.missing[:6])
+        more = f" и ещё {len(ref.missing) - 6}" if len(ref.missing) > 6 else ""
+        tail += (f"\n📋 Эталон {ref.bank}: найдено {ref.share}"
+                 + (f"; не найдены: {missing}{more}" if ref.missing else " ✅"))
     return (f"{head}\nПродуктов: {banks}.\n"
             f"Место Сбера по программам: {place}{tail}\n"
             "Подробно — в «📊 Выгрузить общий свод».")
