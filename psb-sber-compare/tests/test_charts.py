@@ -85,3 +85,14 @@ def test_calculator_inputs_presets_and_table():
                  '"Ипотека": {"sum": [3000000'):
         assert part in html, part
     assert "</script>" in html and "__DATA__" not in html
+
+
+def test_brand_logos_and_colors():
+    from src import brand
+    css = brand.css()
+    for code in ("sber", "vtb", "psb", "tbank", "rostfinance", "cmr"):
+        assert f".bl-{code}{{background-image:url(\"data:image/svg+xml;base64," in css, code
+        assert f"--b-{code}:" in css
+    assert brand.color("ВТБ") == "var(--b-vtb)"
+    assert 'bl-other">Н</i>' in brand.name("Новый банк")      # неизвестный банк — буква
+    assert "<script" not in brand.name("<script>")

@@ -19,7 +19,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from . import conditions
+from . import brand, conditions
 from . import charts
 from .compare import GREEN, GREY, LIGHT_LABEL, RED, YELLOW, Comparison
 
@@ -66,7 +66,7 @@ CSS = """
   --plane:#f9f9f7; --surface:#fcfcfb;
   --ink:#0b0b0b; --ink-2:#52514e; --ink-muted:#898781;
   --grid:#e1e0d9; --axis:#c3c2b7; --border:rgba(11,11,11,.10);
-  --s1:#2a78d6; --s2:#eb6834;
+  --s1:#21a038; --s2:#eb6834;
   --st-good:#0ca30c; --st-warning:#fab219; --st-critical:#d03b3b;
   --wash:rgba(11,11,11,.035);
 }
@@ -76,7 +76,7 @@ CSS = """
     --plane:#0d0d0d; --surface:#1a1a19;
     --ink:#fff; --ink-2:#c3c2b7; --ink-muted:#898781;
     --grid:#2c2c2a; --axis:#383835; --border:rgba(255,255,255,.10);
-    --s1:#3987e5; --s2:#d95926;
+    --s1:#2bc24a; --s2:#d95926;
     --wash:rgba(255,255,255,.05);
   }
 }
@@ -85,7 +85,7 @@ CSS = """
   --plane:#0d0d0d; --surface:#1a1a19;
   --ink:#fff; --ink-2:#c3c2b7; --ink-muted:#898781;
   --grid:#2c2c2a; --axis:#383835; --border:rgba(255,255,255,.10);
-  --s1:#3987e5; --s2:#d95926;
+  --s1:#2bc24a; --s2:#d95926;
   --wash:rgba(255,255,255,.05);
 }
 *{box-sizing:border-box}
@@ -95,14 +95,24 @@ body{
   padding:32px 16px 64px;
 }
 .wrap{max-width:1180px;margin:0 auto}
-header{margin-bottom:28px}
+header{margin-bottom:24px;border-radius:16px;padding:24px 26px 20px;color:#fff;
+  background:linear-gradient(120deg,#107f2c 0%,#21a038 45%,#1fa58e 100%);
+  box-shadow:0 6px 24px rgba(16,127,44,.18)}
+header h1{color:#fff}
+header .sub{color:rgba(255,255,255,.88)}header .sub b{color:#fff}
+.hbanks{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
+.hbanks .bn{background:rgba(255,255,255,.95);color:#111;border-radius:999px;padding:5px 12px 5px 6px;
+  font-size:13.5px;font-weight:600}
+.hbanks .bn.own{box-shadow:0 0 0 2px #fff}
 h1{font-size:26px;margin:0 0 6px;letter-spacing:-.01em}
 .sub{color:var(--ink-2);font-size:14px}
 .card{
   background:var(--surface);border:1px solid var(--border);
-  border-radius:12px;padding:20px 22px;margin-bottom:20px;
+  border-radius:14px;padding:20px 22px;margin-bottom:20px;
+  box-shadow:0 1px 2px rgba(0,0,0,.04),0 4px 14px rgba(0,0,0,.03);
 }
-h2{font-size:17px;margin:0 0 4px;letter-spacing:-.005em}
+h2{font-size:17px;margin:0 0 4px;letter-spacing:-.005em;padding-left:11px;
+  border-left:4px solid var(--s1);line-height:1.25}
 .hint{color:var(--ink-muted);font-size:13px;margin:0 0 16px}
 .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:20px}
 .tile{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px 18px}
@@ -213,7 +223,7 @@ table.lnrt td.none{color:var(--ink-muted)}
 """
 
 
-CSS += charts.CSS + (
+CSS += charts.CSS + brand.css() + (
     f":root{{{charts.VARS_LIGHT}}}"
     f'@media (prefers-color-scheme:dark){{:root:not([data-theme="light"]){{{charts.VARS_DARK}}}}}'
     f':root[data-theme="dark"]{{{charts.VARS_DARK}}}'
@@ -247,8 +257,8 @@ def _overview(*, gaps: list[Any], home: str, comparisons: list[Any], specials: l
     if drops:
         out.append('<section class="card"><h2>Сбер на фоне рынка</h2>'
                    '<p class="hint">Линия — разброс ставок банков по программе, справа '
-                   'всегда выгоднее клиенту (для кредитов шкала развёрнута). Серые точки — '
-                   'конкуренты, черта — медиана остальных, цветная точка — Сбер. '
+                   'всегда выгоднее клиенту (для кредитов шкала развёрнута). Точки конкурентов — '
+                   'цветом банка, черта — медиана остальных, крупная точка — Сбер (цвет — его место). '
                    f"Наведите на точку, чтобы увидеть банк и продукт.</p>{drops}</section>")
     bub = charts.bubbles(gaps, home=home)
     if bub:
@@ -273,7 +283,7 @@ def _presence_block(presence: dict[str, str], banks: list[str]) -> str:
     for bank in banks:
         basis = presence.get(bank, "")
         icon = "🏢" if basis.startswith("страница офисов") else ("📄" if basis else "❔")
-        rows.append(f'<tr><td class="pname">{e(bank)}</td><td>{icon}</td>'
+        rows.append(f'<tr><td class="pname">{brand.name(bank)}</td><td>{icon}</td>'
                     f'<td class="pmeta">{_linkify(basis) if basis else "не подтверждено"}</td></tr>')
     return ('<details class="cat"><summary>Присутствие банков в ЛНР — основания'
             '<span class="cnt">🏢 адрес на сайте банка · 📄 внешний источник</span></summary>'
@@ -323,7 +333,7 @@ def _lnr_section(rows: list[Any], total: dict[str, int], banks: list[str], home:
             f'<tr><td><div class="pname">{e(p.title)}</div>'
             f'<div class="pmeta">{e(row.program)}</div></td>'
             f'{cell(row.own, rate, "", p)}{cells}</tr>')
-    head = "".join(f"<th>{e(b)}</th>" for b in [home] + rivals)
+    head = "".join(f"<th>{brand.name(b)}</th>" for b in [home] + rivals)
     blocks = "".join(
         f'<details class="cat"{" open" if i == 0 else ""}><summary>{e(cat)}'
         f'<span class="cnt">{len(items)} продукт.</span></summary>'
@@ -605,7 +615,7 @@ VERDICT_LABEL = {"green": "Выигрываем", "yellow": "Паритет",
 def _promo_rows(promos: list[Any], bank: str) -> str:
     """Строки одного банка внутри сегмента."""
     if not promos:
-        return (f'<tr><td class="bank">{e(bank)}</td>'
+        return (f'<tr><td class="bank">{brand.name(bank)}</td>'
                 f'<td colspan="3" class="empty" style="padding:8px 10px">'
                 "Предложений нет</td></tr>")
 
@@ -656,7 +666,7 @@ def _versus(item: Any) -> str:
     use_products = getattr(item, "basis", "") == "витрина продуктов"
 
     def side(promo: Any, bank: str, highlight: bool, product: Any = None) -> str:
-        head = f'<div class="vs-bank">{e(bank)}</div>'
+        head = f'<div class="vs-bank">{brand.name(bank)}</div>'
 
         # Когда вывод опирается на витрину, показываем продукт, а не пустоту:
         # «нет акций» рядом с банком, у которого вклады под 31%, — обман.
@@ -806,7 +816,7 @@ def _catalog(catalog: dict[str, list[Any]], banks: list[str],
                     + (f'<span class="src">{e(source)}</span>' if source else "")
                     + f'</span><span class="r{"" if is_rate else " none"}">{e(rate)}</span></div>')
             body = "".join(rows) or '<p class="empty">В этой категории продуктов не найдено</p>'
-            columns.append(f'<div class="catcol"><h4>{e(bank)}</h4>{body}</div>')
+            columns.append(f'<div class="catcol"><h4>{brand.name(bank)}</h4>{body}</div>')
         blocks.append(
             f'<details class="cat"><summary>{e(category)}'
             f'<span class="cnt">{e(" · ".join(counts))}</span></summary>'
@@ -870,7 +880,7 @@ def _gaps_table(gaps: list[Any], home: str) -> str:
             name = (f'<a href="{e(o.url)}" target="_blank" rel="noopener">{e(o.title)}</a>'
                     if o.url else e(o.title))
             return (f'<span class="num">{e(prefix + fmt_rate(o.value))}</span>'
-                    f'<div class="pmeta">{e(o.bank)} · {name}</div>')
+                    f'<div class="pmeta">{brand.name(o.bank)} · {name}</div>')
 
         best = offer(gap.best) if gap.best and gap.best.bank != home else (
             "Сбер" if gap.best else "—")
@@ -914,7 +924,7 @@ def _crawl_block(crawl: dict[str, dict[str, Any]]) -> str:
         state = "✅ полный" if c["complete"] else f"⚠️ не прочитано {len(left)}"
         pages = "".join(f'<div class="pmeta">{_linkify(u)}</div>' for u in left[:15])
         more = (f'<div class="pmeta">… и ещё {len(left) - 15}</div>' if len(left) > 15 else "")
-        rows.append(f'<tr><td class="pname">{e(bank)}</td><td class="num">{c["read"]}</td>'
+        rows.append(f'<tr><td class="pname">{brand.name(bank)}</td><td class="num">{c["read"]}</td>'
                     f'<td class="num">{c["sitemap"] or "—"}</td><td>{state}{pages}{more}</td></tr>')
     return ('<h3 style="margin:4px 0 10px;font-size:15px">Полнота обхода сайтов</h3>'
             '<p class="hint">Прочитано — страниц розницы за сбор; карта сайта — сколько '
@@ -937,7 +947,7 @@ def _reference_block(checks: list[Any]) -> str:
             f'{" · " + _linkify("https://www.sberbank.ru" + m["path"]) if m.get("path") and c.bank == "Сбер" else ""}'
             f' <i>({e(SOURCES.get(m.get("source", ""), m.get("source", "")))})</i></div>'
             for m in c.missing)
-        parts.append(f'<p><b>{e(c.bank)}</b>: найдено {e(c.share)} продуктов эталона'
+        parts.append(f'<p><b>{brand.name(c.bank)}</b>: найдено {e(c.share)} продуктов эталона'
                      f'{"" if c.missing else " ✅"}</p>{rows}')
     return ('<h3 style="margin:4px 0 10px;font-size:15px">Сверка с эталоном продуктов</h3>'
             '<p class="hint">Эталон — список продуктов банка (config/reference_&lt;банк&gt;.yaml). '
@@ -959,7 +969,7 @@ def _candidates_block(crawl: dict[str, dict[str, Any]]) -> str:
         fresh = "".join(f'<div class="pmeta">🆕 {_linkify(u)}</div>' for u in new[:30])
         rest = "".join(f'<div class="pmeta">{_linkify(u)}</div>' for u in every[:150])
         parts.append(
-            f'<p><b>{e(bank)}</b>: новых за неделю — {len(new)}, всего вне обхода — '
+            f'<p><b>{brand.name(bank)}</b>: новых за неделю — {len(new)}, всего вне обхода — '
             f'{len(every)}</p>{fresh}<details><summary class="pmeta">весь список</summary>'
             f'{rest}</details>')
     if not parts:
@@ -982,7 +992,7 @@ def _quality_block(rows: list[Any], manual: list[Any]) -> str:
             row.issues.items(), key=lambda kv: -kv[1]))
         body.append(
             "<tr>"
-            f"<td>{e(row.bank)}</td>"
+            f"<td>{brand.name(row.bank)}</td>"
             f"<td>{e(BLOCK_NAME.get(row.block, row.block))}</td>"
             f'<td class="num">{row.products}</td>'
             f'<td class="num">{row.usable} из {row.rated}</td>'
@@ -1004,7 +1014,7 @@ def _quality_block(rows: list[Any], manual: list[Any]) -> str:
                     f'{e(product.title)}</a>' if product.source_url else e(product.title))
             rate, _ = _catalog_rate(product)
             items.append(
-                f'<div class="chg high"><div class="t">{e(product.bank)} · {name} — '
+                f'<div class="chg high"><div class="t">{brand.name(product.bank)} · {name} — '
                 f'{e(rate)}</div><div class="d">{e("; ".join(check.issues))}</div></div>')
         checks = "".join(items)
     return (table + '<h3 style="margin:22px 0 10px;font-size:15px">Нужна ручная проверка</h3>'
@@ -1020,7 +1030,7 @@ def _coverage_block(matrix: dict[str, dict[str, Any]], banks: list[str]) -> str:
     """Матрица «категория × банк»: что сравнивается, что собрано, что только есть."""
     if not matrix:
         return '<p class="empty">Данных об охвате пока нет: нужен свежий сбор.</p>'
-    head = "".join(f"<th>{e(bank)}</th>" for bank in banks)
+    head = "".join(f"<th>{brand.name(bank)}</th>" for bank in banks)
     rows = []
     for category, cells in matrix.items():
         tds = []
@@ -1061,7 +1071,7 @@ def _specials_block(rows: list[Any]) -> str:
             "<tr>"
             f'<td><div class="pname">{e(row.program)}</div>'
             f'<div class="pmeta">{e(row.category)}</div></td>'
-            f"<td>{e(row.bank)}</td>"
+            f"<td>{brand.name(row.bank)}</td>"
             f"<td>{name}</td>"
             f'<td class="num">{e(rate)}</td>'
             f"<td>{e(row.kind_label)}</td>"
@@ -1144,6 +1154,8 @@ def render_report(
   <div class="sub">Регион: <b>{e(region)}</b> · Отчёт сформирован {e(generated_at)} ·
   Собрано продуктов: конкуренты {psb_total}, Сбер {sber_total} · Запусков в истории: {run_count}
   · Ключевая ставка ЦБ: <b>{e(key_rate or "н/д")}</b></div>
+  <div class="hbanks">{"".join(brand.name(b).replace('class="bn"', 'class="bn own"' if b == home else 'class="bn"')
+                               for b in (catalog_banks or list((catalog or {}).keys())))}</div>
 </header>
 
 {_overview(gaps=gaps or [], home=home, comparisons=comparisons, specials=specials or [],

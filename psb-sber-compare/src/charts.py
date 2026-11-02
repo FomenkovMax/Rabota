@@ -15,6 +15,8 @@ import statistics
 from html import escape
 from typing import Any, Iterable
 
+from . import brand
+
 LEADER, IN_MARKET, BEHIND, NO_SBER = "лидер", "в рынке", "отстаёт", "не найдено у Сбера"
 STATUS_VAR = {LEADER: "--st-good", IN_MARKET: "--st-warning", BEHIND: "--st-critical",
               NO_SBER: "--ink-muted"}
@@ -147,7 +149,7 @@ def insights_block(items: list[tuple[str, str]]) -> str:
 def dumbbell(gaps: list[Any], *, home: str) -> str:
     """Каждая программа — линия от худшей до лучшей ставки рынка.
 
-    Серые точки — конкуренты, вертикальная черта — медиана остальных,
+    Точки конкурентов — цветом банка, вертикальная черта — медиана остальных,
     крупная точка — Сбер в цвете статуса. Ось у каждой строки своя
     (вклад 13 % и ипотека 6 % на одной оси слиплись бы), поэтому
     подписаны края диапазона.
@@ -191,7 +193,7 @@ def dumbbell(gaps: list[Any], *, home: str) -> str:
         for o in g.offers:
             if o.bank == home:
                 continue
-            parts.append(f'<circle cx="{x(o.value):.1f}" cy="{y}" r="5" fill="var(--ink-muted)" '
+            parts.append(f'<circle cx="{x(o.value):.1f}" cy="{y}" r="6" fill="{brand.color(o.bank)}" '
                          f'stroke="var(--surface)" stroke-width="2">'
                          f'<title>{e(o.bank)} · {e(o.title)}: {e(pct(o.value))}</title></circle>')
         var = STATUS_VAR.get(g.status, "--s1")
@@ -215,8 +217,9 @@ def dumbbell(gaps: list[Any], *, home: str) -> str:
         f'<span><i style="background:var(--st-good);border-radius:50%"></i>{e(home)} — лидер</span>'
         '<span><i style="background:var(--st-warning);border-radius:50%"></i>в рынке</span>'
         '<span><i style="background:var(--st-critical);border-radius:50%"></i>отстаёт</span>'
-        '<span><i style="background:var(--ink-muted);border-radius:50%"></i>конкуренты</span>'
-        '<span><i style="background:var(--ink-2);width:3px"></i>медиана остальных</span>'
+        + "".join(f'<span><i style="background:{brand.color(b)};border-radius:50%"></i>{e(b)}</span>'
+                  for b in sorted({o.bank for g in gaps for o in g.offers if o.bank != home}))
+        + '<span><i style="background:var(--ink-2);width:3px"></i>медиана остальных</span>'
         '</div>')
     # На телефоне широкий график листается вбок, а не сжимается в нечитаемое.
     return legend + '<div class="wide">' + "".join(parts) + "</div>"
@@ -286,14 +289,15 @@ def bubbles(gaps: list[Any], *, home: str) -> str:
     for bank, (sx, sy, n) in sorted(pts.items(), key=lambda kv: -kv[1][2]):
         r = 12 + 22 * (n / biggest) ** 0.5
         own = bank == home
-        fill = "var(--s1)" if own else "var(--ink-muted)"
+        fill = brand.color(bank)
         parts.append(
             f'<circle cx="{px(sx):.1f}" cy="{py(sy):.1f}" r="{r:.1f}" fill="{fill}" '
-            f'fill-opacity="{0.85 if own else 0.35}" stroke="var(--surface)" stroke-width="2">'
+            f'fill-opacity="{0.85 if own else 0.55}" stroke="{fill}" stroke-width="2">'
             f'<title>{e(bank)}: сбережения {e(pct(sx))}, кредиты {e(pct(sy))}, '
             f'программ {n}</title></circle>'
             f'<text x="{px(sx):.1f}" y="{py(sy) + 4:.1f}" text-anchor="middle" font-size="12" '
-            f'font-weight="{700 if own else 600}" fill="var(--ink)">{e(bank)}</text>')
+            f'font-weight="700" fill="#fff" paint-order="stroke" stroke="rgba(0,0,0,.35)" '
+            f'stroke-width="2">{e(bank)}</text>')
     parts.append("</svg>")
     return '<div class="wide">' + "".join(parts) + "</div>"
 
@@ -392,7 +396,7 @@ def heatmap(gaps: list[Any], banks: Iterable[str], *, home: str) -> str:
     if not rows:
         return ""
     banks = list(banks)
-    head = "".join(f'<th class="{"own" if b == home else ""}">{e(b)}</th>' for b in banks)
+    head = "".join(f'<th class="{"own" if b == home else ""}">{brand.name(b)}</th>' for b in banks)
     body = []
     for g in rows:
         values = {o.bank: o.value for o in g.offers}
@@ -446,10 +450,10 @@ table.heat td.none{color:var(--ink-muted);font-weight:400}
 
 #: Цвета графиков: ступени синей шкалы для воронки и расходящаяся пара
 #: синий ↔ красный с серой серединой для тепловой карты (палитра отчёта).
-VARS_LIGHT = ("--f1:#86b6ef;--f2:#5598e7;--f3:#256abf;--f4:#104281;"
+VARS_LIGHT = ("--f1:#a9e2b6;--f2:#5cc670;--f3:#21a038;--f4:#0f6e27;"
               "--d-mid:#f0efec;--d-b1:#cde2fb;--d-b2:#86b6ef;--d-b3:#256abf;"
               "--d-r1:#fbd9d6;--d-r2:#f2a29e;--d-r3:#c43c3b;")
-VARS_DARK = ("--f1:#86b6ef;--f2:#3987e5;--f3:#256abf;--f4:#184f95;"
+VARS_DARK = ("--f1:#3a8f50;--f2:#2a7f40;--f3:#1f6e34;--f4:#165c2a;"
              "--d-mid:#383835;--d-b1:#1c3a63;--d-b2:#1c5cab;--d-b3:#3987e5;"
              "--d-r1:#4a2321;--d-r2:#8a3533;--d-r3:#e66767;")
 
@@ -536,7 +540,7 @@ def calculator_block(offers: list[dict[str, Any]], *, home: str) -> str:
     options = "".join(f'<option value="{e(p)}">{e(p)} · {counts[p]} банк.</option>'
                       for p in order)
     data = json.dumps({"offers": offers, "kinds": CALC_KINDS, "presets": CALC_PRESETS,
-                       "home": home}, ensure_ascii=False).replace("</", "<\\/")
+                       "home": home, "codes": brand.js_codes()}, ensure_ascii=False).replace("</", "<\\/")
     return (_CALC_HTML.replace("__OPTIONS__", options).replace("__DATA__", data))
 
 
@@ -683,8 +687,9 @@ function draw() {
     for (const s of o.special) info.push('<span>особые условия: ' + esc(s) + '</span>');
     if (o.calc) info.push('<span>калькулятор на сайте банка: ' + esc(o.calc) + '</span>');
     info.push(`<a href="${esc(o.url)}" target="_blank" rel="noopener">${esc(o.title)} — страница банка ↗</a>`);
-    return `<tr class="cr${o.bank === D.home ? ' own' : ''}${o.warn.length ? ' nofit' : ''}" data-i="${i}">
-      <td><span class="arr">▸</span> <b>${esc(o.bank)}</b>${o === best && fit.length > 1 ? ' <span class="star" title="лучший вариант">★</span>' : ''}${o.warn.length ? ' <span class="warn" title="' + esc(o.warn.join('; ')) + '">⚠</span>' : ''}<div class="ct">${esc(o.title)}</div></td>
+    const bc = D.codes[o.bank] || 'other';
+    return `<tr class="cr${o.bank === D.home ? ' own' : ''}${o.warn.length ? ' nofit' : ''}" data-i="${i}" style="--bc:var(--b-${bc})">
+      <td><span class="arr">▸</span> <span class="bn"><i class="bl bl-${bc}"></i><b>${esc(o.bank)}</b></span>${o === best && fit.length > 1 ? ' <span class="star" title="лучший вариант">★</span>' : ''}${o.warn.length ? ' <span class="warn" title="' + esc(o.warn.join('; ')) + '">⚠</span>' : ''}<div class="ct">${esc(o.title)}</div></td>
       <td class="num">${pc(o.rate)}</td>${cells}<td class="num">${vs}</td></tr>
       <tr class="cd" id="cd${i}" hidden><td colspan="${cols}">${info.join('')}</td></tr>`;
   }).join('');
@@ -733,7 +738,8 @@ CSS += """
 .ctab td{padding:9px 8px;border-bottom:1px solid var(--grid);vertical-align:top;font-size:14px}
 .ctab .num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 .ctab tr.cr{cursor:pointer}.ctab tr.cr:hover td{background:var(--wash)}
-.ctab tr.own td{background:var(--wash)}.ctab tr.own td:first-child{box-shadow:inset 3px 0 var(--s1)}
+.ctab tr.cr td:first-child{box-shadow:inset 4px 0 var(--bc)}
+.ctab tr.own td{background:color-mix(in srgb,var(--s1) 9%,transparent)}
 .ctab .ct{font-size:12px;color:var(--ink-muted);margin-top:2px}
 .ctab .arr{display:inline-block;color:var(--ink-muted);transition:transform .15s}
 .ctab tr.open .arr{transform:rotate(90deg)}
