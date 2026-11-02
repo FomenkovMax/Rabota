@@ -223,7 +223,7 @@ table.lnrt td.none{color:var(--ink-muted)}
 """
 
 
-CSS += charts.CSS + brand.css() + (
+CSS += charts.CSS + brand.css() + brand.icons_css() + (
     f":root{{{charts.VARS_LIGHT}}}"
     f'@media (prefers-color-scheme:dark){{:root:not([data-theme="light"]){{{charts.VARS_DARK}}}}}'
     f':root[data-theme="dark"]{{{charts.VARS_DARK}}}'
@@ -1140,7 +1140,7 @@ def render_report(
             f"{history_chart}</section>"
         )
 
-    return f"""<!DOCTYPE html>
+    return brand.decorate(f"""<!DOCTYPE html>
 <html lang="ru"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Сбер и конкуренты — {e(region)}</title>
@@ -1270,7 +1270,7 @@ def render_report(
   фактическая ставка определяется индивидуально. Перед использованием
   в управленческих решениях сверьтесь с первоисточником по ссылке в строке продукта.
 </footer>
-</div></body></html>"""
+</div></body></html>""")
 
 
 def write_report(path: str | Path, html_text: str) -> Path:

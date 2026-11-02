@@ -42,6 +42,9 @@ from bot import service  # noqa: E402
 
 log = logging.getLogger("bot")
 
+# Обложка приветствия: глянцевый 3D в стиле СберБанк Онлайн (Higgsfield, 03.11.2026).
+COVER = Path(__file__).resolve().parent / "assets" / "cover.jpg"
+
 WELCOME = (
     "<b>Сравнение розничных продуктов</b>\n"
     "Сбер против конкурентов в Луганской Народной Республике.\n\n"
@@ -106,6 +109,13 @@ async def cmd_start(message: Message) -> None:
         )
         return
     awaiting_question.discard(message.from_user.id)
+    # Обложка — отдельным сообщением над меню: кнопки меню редактируют своё
+    # сообщение текстом, а у сообщения с картинкой текст не редактируется.
+    if COVER.exists():
+        try:
+            await message.answer_photo(BufferedInputFile(COVER.read_bytes(), filename="cover.jpg"))
+        except Exception:                         # noqa: BLE001
+            log.warning("Обложка не отправилась", exc_info=True)
     await message.answer(WELCOME, reply_markup=kb.main_menu())
 
 

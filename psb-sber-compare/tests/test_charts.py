@@ -96,3 +96,15 @@ def test_brand_logos_and_colors():
     assert brand.color("ВТБ") == "var(--b-vtb)"
     assert 'bl-other">Н</i>' in brand.name("Новый банк")      # неизвестный банк — буква
     assert "<script" not in brand.name("<script>")
+
+
+def test_section_icons_are_added_once():
+    from src import brand
+    page = '<h2>Калькулятор: сколько это стоит</h2><details class="cat" open><summary>Ипотека<span>'
+    out = brand.decorate(page)
+    assert '<h2><i class="sic ic-calc"></i>Калькулятор' in out
+    assert '<summary><i class="sic ic-mortgage"></i>Ипотека' in out
+    assert brand.decorate(out) == out or out.count("ic-calc") == 1
+    css = brand.icons_css()
+    for name in ("deposits", "savings", "loans", "mortgage", "cards", "region", "calc", "market"):
+        assert f".ic-{name}{{background-image:url(\"data:image/webp;base64," in css, name

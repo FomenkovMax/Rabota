@@ -78,3 +78,54 @@ def css() -> str:
 def js_codes() -> dict[str, str]:
     """Банк → код логотипа: для страниц, где строки рисует скрипт (калькулятор)."""
     return {bank: c for bank, (c, _, _) in BANKS.items()}
+
+
+# --- 3D-иконки разделов ------------------------------------------------------
+# Сгенерированы в Higgsfield 03.11.2026 в одном стиле («глянцевый 3D, как в
+# СберБанк Онлайн»), сжаты в WebP 128×128 (~7 КБ): config/brand/icons/*.webp.
+
+#: Слово в заголовке раздела или категории → иконка. Первое совпадение.
+SECTION_ICONS = (
+    ("Накопительн", "savings"), ("Вклад", "deposits"), ("Сбережени", "deposits"),
+    ("Ипотек", "mortgage"), ("Кредитные карты", "cards"), ("Дебетовые карты", "cards"),
+    ("Банковские карты", "cards"), ("Карты", "cards"), ("Кредит", "loans"),
+    ("ЛНР", "region"), ("Присутствие", "region"), ("Охват", "region"),
+    ("Калькулятор", "calc"),
+    ("Главное", "market"), ("Место Сбера", "market"), ("на фоне рынка", "market"),
+    ("Карта ставок", "market"), ("Позиционирование", "market"), ("Светофор", "market"),
+    ("Дельта", "market"), ("История", "market"), ("Воронка", "market"),
+    ("Качество", "market"), ("Каталог", "cards"), ("Акции", "deposits"),
+    ("Специальные", "deposits"), ("Изменения", "market"),
+)
+
+
+def icons_css() -> str:
+    out = [".sic{flex:none;display:inline-block;width:34px;height:34px;margin:-6px 8px -8px -2px;"
+           "background:center/contain no-repeat;vertical-align:middle}"
+           "h2:has(.sic){border-left:0;padding-left:0;display:flex;align-items:center}"
+           "summary .sic{width:26px;height:26px;margin:-4px 6px -6px 0}"]
+    for name in {n for _, n in SECTION_ICONS}:
+        try:
+            data = base64.b64encode((FOLDER / "icons" / f"{name}.webp").read_bytes()).decode()
+        except OSError:
+            continue
+        out.append(f'.ic-{name}{{background-image:url("data:image/webp;base64,{data}")}}')
+    return "".join(out)
+
+
+def _icon_for(title: str) -> str:
+    return next((name for word, name in SECTION_ICONS if word in title), "")
+
+
+def decorate(page: str) -> str:
+    """Иконки в заголовки разделов (h2) и категорий (summary) готовой страницы."""
+    import re
+
+    def h2(match: "re.Match[str]") -> str:
+        name = _icon_for(match.group(2))
+        if not name or "sic" in match.group(2):
+            return match.group(0)
+        return f'{match.group(1)}<i class="sic ic-{name}"></i>{match.group(2)}'
+
+    page = re.sub(r"(<h2[^>]*>)([^<]+)", h2, page)
+    return re.sub(r'(<details class="cat"[^>]*><summary>)([^<]+)', h2, page)
