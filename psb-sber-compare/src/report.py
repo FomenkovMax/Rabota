@@ -410,8 +410,8 @@ def _tiles(counts: dict[str, int], changes: list[Any], total_promos: int) -> str
 
 def _traffic_table(comparisons: list[Comparison]) -> str:
     if not comparisons:
-        return ('<p class="empty">Пар для сравнения нет. Заполни config/product_map.yaml '
-                'и добавь выгрузку Сбера.</p>')
+        return ('<p class="empty">Прямых аналогов со ставками нет: проверь, что '
+                'собраны Сбер и банки, — продукты сопоставляются автоматически.</p>')
 
     rows = []
     for c in comparisons:
@@ -1216,8 +1216,10 @@ def render_report(
 {_tiles(counts, changes, total_promos)}
 
 <section class="card">
-  <h2>Светофор по идентичным продуктам</h2>
-  <p class="hint">Сравниваются только пары, подтверждённые вручную в product_map.yaml.
+  <h2>Светофор по прямым аналогам</h2>
+  <p class="hint">Пары подобраны автоматически по сути продукта: та же программа, тот же
+  клиент (пенсионер, ребёнок, зарплатный…), тот же механизм и тип ставки. Похожие, но
+  не прямые аналоги в светофор не идут — они есть в своде по ЛНР.
   Пороги: паритет до {str(thresholds.parity).replace(".", ",")} п.п.,
   проигрыш от {str(thresholds.loss).replace(".", ",")} п.п.
   Для вкладов и накопительных счетов выгодой клиента считается ставка выше, для кредитов — ниже.</p>

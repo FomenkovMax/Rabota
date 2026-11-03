@@ -992,3 +992,8 @@ def test_amount_and_term_bounds():
     assert (got["amount_min"], got["amount_max"], got["term_min_months"], got["term_max_months"]) == \
         (100_000, 3_000_000, 3, 60)
     assert f(["до 5 млн ₽"])["amount_min"] is None
+
+
+def test_closed_package_no_longer_sold():
+    from src.banks.crawl_adapter import _CLOSED
+    assert _CLOSED.search("При оформлении ипотеки больше нельзя приобрести пакет услуг «Домклик Плюс».")

@@ -1,13 +1,10 @@
 """Сопоставление продуктов и расчёт светофора.
 
-Главное правило модуля: сравниваются только пары, подтверждённые вручную
-в config/product_map.yaml. Автоматический матчинг по названию здесь есть,
-но он работает исключительно как подсказка — формирует файл предложений
-для человека и никогда не попадает в отчёт сам по себе.
-
-Причина простая: «Кредит наличными» ПСБ и «Потребительский кредит» Сбера
-похожи по названию, но могут отличаться по условиям допуска. Ошибка в
-такой паре — это неверная цифра в отчёте у руководителя.
+Пары подбираются автоматически по сути продукта, а не по названию и не по
+цифрам: см. availability.matrix (программа, сегмент клиента, механизм и тип
+ставки). Ручного списка пар нет (решение 03.11.2026). В светофор идут только
+прямые аналоги: ошибка в паре — неверная цифра в отчёте у руководителя,
+поэтому «похожий» продукт лучше оставить без сравнения, чем сравнить зря.
 
 Светофор (с позиции Сбера, дельта = ставка Сбера − ставка ПСБ):
     🟢 зелёный  — Сбер выгоднее клиенту (ставка ниже) более чем на порог
@@ -22,8 +19,9 @@ import logging
 import re
 import unicodedata
 from dataclasses import dataclass, field
-from difflib import SequenceMatcher
 from typing import Any, Iterable
+
+from . import conditions
 
 log = logging.getLogger(__name__)
 
@@ -110,102 +108,48 @@ def normalize_title(title: str) -> str:
     return _SPACE_RE.sub(" ", text).strip()
 
 
-def similarity(a: str, b: str) -> float:
-    return SequenceMatcher(None, normalize_title(a), normalize_title(b)).ratio()
-
 
 # --- сопоставление --------------------------------------------------------
 
-def suggest_pairs(psb_products: Iterable[Any], sber_products: Iterable[Any],
-                  *, threshold: float = 0.55) -> list[dict[str, Any]]:
-    """Черновые пары для ручной проверки. В отчёт не идут.
+def from_matrix(rows: Iterable[Any], thresholds: Thresholds) -> list[Comparison]:
+    """Строки светофора из матрицы аналогов (availability.matrix).
 
-    Возвращает список кандидатов, отсортированный по убыванию похожести,
-    чтобы человеку было быстрее подтверждать сверху вниз.
+    Пары подбираются автоматически по сути продукта: та же категория и
+    программа, тот же сегмент клиента (пенсионер, ребёнок, зарплатный…),
+    тот же механизм ставки (плавающая от ключевой, валюта вклада) и тот же
+    тип ставки (базовая, на новые деньги…). В светофор идут только прямые
+    аналоги — «похожие» продукты (Cell.close = False) остаются в своде по
+    ЛНР с пометкой «не прямой аналог», но ставки по ним не сравниваются:
+    иначе «Социальный вклад» 19 % сравнивался бы с обычным вкладом.
     """
-    sber_list = list(sber_products)
-    suggestions: list[dict[str, Any]] = []
-
-    for psb in psb_products:
-        scored = sorted(
-            ((similarity(psb.title, s.title), s) for s in sber_list),
-            key=lambda x: x[0], reverse=True,
-        )
-        best = [(score, s) for score, s in scored[:3] if score >= threshold]
-        if not best:
-            continue
-        suggestions.append({
-            "psb_key": getattr(psb, "url_path", psb.title),
-            "psb_title": psb.title,
-            "category": psb.category,
-            "candidates": [
-                {"sber_key": getattr(s, "product_key", s.title),
-                 "sber_title": s.title,
-                 "score": round(score, 3)}
-                for score, s in best
-            ],
-        })
-
-    suggestions.sort(key=lambda x: x["candidates"][0]["score"], reverse=True)
-    return suggestions
-
-
-def _index(products: Iterable[Any], key_attr: str) -> dict[str, Any]:
-    out: dict[str, Any] = {}
-    for p in products:
-        key = getattr(p, key_attr, "") or p.title
-        out[str(key)] = p
-        # Адрес страницы — тоже ключ: у продуктов из базы он лежит в
-        # url_path, и пара «путь Сбера → путь конкурента» находит обоих.
-        path = getattr(p, "url_path", "") or ""
-        if path:
-            out.setdefault(path, p)
-        # Второй ключ — по названию: в мэппинге удобнее писать человеческое имя.
-        out.setdefault(normalize_title(p.title), p)
-    return out
-
-
-def build_comparisons(competitor_products: Iterable[Any], sber_products: Iterable[Any],
-                      pairs: list[dict[str, Any]], thresholds: Thresholds,
-                      *, competitor_code: str = "") -> list[Comparison]:
-    """Строит строки отчёта строго по подтверждённым парам из конфига.
-
-    `competitor_code` отбирает пары нужного банка: в product_map.yaml
-    лежат пары ко всем конкурентам сразу, и смешивать их в одном отчёте
-    нельзя — ставка ВТБ в строке про ПСБ была бы прямой ошибкой.
-    """
-    psb_index = _index(competitor_products, "url_path")
-    sber_index = _index(sber_products, "product_key")
-
     results: list[Comparison] = []
-
-    for pair in pairs:
-        if competitor_code and str(pair.get("bank", "psb")) != competitor_code:
-            continue
-        psb_key = str(pair.get("competitor") or pair.get("psb") or "")
-        sber_key = str(pair.get("sber") or "")
-        label = pair.get("label") or psb_key or sber_key
-        category = pair.get("category") or ""
-
-        psb = psb_index.get(psb_key) or psb_index.get(normalize_title(psb_key))
-        sber = sber_index.get(sber_key) or sber_index.get(normalize_title(sber_key))
-
-        comparison = Comparison(
-            pair_id=f"{psb_key}→{sber_key}",
-            label=label,
-            category=category or (psb.category if psb else ""),
-            psb=psb,
-            sber=sber,
-        )
-
-        if psb is None:
-            comparison.notes.append(
-                f"В данных конкурента не найден продукт «{psb_key}»")
-        if sber is None:
-            comparison.notes.append(f"В выгрузке Сбера не найден продукт «{sber_key}»")
-
-        _evaluate(comparison, thresholds)
-        results.append(comparison)
+    for row in rows:
+        own = row.product
+        for bank, cell in row.cells.items():
+            twin = cell.product
+            if twin is None or not cell.close:
+                continue
+            # Ставки нет ни у одного (дебетовые карты, платёжный счёт) —
+            # сравнивать в светофоре нечего, пара остаётся в своде по ЛНР.
+            if all(getattr(x, a, None) is None for x in (own, twin)
+                   for a in ("rate_min", "rate_max")):
+                continue
+            comparison = Comparison(
+                pair_id=f"{getattr(twin, 'url_path', '') or twin.title}→"
+                        f"{getattr(own, 'url_path', '') or own.title}",
+                label=own.title,
+                category=own.category or twin.category,
+                psb=twin,
+                sber=own,
+            )
+            comparison.notes.append(f"Аналог по сути у банка {bank}: «{twin.title}»")
+            mine, theirs = conditions.kind_of(own)[0], conditions.kind_of(twin)[0]
+            if mine != theirs:
+                comparison.notes.append(
+                    f"Тип ставки разный: у Сбера — {conditions.LABELS[mine]}, "
+                    f"у банка — {conditions.LABELS[theirs]}")
+            _evaluate(comparison, thresholds)
+            results.append(comparison)
 
     results.sort(key=lambda c: ({RED: 0, YELLOW: 1, GREEN: 2, GREY: 3}[c.light], c.label))
     return results

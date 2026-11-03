@@ -9,7 +9,6 @@
     python run.py report               пересобрать отчёт без похода на сайты
     python run.py export --fmt all     выгрузить свод: xlsx, pdf, html и CSV для BI
     python run.py export --fmt bi      только CSV для BI (data/bi + архив)
-    python run.py suggest              черновые пары продуктов
     python run.py history              история запусков
     python run.py bot                  запустить Telegram-бота
     python run.py audit                автоаудит: перепроверка цифр по живым страницам,
@@ -36,7 +35,7 @@ sys.path.insert(0, str(ROOT))
 from src.banks import registry  # noqa: E402
 from src.compare import GREEN, GREY, RED, YELLOW  # noqa: E402
 from src.pipeline import (Config, collect_bank, load_report_data,  # noqa: E402
-                          run as run_all, suggest)
+                          run as run_all)
 from src.storage import Storage  # noqa: E402
 
 
@@ -310,7 +309,7 @@ def main() -> int:
     )
     parser.add_argument("command", choices=[
         "collect", "check-bank", "banks", "report", "export",
-        "suggest", "history", "bot", "dump", "audit", "page", "replay",
+        "history", "bot", "dump", "audit", "page", "replay",
     ])
     parser.add_argument("target", nargs="?", default="",
                         help="код банка для check-bank и dump")
@@ -354,11 +353,6 @@ def main() -> int:
         return cmd_history(config)
     if args.command == "export":
         return cmd_export(config, args.fmt, args.open)
-    if args.command == "suggest":
-        path = suggest(config, competitor=args.bank)
-        print(f"\nЧерновик пар: {path}")
-        print("Проверь глазами и перенеси подтверждённые в config/product_map.yaml")
-        return 0
     if args.command == "report":
         return cmd_export(config, args.fmt, args.open)
     if args.command == "page":

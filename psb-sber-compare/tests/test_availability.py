@@ -135,3 +135,59 @@ def test_twin_is_chosen_by_meaning_not_by_top_rate():
     assert got["Социальный вклад"] == "Социальный вклад"
     assert got["Кредит наличными пенсионерам"] == "Кредит наличными для пенсионеров"
     assert got["Кредит под залог земельного участка"] is None
+
+
+def test_essence_rate_mechanism_and_currency():
+    """По сути, а не по цифрам: плавающая ставка (от ключевой) — только с
+    плавающей, юани — только с юанями, «Накопилка» — не детский продукт."""
+    from types import SimpleNamespace as N
+
+    def p(bank, title, rate, terms=None):
+        return N(bank=bank, title=title, category="Вклады", rate_min=rate, rate_max=rate,
+                 terms=terms or {}, rate_conditions="", source_url="u")
+    items = [
+        p("Сбер", "Вклад Выгодный старт", 12.5), p("Сбер", "Вклад в дирхамах", 3),
+        p("Сбер", "Вклад в юанях", 1), p("Сбер", "Накопилка", 10),
+        p("ВТБ", "ВТБ-Вклад «Ключевой»", 12.6), p("ВТБ", "ВТБ-Вклад в юанях", 0.9),
+        p("ВТБ", "Семейная копилка", 12),
+        p("Т-Банк", "Вклад", 12.3,
+          {"Контекст на странице": "Ставка меняется вслед за ключевой ставкой ЦБ"}),
+    ]
+    st = {id(x): av.Status(av.LNR, "", "") for x in items}
+    rows = {r.product.title: r for r in av.matrix(items, home="Сбер",
+                                                  banks=["Сбер", "ВТБ", "Т-Банк"], status=st)}
+    vtb = rows["Вклад Выгодный старт"].cells["ВТБ"]
+    assert vtb.product is None or (vtb.product.title != "ВТБ-Вклад «Ключевой»" and not vtb.close)
+    assert rows["Вклад Выгодный старт"].cells["Т-Банк"].product is None
+    assert rows["Вклад в юанях"].cells["ВТБ"].product.title == "ВТБ-Вклад в юанях"
+    assert rows["Вклад в юанях"].cells["ВТБ"].close
+    assert rows["Вклад в дирхамах"].cells["ВТБ"].product is None
+    assert "дети" not in av.segments(items[3])
+
+
+def test_traffic_light_built_from_direct_analogs_only():
+    """Ручных пар нет: светофор строится из матрицы, только прямые аналоги."""
+    from types import SimpleNamespace as N
+    from src.compare import GREEN, Thresholds, from_matrix
+
+    def p(bank, title, rate, category="Кредиты"):
+        return N(bank=bank, title=title, category=category, rate_min=rate, rate_max=rate,
+                 apr_min=None, terms={}, rate_conditions="", source_url="u", url_path="/" + title)
+    items = [p("Сбер", "Кредит наличными", 18), p("Сбер", "Кредит наличными пенсионерам", 17),
+             p("ВТБ", "Кредит наличными", 20), p("ВТБ", "Кредит на газификацию с господдержкой", 3)]
+    st = {id(x): av.Status(av.LNR, "", "") for x in items}
+    rows = av.matrix(items, home="Сбер", banks=["Сбер", "ВТБ"], status=st)
+    got = from_matrix(rows, Thresholds())
+    assert [(c.sber.title, c.psb.title) for c in got] == [("Кредит наличными", "Кредит наличными")]
+    assert got[0].light == GREEN
+
+
+def test_essence_from_page_context():
+    """«Кредит с пониженной ставкой» Сбера — кредит на покупки (рассрочка),
+    «Кредит на образование» без господдержки — не аналог льготного."""
+    from types import SimpleNamespace as N
+    pos = N(title="Кредит с пониженной ставкой", category="Кредиты",
+            terms={"Контекст на странице": "Оплачивайте товары и услуги в кредит онлайн или в магазине"})
+    assert "рассрочка" in av.segments(pos)
+    assert "господ" not in av.segments(N(title="Кредит на образование", terms={}))
+    assert "господ" in av.segments(N(title="Кредит на образование с господдержкой", terms={}))

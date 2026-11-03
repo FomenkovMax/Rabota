@@ -16,7 +16,7 @@ from .banks.base import region_binding
 from .banks.from_file import FileAdapter
 from . import availability, charts, coverage, keyrate, market
 from .changes import detect_changes, format_digest
-from .compare import Thresholds, build_comparisons, suggest_pairs, summarize
+from .compare import Thresholds, from_matrix, summarize
 from .promos import EXPIRED, classify_all, compare_segments
 from .report import render_report
 from .storage import Storage, product_key
@@ -69,17 +69,6 @@ class Config:
         if unknown:
             log.warning("В настройках есть неизвестные банки: %s", ", ".join(unknown))
         return out or list(registry.codes())
-
-
-def load_pairs(path: str | Path = ROOT / "config" / "product_map.yaml") -> list[dict[str, Any]]:
-    path = Path(path)
-    if not path.exists():
-        log.warning("Нет %s — сравнивать нечего", path)
-        return []
-    data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-    pairs = data.get("pairs") or []
-    return [p for p in pairs
-            if isinstance(p, dict) and (p.get("competitor") or p.get("psb"))]
 
 
 # --- сбор -----------------------------------------------------------------
@@ -393,15 +382,6 @@ def load_report_data(config: Config, *, competitor: str = "") -> dict[str, Any] 
         if competitor:
             competitor_codes = [competitor]
 
-        comparisons: list[Any] = []
-        pairs = load_pairs()
-        for code in competitor_codes:
-            title = titles.get(code, code)
-            comparisons.extend(build_comparisons(
-                by_bank.get(title, []), sber_products, pairs, thresholds,
-                competitor_code=code,
-            ))
-
         competitor_titles = [titles.get(c, c) for c in competitor_codes]
         promo_rows = storage.promos_of_run(run_id)
         promos_home = classify_all(
@@ -415,8 +395,6 @@ def load_report_data(config: Config, *, competitor: str = "") -> dict[str, Any] 
         active_home = [p for p in promos_home if p.status != EXPIRED]
 
         changes = [dict(row) for row in storage.changes_of_run(run_id)]
-        counts = summarize(comparisons)
-        history = build_history(storage, comparisons, history_days)
 
         run_row = storage.conn.execute(
             "SELECT started_at FROM runs WHERE id=?", (run_id,)).fetchone()
@@ -487,6 +465,11 @@ def load_report_data(config: Config, *, competitor: str = "") -> dict[str, Any] 
                                        banks=[home_title] + competitor_titles,
                                        status=lnr_status)
         lnr_total = availability.completeness(scope, lnr_status, home=home_title)
+        # Светофор — по прямым аналогам из той же матрицы: пары подобраны по
+        # сути продукта, ручного списка нет (03.11.2026).
+        comparisons = from_matrix(lnr_rows, thresholds)
+        counts = summarize(comparisons)
+        history = build_history(storage, comparisons, history_days)
         crawl = crawl_completeness(storage.coverage_of_run(run_id))
         mark_new_candidates(crawl)
         # Эталон продуктов: всё ли нашёл сбор (config/reference_<код>.yaml).
@@ -620,54 +603,6 @@ def run(config: Config) -> dict[str, Any]:
         "changes": changes,
         "data": data,
     }
-
-
-def suggest(config: Config, *, competitor: str = "") -> Path:
-    """Черновые пары для ручной проверки."""
-    storage = Storage(config.path("storage", "db_path", default="data/psb_sber.db"))
-    try:
-        run_id = storage.last_successful_run_id()
-        if run_id is None:
-            raise RuntimeError("Нет ни одного сбора. Сначала: python run.py collect")
-        products = _rows_to_products(storage.products_of_run(run_id))
-    finally:
-        storage.close()
-
-    titles = registry.titles()
-    home_title = titles.get(HOME_BANK, "Сбер")
-    sber_products = [p for p in products if p.bank == home_title]
-
-    codes = [competitor] if competitor else [
-        c for c in config.enabled_banks() if c != HOME_BANK]
-
-    lines = [
-        "# ЧЕРНОВИК. Проверь каждую пару глазами и перенеси подтверждённые",
-        "# в config/product_map.yaml. Этот файл в отчёт НЕ попадает.",
-        "",
-        "pairs:",
-    ]
-    for code in codes:
-        title = titles.get(code, code)
-        rival = [p for p in products if p.bank == title]
-        if not rival:
-            lines.append(f"  # {title}: продуктов в последнем сборе нет")
-            continue
-        lines.append(f"  # --- {title} ---")
-        for item in suggest_pairs(rival, sber_products):
-            best = item["candidates"][0]
-            lines.append(f"  # похожесть {best['score']}")
-            lines.append(f"  - bank: {code}")
-            lines.append(f"    competitor: {item['psb_key']}")
-            lines.append(f"    sber: {best['sber_key']}")
-            lines.append(f"    label: {item['psb_title']}")
-            lines.append(f"    category: {item['category']}")
-            lines.append("")
-
-    out = ROOT / "data" / "pairs_suggested.yaml"
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text("\n".join(lines), encoding="utf-8")
-    log.info("Черновик пар: %s", out)
-    return out
 
 
 def _rows_to_products(rows: list[Any]) -> list[Any]:
