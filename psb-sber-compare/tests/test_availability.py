@@ -191,3 +191,17 @@ def test_essence_from_page_context():
     assert "рассрочка" in av.segments(pos)
     assert "господ" not in av.segments(N(title="Кредит на образование", terms={}))
     assert "господ" in av.segments(N(title="Кредит на образование с господдержкой", terms={}))
+
+
+@pytest.mark.parametrize("title, tag, present", [
+    ("Автонакопления", "авто", False),
+    ("Автонакопления", "сервис", True),
+    ("Автокредит", "авто", True),
+    ("Вклад «Забота о будущем»", "пдс", True),
+    ("ЕКПшка для детей", "дети", True),
+    ("Платёжный счёт", "счёт", True),
+    ("Дебетовая карта ВТБ", "счёт", False),
+])
+def test_essence_segments(title, tag, present):
+    from types import SimpleNamespace as N
+    assert (tag in av.segments(N(title=title, terms={}))) is present
