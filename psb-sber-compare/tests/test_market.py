@@ -292,3 +292,14 @@ def test_gov_auto_loan_is_niche():
     from types import SimpleNamespace as N
     from src import conditions
     assert conditions.kind_of(N(title="Автокредит с господдержкой", terms={}))[0] == conditions.NICHE
+
+
+def test_house_building_and_ready_house_are_separate():
+    """03.11.2026: «строительство» Сбера сравнивалось с «готовым домом» ВТБ."""
+    def prog(title):
+        return market.program_of(P("ПСБ", title, "Ипотека"))
+    assert prog("Ипотека на строительство дома") == "Строительство дома"
+    assert prog("Построить дом") == "Строительство дома"
+    assert prog("Ипотека на готовый дом") == "Готовый дом и загородная недвижимость"
+    assert prog("Ипотека на загородную недвижимость и землю") == "Готовый дом и загородная недвижимость"
+    assert prog("Строящееся жильё") == "Новостройки"
