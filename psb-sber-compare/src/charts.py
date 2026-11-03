@@ -18,9 +18,10 @@ from typing import Any, Iterable
 from . import brand
 
 LEADER, IN_MARKET, BEHIND, NO_SBER = "лидер", "в рынке", "отстаёт", "не найдено у Сбера"
+NO_LNR = "нет в ЛНР у Сбера"
 STATUS_VAR = {LEADER: "--st-good", IN_MARKET: "--st-warning", BEHIND: "--st-critical",
-              NO_SBER: "--ink-muted"}
-STATUS_ICON = {LEADER: "▲", IN_MARKET: "■", BEHIND: "▼", NO_SBER: "○"}
+              NO_SBER: "--ink-muted", NO_LNR: "--st-critical"}
+STATUS_ICON = {LEADER: "▲", IN_MARKET: "■", BEHIND: "▼", NO_SBER: "○", NO_LNR: "⛔"}
 
 
 def e(value: Any) -> str:
@@ -92,6 +93,13 @@ def insights(gaps: list[Any], *, home: str, comparisons: list[Any] | None = None
                         f"Самое сильное преимущество — «{best.program}»: на "
                         f"{pp(best.advantage or 0)} выгоднее клиенту, чем медиана "
                         f"остальных банков."))
+    absent = [g for g in gaps if g.status == NO_LNR]
+    if absent:
+        names = ", ".join(f"«{g.program}»" for g in absent[:5])
+        more = f" и ещё {len(absent) - 5}" if len(absent) > 5 else ""
+        out.append(("--st-critical", f"В ЛНР {home} не выдаёт: {names}{more} — подтверждено "
+                                     "калькулятором на сайте банка; у конкурентов эти "
+                                     "программы есть."))
     missing = [g for g in gaps if g.status == NO_SBER]
     if missing:
         names = ", ".join(f"«{g.program}»" for g in missing[:4])
@@ -345,7 +353,7 @@ def funnel(quality_rows: list[Any], gaps: list[Any]) -> str:
 
 def status_bars(gaps: list[Any], block_names: dict[str, str]) -> str:
     """100 % столбики: из чего складывается место Сбера в каждом блоке."""
-    order = (LEADER, IN_MARKET, BEHIND, NO_SBER)
+    order = (LEADER, IN_MARKET, BEHIND, NO_LNR, NO_SBER)
     blocks: dict[str, dict[str, int]] = {}
     for g in gaps:
         if g.status in order:

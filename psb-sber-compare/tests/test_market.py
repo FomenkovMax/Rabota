@@ -276,3 +276,19 @@ def test_rural_mortgage_is_its_own_program():
 
     assert market.program_of(SimpleNamespace(category="Ипотека", title="Сельская ипотека")) \
         == "Сельская ипотека"
+
+
+def test_far_east_programme_is_not_rated_for_lnr():
+    from types import SimpleNamespace as N
+    items = [N(bank=b, title="Дальневосточная ипотека", category="Ипотека", rate_min=r,
+               rate_max=r, apr_min=None, apr_max=None, terms={}, rate_conditions="",
+               source_url="u", region="ЛНР") for b, r in (("Сбер", 3.0), ("ВТБ", 2.0))]
+    gaps = market.build_gaps(items, home="Сбер", key_rate=14.0,
+                             region_methods={"Сбер": "selector", "ВТБ": "federal"})
+    assert not [g for g in gaps if g.program == "Дальневосточная и арктическая"]
+
+
+def test_gov_auto_loan_is_niche():
+    from types import SimpleNamespace as N
+    from src import conditions
+    assert conditions.kind_of(N(title="Автокредит с господдержкой", terms={}))[0] == conditions.NICHE

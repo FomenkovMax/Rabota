@@ -151,7 +151,7 @@ _SEGMENTS = (
     ("дети", re.compile(r"детск|ребен|ребён|kids|школ|подрост|копилк|юн\w+\s", re.I)),
     ("молод", re.compile(r"молод|студент|стипенд|young", re.I)),
     ("зарпл", re.compile(r"зарплат", re.I)),
-    ("прем", re.compile(r"премиал|premium|сберперв|private|золот|платин|supreme|премьер|привилег", re.I)),
+    ("прем", re.compile(r"премиал|premium|сберперв|private|supreme|премьер|привилег", re.I)),
     ("валюта", re.compile(r"юан|дирхам|рупи|доллар|евро|валют", re.I)),
     ("путеш", re.compile(r"тревел|путешеств|аэрофлот|миль|airlines|travel|s7", re.I)),
     ("господ", re.compile(r"господдерж|газифик|льготн|субсид|образован", re.I)),
@@ -167,13 +167,30 @@ _SEGMENTS = (
     ("гараж", re.compile(r"гараж|машино|кладов", re.I)),
     ("комб", re.compile(r"комбинир", re.I)),
     ("город", re.compile(r"петербур|москв|кузбас|жител|единая\s+карта|екп|приморец|уралочк|"
-                         r"оренбурж|сахалин|самарск|мордови|вологд|псков|тройк|ситикард", re.I)),
+                         r"оренбурж|сахалин|самарск|мордови|вологд|псков|(?<![а-яё])тройк|ситикард", re.I)),
     ("ип", re.compile(r"\bип\b|предпринимател|самозанят", re.I)),
     ("кобренд", re.compile(r"магнит|кибер|яндекс|ozon|озон|лукойл|lamoda|ламода|ржд|цска|"
                             r"болельщ|адафа|пят[её]роч|перекр[её]ст|okko|wildberries|all\s+airlines", re.I)),
     ("стикер", re.compile(r"стикер", re.I)),
     ("пакет", re.compile(r"пакет|сберпрайм|\bпрайм|привилег", re.I)),
+    ("номинал", re.compile(r"номинальн", re.I)),
+    ("рассрочка", re.compile(r"оплата\s+частями|рассрочк|за\s+покупку|сплит|плати\s+частями", re.I)),
+    ("стройка", re.compile(r"строительств|построй|\bижс\b|строящ", re.I)),
+    ("готовый дом", re.compile(r"готов\w*\s+дом|купить\s+дом|загородн", re.I)),
+    ("ислам", re.compile(r"islam|исламск|халял", re.I)),
 )
+
+#: Продукт с узким назначением (гараж, земля, ИП, рассрочка…) без такого же
+#: назначения у банка — не аналог: «Ипотека на гараж» ≠ «Выгодная ипотека».
+_STRICT = {"гараж", "земля", "иностр", "ип", "пакет", "номинал", "рассрочка", "стройка",
+           "готовый дом", "комб", "стикер", "пушкин", "рефин", "ислам", "соц", "прем"}
+#: Узкое назначение, которое не определяет программу: такой продукт не
+#: представляет программу в «Месте Сбера» (ипотека для иностранцев — не
+#: «рыночная ипотека» Сбера).
+NARROW = {"иностр", "ип", "гараж", "комб", "номинал", "пакет", "ислам", "пушкин", "стикер"}
+#: Общий признак, который сам по себе не делает продукты аналогами: две
+#: кобрендовые карты разных партнёров, две городские карты, вклады в разной валюте.
+_LOOSE = {"кобренд", "город", "валюта"}
 
 
 #: Основной продукт банка в категории — его берём для обычного продукта Сбера.
@@ -197,6 +214,9 @@ def similarity(own: Any, twin: Any) -> int:
     a, b = segments(own), segments(twin)
     # Одна программа — уже частичное сходство (вклад есть вклад).
     score = 1 + 3 * len(a & b) - 2 * len(b - a) - len(a - b)
+    # Узкое назначение должно совпадать с обеих сторон — иначе не аналог.
+    if (a ^ b) & _STRICT:
+        return -10
     # Тип ставки: тот же — ближе всего; промо-ставки (новые деньги,
     # приветственная, короткий срок) близки между собой. Нишевый продукт банка
     # — аналог только при общем сегменте: «Социальный» ↔ «Социальный», но
@@ -206,7 +226,8 @@ def similarity(own: Any, twin: Any) -> int:
     promo = {conditions.WELCOME, conditions.NEW_MONEY, conditions.SHORT_TERM}
     # У карт «тип ставки» считается по условиям кешбэка — для подбора аналога
     # важно только, нишевая карта или нет.
-    if getattr(own, "category", "") in card_terms.CARD_CATEGORIES:
+    # Скидка за зарплату или подписку у кредита — не другой продукт.
+    if getattr(own, "category", "") not in market.SAVINGS:
         mine = conditions.NICHE if mine == conditions.NICHE else conditions.BASE
         theirs = conditions.NICHE if theirs == conditions.NICHE else conditions.BASE
     if mine == theirs:
@@ -216,7 +237,7 @@ def similarity(own: Any, twin: Any) -> int:
     if theirs == conditions.NICHE and not a & b:
         score -= 3
     # Для обычного продукта Сбера — основной продукт банка, а не тематический.
-    if not b and _FLAGSHIP.search(getattr(twin, "title", "") or ""):
+    if not b and mine == theirs and _FLAGSHIP.search(getattr(twin, "title", "") or ""):
         score += 1
     if (getattr(twin, "terms", None) or {}).get(conditions.CLOSED_KEY):
         score -= 5
@@ -232,6 +253,15 @@ _SAME_PROGRAM = {("Кредиты", "Кредит под залог"): ("*", "З
 def _slot(product: Any) -> tuple[str, str]:
     key = (product.category or "", market.program_of(product))
     return _SAME_PROGRAM.get(key, key)
+
+
+def is_close(own: Any, twin: Any, score: int | None = None) -> bool:
+    """Прямой аналог: всё, что у продукта Сбера особенного, есть и у продукта
+    банка, и сходство не только в «общих» признаках (две кобрендовые карты
+    разных партнёров — не аналоги)."""
+    a, b = segments(own), segments(twin)
+    score = similarity(own, twin) if score is None else score
+    return score >= 2 and not (a - b) and not (a and a <= _LOOSE)
 
 
 def matrix(products: list[Any], *, home: str, banks: list[str],
@@ -273,7 +303,7 @@ def matrix(products: list[Any], *, home: str, banks: list[str],
                 # аналога нет, так и пишем, а не подставляем первый попавшийся.
                 cells[bank] = Cell(None, note=f"прямого аналога нет (ближайший — «{best.title}»)")
                 continue
-            cells[bank] = Cell(status[id(best)], best, _rate(best), close=score >= 2)
+            cells[bank] = Cell(status[id(best)], best, _rate(best), close=is_close(own, best, score))
         rows.append(Row(own, program, status[id(own)], cells))
     return rows
 

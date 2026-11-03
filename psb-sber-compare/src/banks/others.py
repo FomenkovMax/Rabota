@@ -204,6 +204,9 @@ class VtbAdapter(CrawlAdapter):
         r"/kurs-|/monety|metallicheskij|/seyfovye|/strahovanie|asv|/informacija|"
         r"/restrukturizaciya|/spisok-partnerov|/katalog-nedvizhimosti|/maksimum-vygody|"
         r"/zarplatnyj-proekt|/vtbpay|"
+        # Опция к вкладам («Надбавка за покупки») и программа лояльности
+        # («Дополнительные категории кешбэка») — не продукты (03.11.2026).
+        r"/vklady-i-scheta/traty|/programma-loyalnosti|"
         # Языковые копии страниц («…/foreign/ZH», «/en», «/UZ», «/HI», 03.11.2026).
         r"/(?:en|zh|uz|hi|tj|kg|kz|ky|tg|ar|tr)$|"
         r"/(nizhniy-novgorod|chelyabinsk|yekaterinburg|krasnodar|rostov-na-donu|ufa|"
@@ -280,6 +283,8 @@ class TbankAdapter(CrawlAdapter):
         # Сбор 28.10.2026: «как погасить», карты сайта, формы заявок и
         # оплаты, партнёрские рассрочки в магазинах — не продукты.
         r"how-repay|/sitemap|/form/|/new-form|/payment$|/purpose$|/service$|"
+        # Языковые копии страниц: «…/islam-card/eng» (03.11.2026).
+        r"/(?:eng?|uz|tj|kg|kz)$|"
         r"/pos-loans/[\w/-]+|/credit-history|/payments/|/specialty-check"), re.I)
 
 

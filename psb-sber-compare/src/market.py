@@ -123,6 +123,11 @@ LEADER, IN_MARKET, BEHIND = "лидер", "в рынке", "отстаёт"
 # «Не найдено», а не «нет»: сбор мог не дойти до страницы программы, и
 # утверждать, что у Сбера её нет вовсе, по одному обходу сайта нельзя.
 NO_SBER, NO_RIVALS, NO_DATA = "не найдено у Сбера", "нет у конкурентов", "нет данных"
+# Калькулятор или настройка подтвердили: в ЛНР Сбер программу не выдаёт. Это
+# ответ на главный вопрос ТЗ, а не «нет данных» (03.11.2026).
+NO_LNR = "нет в ЛНР у Сбера"
+#: Программы, которые в ЛНР не выдаёт ни один банк, — вне рейтинга.
+NOT_FOR_LNR = {"Дальневосточная и арктическая"}
 
 
 def method_of(product: Any, region_methods: dict[str, str]) -> str:
@@ -396,6 +401,10 @@ def build_gaps(products: Iterable[Any], *, home: str, key_rate: float | None,
 
     gaps: list[Gap] = []
     for (category, program), items in groups.items():
+        # Программа не для ЛНР ни у одного банка («Дальневосточная и
+        # арктическая» — только ДФО и Арктика): по ней Сбер не сравниваем.
+        if program in NOT_FOR_LNR:
+            continue
         better = better_of(category)
         metric = "rate_max" if better == "higher" else "rate_min"
         gap = Gap(block=BLOCK_OF.get(category, "OTHER"), program=program,
@@ -413,6 +422,12 @@ def build_gaps(products: Iterable[Any], *, home: str, key_rate: float | None,
             if (getattr(product, "terms", None) or {}).get(REGION_KEY):
                 if product.bank == home:
                     absent_home = product.terms[REGION_KEY]
+                continue
+            # Программу не представляет продукт узкого назначения: «Ипотека для
+            # иностранных граждан» Сбера против «Комбинированной ипотеки» ВТБ
+            # в «Рыночной ипотеке» (03.11.2026).
+            from .availability import NARROW, segments
+            if segments(product) & NARROW:
                 continue
             # Только базовые ставки: приветственные, премиальные, зарплатные
             # и нишевые — в блоке «Специальные условия» (аудит 07.10.2026).
@@ -449,7 +464,7 @@ def build_gaps(products: Iterable[Any], *, home: str, key_rate: float | None,
                 gap.comment = ("сбор не нашёл программу на сайте Сбера — "
                                "проверить вручную, есть ли она" if others else "")
             elif absent_home and not skipped_home and not special_home:
-                gap.status = NO_DATA
+                gap.status = NO_LNR
                 gap.comment = f"у Сбера программа недоступна в регионе: {absent_home}"
             elif special_home and not skipped_home:
                 gap.status = NO_DATA
@@ -480,7 +495,7 @@ def build_gaps(products: Iterable[Any], *, home: str, key_rate: float | None,
             gap.status = BEHIND
         gaps.append(gap)
 
-    order = {BEHIND: 0, NO_SBER: 1, IN_MARKET: 2, LEADER: 3, NO_RIVALS: 4, NO_DATA: 5}
+    order = {BEHIND: 0, NO_SBER: 1, NO_LNR: 2, IN_MARKET: 3, LEADER: 4, NO_RIVALS: 5, NO_DATA: 6}
     block_order = ["DEP", "LOAN", "MTG", "CARD"]
     gaps.sort(key=lambda g: (block_order.index(g.block) if g.block in block_order else 9,
                              order.get(g.status, 9), g.program))
