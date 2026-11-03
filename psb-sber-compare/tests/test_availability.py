@@ -107,3 +107,31 @@ def test_calculator_without_any_rate_does_not_prove_lnr():
                                "Луганская Народная Республика, Луганск — Семейная: калькулятор не показал расчёт"},
                         source_url="u")
     assert availability.status_of(p, region_method="federal", presence="").code != availability.LNR
+
+
+def test_twin_is_chosen_by_meaning_not_by_top_rate():
+    """Замечание 03.11.2026: все вклады Сбера сравнивались с «Социальным вкладом»
+    ВТБ под 19 %, «Деньги до пенсии» — с газификацией 3 %, залог земли — с
+    залогом авто."""
+    from types import SimpleNamespace as N
+    from src import availability as av
+
+    def p(bank, title, category, rate, terms=None):
+        return N(bank=bank, title=title, category=category, rate_min=rate, rate_max=rate,
+                 terms=terms or {}, rate_conditions="", source_url="u")
+    items = [
+        p("Сбер", "Вклад Ключевой", "Вклады", 12.5), p("Сбер", "Социальный вклад", "Вклады", 22),
+        p("Сбер", "Кредит наличными пенсионерам", "Кредиты", 19.4),
+        p("Сбер", "Кредит под залог земельного участка", "Кредиты", 19.4),
+        p("ВТБ", "ВТБ-Вклад «Ключевой»", "Вклады", 12.6), p("ВТБ", "Социальный вклад", "Вклады", 19),
+        p("ВТБ", "Кредит на газификацию с господдержкой", "Кредиты", 3),
+        p("ВТБ", "Кредит наличными для пенсионеров", "Кредиты", 11),
+        p("ВТБ", "Кредит под залог автомобиля", "Кредиты", 19.4),
+    ]
+    st = {id(x): av.Status(av.LNR, "", "") for x in items}
+    got = {r.product.title: (r.cells["ВТБ"].product.title if r.cells["ВТБ"].product else None)
+           for r in av.matrix(items, home="Сбер", banks=["Сбер", "ВТБ"], status=st)}
+    assert got["Вклад Ключевой"] == "ВТБ-Вклад «Ключевой»"
+    assert got["Социальный вклад"] == "Социальный вклад"
+    assert got["Кредит наличными пенсионерам"] == "Кредит наличными для пенсионеров"
+    assert got["Кредит под залог земельного участка"] is None

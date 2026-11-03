@@ -22,7 +22,7 @@ import re
 from dataclasses import dataclass
 from typing import Any, Iterable
 
-from . import market
+from . import card_terms, conditions, market
 
 LNR, FEDERAL, ABSENT, UNKNOWN = "lnr", "federal", "absent", "unknown"
 
@@ -123,6 +123,8 @@ class Cell:
     status: Status | None          # None — аналога у банка не нашлось
     product: Any = None
     rate: float | None = None
+    close: bool = True             # аналог по смыслу, а не просто той же программы
+    note: str = ""                 # почему аналога нет
 
 
 @dataclass
@@ -139,15 +141,109 @@ def _rate(product: Any) -> float | None:
     return product.rate_min if product.rate_min is not None else product.rate_max
 
 
+#: Сегмент продукта по названию: с кем его честно сравнивать. «Социальный
+#: вклад» ВТБ (19 %, для получателей соцвыплат) — аналог «Социального вклада»
+#: Сбера, а не «Вклада Выгодный старт» (замечание 03.11.2026: все вклады Сбера
+#: сравнивались с соцвкладом ВТБ, «Деньги до пенсии» — с газификацией 3 %).
+_SEGMENTS = (
+    ("соц", re.compile(r"социальн|соцвыплат|мер\w*\s+социальн|ветеран", re.I)),
+    ("пенс", re.compile(r"пенсион|пенси[ия]", re.I)),
+    ("дети", re.compile(r"детск|ребен|ребён|kids|школ|подрост|копилк|юн\w+\s", re.I)),
+    ("молод", re.compile(r"молод|студент|стипенд|young", re.I)),
+    ("зарпл", re.compile(r"зарплат", re.I)),
+    ("прем", re.compile(r"премиал|premium|сберперв|private|золот|платин|supreme|премьер|привилег", re.I)),
+    ("валюта", re.compile(r"юан|дирхам|рупи|доллар|евро|валют", re.I)),
+    ("путеш", re.compile(r"тревел|путешеств|аэрофлот|миль|airlines|travel|s7", re.I)),
+    ("господ", re.compile(r"господдерж|газифик|льготн|субсид|образован", re.I)),
+    ("иностр", re.compile(r"иностран|мигрант|нерезидент", re.I)),
+    ("благо", re.compile(r"подари\s+жизнь|благотвор", re.I)),
+    ("авто", re.compile(r"\bавто|автомоб|машин", re.I)),
+    # Пушкинская карта — культурная программа для 14–22 лет, а не обычная
+    # дебетовая; рефинансирование кредиток — кредит, а не карта; земля,
+    # гараж, комбинированная ипотека — отдельные продукты (03.11.2026).
+    ("пушкин", re.compile(r"пушкинск", re.I)),
+    ("рефин", re.compile(r"рефинанс", re.I)),
+    ("земля", re.compile(r"земел|участ", re.I)),
+    ("гараж", re.compile(r"гараж|машино|кладов", re.I)),
+    ("комб", re.compile(r"комбинир", re.I)),
+    ("город", re.compile(r"петербур|москв|кузбас|жител|единая\s+карта|екп|приморец|уралочк|"
+                         r"оренбурж|сахалин|самарск|мордови|вологд|псков|тройк|ситикард", re.I)),
+    ("ип", re.compile(r"\bип\b|предпринимател|самозанят", re.I)),
+    ("кобренд", re.compile(r"магнит|кибер|яндекс|ozon|озон|лукойл|lamoda|ламода|ржд|цска|"
+                            r"болельщ|адафа|пят[её]роч|перекр[её]ст|okko|wildberries|all\s+airlines", re.I)),
+    ("стикер", re.compile(r"стикер", re.I)),
+    ("пакет", re.compile(r"пакет|сберпрайм|\bпрайм|привилег", re.I)),
+)
+
+
+#: Основной продукт банка в категории — его берём для обычного продукта Сбера.
+_FLAGSHIP = re.compile(r"^(?:дебетовая|кредитная)\s+карта(?:\s+(?:втб|мир|black|пс?б))?$|"
+                       r"мультикарт|\bblack\b|platinum|платинум|карта\s+возможност|"
+                       r"^кредит\s+наличными$|^ипотека\s+на\s+(?:вторичн|новостро)|"
+                       r"^накопительн\w*\s+(?:\S+-)?сч[её]т$", re.I)
+
+
+def segments(product: Any) -> set[str]:
+    title = getattr(product, "title", "") or ""
+    tags = {tag for tag, pattern in _SEGMENTS if pattern.search(title)}
+    # Заголовок не по-русски — языковая копия страницы для иностранцев.
+    if title and not re.search(r"[а-яё]", title, re.I):
+        tags.add("иностр")
+    return tags
+
+
+def similarity(own: Any, twin: Any) -> int:
+    """Насколько продукт банка — аналог продукта Сбера (больше — ближе)."""
+    a, b = segments(own), segments(twin)
+    # Одна программа — уже частичное сходство (вклад есть вклад).
+    score = 1 + 3 * len(a & b) - 2 * len(b - a) - len(a - b)
+    # Тип ставки: тот же — ближе всего; промо-ставки (новые деньги,
+    # приветственная, короткий срок) близки между собой. Нишевый продукт банка
+    # — аналог только при общем сегменте: «Социальный» ↔ «Социальный», но
+    # «Инвестиционный+» ВТБ (вклад с инвестпродуктом) — не аналог ни
+    # «СберВклада», ни «Пенсионного плюс».
+    mine, theirs = conditions.kind_of(own)[0], conditions.kind_of(twin)[0]
+    promo = {conditions.WELCOME, conditions.NEW_MONEY, conditions.SHORT_TERM}
+    # У карт «тип ставки» считается по условиям кешбэка — для подбора аналога
+    # важно только, нишевая карта или нет.
+    if getattr(own, "category", "") in card_terms.CARD_CATEGORIES:
+        mine = conditions.NICHE if mine == conditions.NICHE else conditions.BASE
+        theirs = conditions.NICHE if theirs == conditions.NICHE else conditions.BASE
+    if mine == theirs:
+        score += 2
+    elif mine in promo and theirs in promo:
+        score += 1
+    if theirs == conditions.NICHE and not a & b:
+        score -= 3
+    # Для обычного продукта Сбера — основной продукт банка, а не тематический.
+    if not b and _FLAGSHIP.search(getattr(twin, "title", "") or ""):
+        score += 1
+    if (getattr(twin, "terms", None) or {}).get(conditions.CLOSED_KEY):
+        score -= 5
+    return score
+
+
+#: Одна программа в разных разделах сайтов: у Сбера «Кредит под залог
+#: недвижимости» — в кредитах, у ВТБ и ПСБ — в ипотеке (03.11.2026).
+_SAME_PROGRAM = {("Кредиты", "Кредит под залог"): ("*", "Залог недвижимости"),
+                 ("Ипотека", "Кредит под залог недвижимости"): ("*", "Залог недвижимости")}
+
+
+def _slot(product: Any) -> tuple[str, str]:
+    key = (product.category or "", market.program_of(product))
+    return _SAME_PROGRAM.get(key, key)
+
+
 def matrix(products: list[Any], *, home: str, banks: list[str],
            status: dict[int, Status]) -> list[Row]:
     """Каждый продукт Сбера и аналоги у каждого банка: та же категория и
     программа (семейная ипотека — с семейной). Из нескольких аналогов банка
-    берётся тот, что доступнее в ЛНР, при равенстве — с лучшей ставкой.
-    Нишевые и особые продукты Сбера тоже в таблице: по ТЗ — все продукты."""
+    берётся самый близкий по смыслу (сегмент по названию и тип ставки), при
+    равенстве — доступнее в ЛНР, затем с лучшей ставкой. Нишевые и особые
+    продукты Сбера тоже в таблице: по ТЗ — все продукты."""
     by_key: dict[tuple[str, str, str], list[Any]] = {}
     for p in products:
-        by_key.setdefault((p.bank, p.category or "", market.program_of(p)), []).append(p)
+        by_key.setdefault((p.bank, *_slot(p)), []).append(p)
     rows = []
     for own in sorted((p for p in products if p.bank == home),
                       key=lambda p: (p.category or "", market.program_of(p), p.title)):
@@ -156,7 +252,7 @@ def matrix(products: list[Any], *, home: str, banks: list[str],
         for bank in banks:
             if bank == home:
                 continue
-            twins = by_key.get((bank, own.category or "", program), [])
+            twins = by_key.get((bank, *_slot(own)), [])
             if not twins:
                 cells[bank] = Cell(None)
                 continue
@@ -164,10 +260,20 @@ def matrix(products: list[Any], *, home: str, banks: list[str],
 
             def key(p: Any) -> tuple:
                 r = _rate(p)
-                return (RANK[status[id(p)].code], r is not None,
-                        (r if higher else -r) if r is not None else 0)
+                # При равенстве — самый общий продукт банка (короче название:
+                # «Дебетовая карта ВТБ», а не тематическая).
+                return (similarity(own, p), RANK[status[id(p)].code], r is not None,
+                        (r if higher else -r) if r is not None else 0,
+                        -len(getattr(p, "title", "") or ""))
             best = max(twins, key=key)
-            cells[bank] = Cell(status[id(best)], best, _rate(best))
+            score = similarity(own, best)
+            if score < 1:
+                # Той же программы у банка только непохожие продукты («Кредит на
+                # газификацию» для «Кредита с пониженной ставкой») — прямого
+                # аналога нет, так и пишем, а не подставляем первый попавшийся.
+                cells[bank] = Cell(None, note=f"прямого аналога нет (ближайший — «{best.title}»)")
+                continue
+            cells[bank] = Cell(status[id(best)], best, _rate(best), close=score >= 2)
         rows.append(Row(own, program, status[id(own)], cells))
     return rows
 

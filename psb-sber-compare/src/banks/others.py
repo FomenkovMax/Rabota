@@ -130,7 +130,10 @@ class SberAdapter(CrawlAdapter):
         # замена карт, старые копии страниц, акции и функции карты — не продукты.
         r"/lost_cards|/kids_day|/sberkarta_kids/sberkids|/sberterritoria|/visa_electron|"
         r"/card_classic/maestro|/sberkarta/insurance|/pack/gold/zdorovie|/13-to-14|"
-        r"/vsp_1mln|/supreme_old|/credit_sberkarta/bnpl|/debet_new$)",
+        r"/vsp_1mln|/supreme_old|/credit_sberkarta/bnpl|/debet_new$|"
+        # Витрина пакетов («Повышаем») и услуга снятия наличных в магазинах —
+        # не продукты; сами пакеты (/pack/gold, /pack/zarp) остаются.
+        r"/bank_cards/pack$|/rural_cash)",
         re.I,
     )
 
@@ -201,6 +204,8 @@ class VtbAdapter(CrawlAdapter):
         r"/kurs-|/monety|metallicheskij|/seyfovye|/strahovanie|asv|/informacija|"
         r"/restrukturizaciya|/spisok-partnerov|/katalog-nedvizhimosti|/maksimum-vygody|"
         r"/zarplatnyj-proekt|/vtbpay|"
+        # Языковые копии страниц («…/foreign/ZH», «/en», «/UZ», «/HI», 03.11.2026).
+        r"/(?:en|zh|uz|hi|tj|kg|kz|ky|tg|ar|tr)$|"
         r"/(nizhniy-novgorod|chelyabinsk|yekaterinburg|krasnodar|rostov-na-donu|ufa|"
         r"samara|voronezh|krasnoyarsk|tyumen|perm|volgograd|omsk|saratov|irkutsk|"
         r"izhevsk|ryazan|barnaul|tolyatti|ulyanovsk|yaroslavl|khabarovsk|vladivostok|"

@@ -213,6 +213,17 @@ svg{display:block;max-width:100%;overflow:visible}
 .lnr{cursor:help}
 table.lnrt td.lnrc{cursor:help;min-width:110px}
 table.lnrt td.none{color:var(--ink-muted)}
+table.lnrt .far{color:var(--st-warning);font-size:11.5px}
+/* На телефоне таблица — карточками: продукт сверху, банки строками, без
+   горизонтальной прокрутки и обрезанных названий (замечание 03.11.2026). */
+@media(max-width:640px){
+  table.lnrt,table.lnrt tbody,table.lnrt tr,table.lnrt td{display:block;width:100%}
+  table.lnrt thead{display:none}
+  table.lnrt tr{padding:10px 0;border-bottom:1px solid var(--grid)}
+  table.lnrt td{border:0;padding:3px 0}
+  table.lnrt td.lnrc{display:grid;grid-template-columns:96px 1fr;gap:2px 8px;min-width:0}
+  table.lnrt td.lnrc::before{content:attr(data-b);font-weight:600;color:var(--ink-2);font-size:13px}
+}
 @media(max-width:640px){
   .vs{grid-template-columns:1fr;gap:10px;text-align:left}
   .vs-mid{justify-self:start}
@@ -311,14 +322,23 @@ def _lnr_section(rows: list[Any], total: dict[str, int], banks: list[str], home:
 
     from . import card_terms
 
-    def cell(st: Any, rate: float | None, title: str = "", product: Any = None) -> str:
+    def cell(st: Any, rate: float | None, title: str = "", product: Any = None,
+             bank: str = "", close: bool = True, note: str = "") -> str:
         if st is None:
-            return '<td class="lnrc none" title="у банка не найден продукт той же программы">—</td>'
-        value = (fmt_rate(rate) if rate is not None
-                 else card_terms.summary(getattr(product, "terms", None) or {}))
+            why = note or "у банка не найден продукт той же программы"
+            return (f'<td class="lnrc none" data-b="{e(bank)}" title="{e(why)}">'
+                    f'<div class="lv">—{f"<div class=pmeta>{e(note)}</div>" if note else ""}</div></td>')
+        terms = getattr(product, "terms", None) or {}
+        # У карт главное — обслуживание и кешбэк, а не «5 % на остаток».
+        if getattr(product, "category", "") in card_terms.CARD_CATEGORIES:
+            value = card_terms.summary(terms) or (f"{fmt_rate(rate)} на остаток" if rate else "")
+        else:
+            value = fmt_rate(rate) if rate is not None else card_terms.summary(terms)
         name = f'<div class="pmeta">{e(title)}</div>' if title else ""
-        return (f'<td class="lnrc" title="{e(st.label)}: {e(st.reason)}">'
-                f'{st.icon} <span class="num">{e(value)}</span>{name}</td>')
+        if not close:
+            name += '<div class="pmeta far">ближайший той же программы, не прямой аналог</div>'
+        return (f'<td class="lnrc" data-b="{e(bank)}" title="{e(st.label)}: {e(st.reason)}">'
+                f'<div class="lv">{st.icon} <span class="num">{e(value)}</span>{name}</div></td>')
 
     groups: dict[str, list[str]] = {}
     for row in rows:
@@ -327,12 +347,12 @@ def _lnr_section(rows: list[Any], total: dict[str, int], banks: list[str], home:
         cells = "".join(
             cell(row.cells[b].status, row.cells[b].rate,
                  row.cells[b].product.title if row.cells[b].product else "",
-                 row.cells[b].product)
+                 row.cells[b].product, b, row.cells[b].close, row.cells[b].note)
             for b in rivals)
         groups.setdefault(p.category or "Прочее", []).append(
             f'<tr><td><div class="pname">{e(p.title)}</div>'
             f'<div class="pmeta">{e(row.program)}</div></td>'
-            f'{cell(row.own, rate, "", p)}{cells}</tr>')
+            f'{cell(row.own, rate, "", p, home)}{cells}</tr>')
     head = "".join(f"<th>{brand.name(b)}</th>" for b in [home] + rivals)
     blocks = "".join(
         f'<details class="cat"{" open" if i == 0 else ""}><summary>{e(cat)}'
