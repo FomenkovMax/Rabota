@@ -144,7 +144,7 @@ def from_matrix(rows: Iterable[Any], thresholds: Thresholds) -> list[Comparison]
             )
             comparison.notes.append(f"Аналог по сути у банка {bank}: «{twin.title}»")
             mine, theirs = conditions.kind_of(own)[0], conditions.kind_of(twin)[0]
-            if mine != theirs:
+            if conditions.same_kind(mine) != conditions.same_kind(theirs):
                 comparison.notes.append(
                     f"Тип ставки разный: у Сбера — {conditions.LABELS[mine]}, "
                     f"у банка — {conditions.LABELS[theirs]}")

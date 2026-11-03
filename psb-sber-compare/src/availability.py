@@ -263,7 +263,8 @@ def similarity(own: Any, twin: Any) -> int:
     # — аналог только при общем сегменте: «Социальный» ↔ «Социальный», но
     # «Инвестиционный+» ВТБ (вклад с инвестпродуктом) — не аналог ни
     # «СберВклада», ни «Пенсионного плюс».
-    mine, theirs = conditions.kind_of(own)[0], conditions.kind_of(twin)[0]
+    mine = conditions.same_kind(conditions.kind_of(own)[0])
+    theirs = conditions.same_kind(conditions.kind_of(twin)[0])
     promo = {conditions.WELCOME, conditions.NEW_MONEY, conditions.SHORT_TERM}
     # У карт «тип ставки» считается по условиям кешбэка — для подбора аналога
     # важно только, нишевая карта или нет.

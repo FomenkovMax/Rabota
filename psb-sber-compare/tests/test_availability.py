@@ -205,3 +205,22 @@ def test_essence_from_page_context():
 def test_essence_segments(title, tag, present):
     from types import SimpleNamespace as N
     assert (tag in av.segments(N(title=title, terms={}))) is present
+
+
+def test_new_money_and_welcome_are_same_kind():
+    """Решение 03.11.2026: «на новые деньги» и «для новых клиентов» — одно и то
+    же; в светофоре нет пометки «тип ставки разный»."""
+    from types import SimpleNamespace as N
+    from src.compare import Thresholds, from_matrix
+    from src import conditions as cd
+
+    def p(bank, title, rate, kind):
+        return N(bank=bank, title=title, category="Вклады", rate_min=rate, rate_max=rate,
+                 apr_min=None, rate_conditions="", source_url="u", url_path="/" + title,
+                 terms={cd.TERMS_KEY: cd.LABELS[kind] + ": «x»"})
+    items = [p("Сбер", "СберВклад", 13.5, cd.NEW_MONEY),
+             p("ВТБ", "Вклад «Выгодное начало»", 15, cd.WELCOME)]
+    st = {id(x): av.Status(av.LNR, "", "") for x in items}
+    got = from_matrix(av.matrix(items, home="Сбер", banks=["Сбер", "ВТБ"], status=st), Thresholds())
+    assert len(got) == 1
+    assert not any("Тип ставки" in n for n in got[0].notes)
