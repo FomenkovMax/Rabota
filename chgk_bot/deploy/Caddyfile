@@ -7,7 +7,7 @@
 	# Сборочные файлы (/assets/index-<хеш>.js|css) меняют имя при каждой сборке — их кешировать безопасно.
 	@page path / /index.html
 	header @page Cache-Control "no-cache, no-store, must-revalidate"
-	@hashed path_regexp ^/assets/index-[A-Za-z0-9_-]+\.(js|css)$
+	@hashed path_regexp ^/assets/index-[A-Za-z0-9_-]+[.](js|css)$
 	header @hashed Cache-Control "public, max-age=31536000, immutable"
 	handle {
 		root * /srv
