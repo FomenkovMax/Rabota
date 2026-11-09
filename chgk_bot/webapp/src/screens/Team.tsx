@@ -52,6 +52,9 @@ export function Team() {
   const g = room?.game ?? null;
   const isCaptain = !!g && g.captain_id === me?.user.id;
   const nameOf = (id: number) => room?.players.find((p) => p.id === id)?.name ?? "—";
+  const captainLabel = g ? (isCaptain ? `${me?.user.name ?? ""} (ты)` : g.captain_online ? nameOf(g.captain_id) : `${g.captain_name || "капитан"} — не за столом`) : "";
+  const canClaim = !!g && g.status === "active" && !isCaptain && (!g.captain_online || !!me?.is_admin);
+  const canStop = !!g && (isCaptain || !!me?.is_admin);
 
   const lastKey = useRef("");
   useEffect(() => {
@@ -73,10 +76,10 @@ export function Team() {
 
   const header = g && (
     g.mode === "wheel" ? (
-      <Scoreboard sep=":" caption={`Капитан: ${nameOf(g.captain_id)}${isCaptain ? " (ты)" : ""} · игра до 6`}
+      <Scoreboard sep=":" caption={`Капитан: ${captainLabel} · игра до 6`}
         cells={[{ label: "знатоки", value: g.experts, hot: g.experts > g.viewers }, { label: "телезрители", value: g.viewers, hot: g.viewers > g.experts }]} />
     ) : (
-      <Scoreboard caption={`Капитан: ${nameOf(g.captain_id)}${isCaptain ? " (ты)" : ""}`}
+      <Scoreboard caption={`Капитан: ${captainLabel}`}
         cells={[{ label: "очков", value: g.score, hot: true }, { label: "тур", value: g.tour ? g.tour[0] : "—" }, { label: "вопрос", value: `${g.idx + 1}/${g.total}` }]} />
     )
   );
@@ -116,6 +119,14 @@ export function Team() {
       ) : (
         <>
           {header}
+          {canClaim && (
+            <Card accent="half">
+              <p className={s.dim} style={{ marginBottom: 10 }}>
+                {g.captain_online ? "Ты админ и можешь забрать капитанство." : "Капитан вышел из игры — без него она не продолжится."}
+              </p>
+              <Button onClick={() => send({ type: "claim" })}>👑 Стать капитаном</Button>
+            </Card>
+          )}
           {g.mode === "wheel" && (
             <div className={s.center}>
               <Wheel n={g.total} played={g.played} spin={g.spin} spinKey={g.idx} onSettled={() => setOpened(true)} kinds={g.kinds} />
@@ -208,7 +219,7 @@ export function Team() {
               send({ type: "captain", user_id: others[(i + 1) % others.length].id });
             }}>Передать капитанство →</Button>
           )}
-          {isCaptain && <Button variant="ghost" onClick={() => send({ type: "stop" })}>Закончить игру</Button>}
+          {canStop && <Button variant="ghost" onClick={() => send({ type: "stop" })}>Закончить игру</Button>}
         </>
       )}
     </div>

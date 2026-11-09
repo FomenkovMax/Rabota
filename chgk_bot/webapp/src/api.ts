@@ -102,7 +102,7 @@ export const api = {
 export interface Verdict2 extends Verdict { overridden?: boolean }
 export interface GameView {
   mode: "sport" | "wheel"; status: string; phase: "idle" | "pick" | "think" | "answer" | "judging" | "review" | "finished";
-  captain_id: number; deadline_ms: number; idx: number; total: number; tour: [number, number] | null;
+  captain_id: number; captain_name?: string; captain_online?: boolean; deadline_ms: number; idx: number; total: number; tour: [number, number] | null;
   score: number; experts: number; viewers: number; played: number[];
   spin: { sector: number; turns: number; duration_ms: number; offset: number; n: number } | null;
   answer: string | null; verdict: Verdict2 | null; think: number; think_now: number;

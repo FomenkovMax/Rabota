@@ -334,3 +334,33 @@ def test_ws_superblitz_pick_and_only_answerer_submits(tmp_path):
         while (m := a.receive_json())["type"] != "error":
             pass
         assert "выбранный" in m["message"]
+
+
+def test_ws_claim_captain_when_captain_left(tmp_path):
+    _, _, c = make(tmp_path)
+    t7, t8 = ws_token(c, 7), ws_token(c, 8)
+    with c.websocket_connect(f"/api/ws?token={t8}") as b:
+        recv_state(b)
+        with c.websocket_connect(f"/api/ws?token={t7}") as a:
+            recv_state(a)
+            a.send_json({"type": "start", "mode": "sport", "tours": 1, "per_tour": 2})
+            st = recv_state(a)
+            while not st["game"]:
+                st = recv_state(a)
+            b.send_json({"type": "claim"})                      # капитан за столом — забрать нельзя
+            while (m := b.receive_json())["type"] != "error":
+                pass
+            assert "попроси" in m["message"]
+        # капитан (7) закрыл приложение
+        st = recv_state(b)
+        while st["game"]["captain_online"]:
+            st = recv_state(b)
+        assert st["game"]["captain_name"] == "Макс"
+        b.send_json({"type": "claim"})
+        st = recv_state(b)
+        while st["game"]["captain_id"] != 8:
+            st = recv_state(b)
+        b.send_json({"type": "stop"})                           # новый капитан может закончить игру
+        st = recv_state(b)
+        while st["game"]["status"] != "finished":
+            st = recv_state(b)

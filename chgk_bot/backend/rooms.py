@@ -66,6 +66,7 @@ class Room:
         v = g["verdict"]
         out["game"] = {
             "mode": g["mode"], "status": g["status"], "phase": g["phase"], "captain_id": g["captain_id"],
+            "captain_name": self.names.get(g["captain_id"], ""), "captain_online": g["captain_id"] in self.conns,
             "deadline_ms": int(g["deadline"] * 1000), "idx": g["idx"], "total": g["total"],
             "tour": T.tour_of(g), "score": g["score"], "experts": g["experts"], "viewers": g["viewers"],
             "played": g["played"], "spin": g["spin"] if g["mode"] == T.WHEEL else None,
@@ -180,6 +181,13 @@ class Room:
                                           rec["answer"], "team", rec["time_ms"])
                 elif kind == "captain":
                     T.set_captain(g, uid, int(msg["user_id"]), is_admin)
+                elif kind == "claim":
+                    # капитан ушёл (закрыл приложение) — игра иначе зависает: любой за столом может стать капитаном
+                    if g["status"] != "active":
+                        raise T.GameError("Игра уже закончена")
+                    if g["captain_id"] in self.conns and not is_admin:
+                        raise T.GameError("Капитан за столом — попроси его передать капитанство")
+                    g["captain_id"] = uid
                 elif kind == "stop":
                     if uid != g["captain_id"] and not is_admin:
                         raise T.GameError("Останавливает капитан или админ")
