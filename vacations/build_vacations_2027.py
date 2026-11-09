@@ -9,10 +9,12 @@ from openpyxl.comments import Comment
 
 OUT = "/home/user/Rabota/vacations/График_отпусков_2027_ЛНР.xlsx"
 YEAR = 2027
-N = 40               # строк под сотрудников
+N = 160              # строк под сотрудников
 FIRST = 5            # первая строка данных
 LAST = FIRST + N - 1
 PARTS = 4
+OFF = 2              # строки сотрудников на «Календаре» сдвинуты вниз на 2 (сверху итоги)
+CNT, PCT = 5, 6      # строки «В отпуске, чел.» и «%» на «Календаре»
 
 F = "Arial"
 def font(**kw): return Font(name=F, **kw)
@@ -93,7 +95,7 @@ ws["A1"].font = font(bold=True, size=16, color=GREEN_DARK)
 ws["A2"] = ("Как заполнять: жёлтые ячейки — ФИО, подразделение, дата начала и кол-во календарных дней каждой части. "
             "Дата окончания считается сама: праздники ЛНР/РФ внутри отпуска не учитываются и отпуск продлевается. "
             "Правила: всего ≥ 28 дн., одна из частей ≥ 14 дн. Строка 5 — пример, её можно перезаписать. "
-            "Пересечения — на листе «Календарь».")
+            "Нагрузка по дням — на листе «Календарь», по месяцам и % от численности — на листе «Свод по месяцам».")
 ws["A2"].font = font(size=9, color="595959")
 ws["A2"].alignment = Alignment(wrap_text=True, vertical="top")
 ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=col_status)
@@ -108,7 +110,7 @@ def hdr(cell, text):
 
 for c, t in [(1, "№"), (2, "ФИО сотрудника"), (3, "Подразделение / должность"),
              (col_total, "Итого дней"), (col_max, "Макс. часть"),
-             (col_ovl, "Дней пересечений с коллегами"), (col_status, "Проверка")]:
+             (col_ovl, "Дней в периоды сверх лимита"), (col_status, "Проверка")]:
     hdr(ws.cell(3, c), t)
     ws.merge_cells(start_row=3, start_column=c, end_row=4, end_column=c)
     ws.cell(4, c).border = BOX
@@ -136,7 +138,7 @@ for r in range(FIRST, LAST + 1):
     ws.cell(r, col_max, f"=IF({tot}=\"\",\"\",MAX({','.join(dcols)}))")
     first_d, last_d = L(3), L(3 + 364)
     ws.cell(r, col_ovl,
-            f"=IF({tot}=\"\",\"\",SUMPRODUCT((Календарь!${first_d}{r}:${last_d}{r}=1)*(Календарь!${first_d}${LAST + 1}:${last_d}${LAST + 1}>=2)))")
+            f"=IF({tot}=\"\",\"\",SUMPRODUCT((Календарь!${first_d}{r + OFF}:${last_d}{r + OFF}=1)*(Календарь!${first_d}${PCT}:${last_d}${PCT}>LIMIT_PCT)))")
     ws.cell(r, col_status,
             f"=IF(AND($B{r}=\"\",{tot}=\"\"),\"\",IF({tot}=\"\",\"Нет дат\",IF({tot}<28,\"Меньше 28 дн.\","
             f"IF({mx}<14,\"Нет части ≥14 дн.\",\"✔ OK\"))))")
@@ -214,10 +216,11 @@ C0 = 3
 CL = C0 + 364
 cs["A1"] = f"Календарь отпусков {YEAR}"
 cs["A1"].font = font(bold=True, size=14, color=GREEN_DARK)
-cs["A2"] = "Зелёный — отпуск, красный — пересечение (в отпуске ≥2 чел.), розовый — праздник, серый — выходной."
+cs["A2"] = "Зелёный — отпуск, красный — в этот день в отпуске больше лимита (% от численности), розовый — праздник, серый — выходной."
 cs["A2"].font = font(size=9, color="595959")
 cs["A2"].alignment = Alignment(wrap_text=True, vertical="top")
 cs.merge_cells("A2:B4")
+cs.row_dimensions[2].height = 30
 cs.column_dimensions["A"].width = 4
 cs.column_dimensions["B"].width = 30
 
@@ -225,12 +228,14 @@ months = ["Январь", "Февраль", "Март", "Апрель", "Май"
           "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"]
 d = dt.date(YEAR, 1, 1)
 col = C0
+month_cols = []
 while d.year == YEAR:
     if d.day == 1:
         start = col
     cs.column_dimensions[L(col)].width = 3.3
     nxt = d + dt.timedelta(days=1)
     if nxt.month != d.month:
+        month_cols.append((start, col))
         c = cs.cell(2, start, months[d.month - 1])
         cs.merge_cells(start_row=2, start_column=start, end_row=2, end_column=col)
         c.font = font(bold=True, color="FFFFFF", size=10)
@@ -252,44 +257,163 @@ for c in range(C0, CL + 1):
         cs.cell(r, c).border = BOX
 
 for r in range(FIRST, LAST + 1):
-    cs.cell(r, 1, f"=Отпуска!A{r}").font = font(size=9)
-    cs.cell(r, 2, f'=IF(Отпуска!B{r}="","",Отпуска!B{r})').font = font(size=9)
-    cs.cell(r, 1).border = BOX; cs.cell(r, 2).border = BOX
+    k = r + OFF
+    cs.cell(k, 1, f"=Отпуска!A{r}").font = font(size=9)
+    cs.cell(k, 2, f'=IF(Отпуска!B{r}="","",Отпуска!B{r})').font = font(size=9)
+    cs.cell(k, 1).border = BOX; cs.cell(k, 2).border = BOX
     conds = []
     for p in range(PARTS):
         c0 = NCOL_PART0 + 4 * p
         conds.append(f"AND(X$3>=Отпуска!${L(c0)}{r},X$3<=N(Отпуска!${L(c0 + 2)}{r}))")
     tmpl = "=IF(OR(" + ",".join(conds) + "),1,\"\")"
     for c in range(C0, CL + 1):
-        cell = cs.cell(r, c, tmpl.replace("X$3", f"{L(c)}$3"))
+        cell = cs.cell(k, c, tmpl.replace("X$3", f"{L(c)}$3"))
         cell.number_format = ";;;"
         cell.border = BOX
-CNT = LAST + 1
+CF0, CFL = FIRST + OFF, LAST + OFF
+cs.cell(PCT, 2, "% от численности").font = font(bold=True, size=9)
+cs.cell(PCT, 2).alignment = Alignment(horizontal="right")
 cs.cell(CNT, 2, "В отпуске, чел.").font = font(bold=True, size=9)
 cs.cell(CNT, 2).alignment = Alignment(horizontal="right")
 for c in range(C0, CL + 1):
-    cell = cs.cell(CNT, c, f"=IF(COUNT({L(c)}{FIRST}:{L(c)}{LAST})=0,\"\",COUNT({L(c)}{FIRST}:{L(c)}{LAST}))")
+    cell = cs.cell(CNT, c, f"=COUNT({L(c)}{CF0}:{L(c)}{CFL})")
+    cell.number_format = '0;-0;""'
     cell.font = font(size=7, bold=True)
     cell.alignment = CENTER
     cell.border = BOX
+    cell = cs.cell(PCT, c, f"=IF(HEADCOUNT>0,{L(c)}{CNT}/HEADCOUNT,0)")
+    cell.number_format = '0%;-0%;""'
+    cell.font = font(size=6)
+    cell.alignment = CENTER
+    cell.border = BOX
 
-body = f"{L(C0)}{FIRST}:{L(CL)}{LAST}"
+body = f"{L(C0)}{CF0}:{L(CL)}{CFL}"
 fc = L(C0)
-cs.conditional_formatting.add(body, FormulaRule(formula=[f"AND({fc}{FIRST}=1,{fc}${CNT}>=2)"], fill=fill(RED), stopIfTrue=True))
-cs.conditional_formatting.add(body, FormulaRule(formula=[f"{fc}{FIRST}=1"], fill=fill("3BAA5C"), stopIfTrue=True))
+cs.conditional_formatting.add(body, FormulaRule(formula=[f"AND({fc}{CF0}=1,{fc}${PCT}>LIMIT_PCT)"], fill=fill(RED), stopIfTrue=True))
+cs.conditional_formatting.add(body, FormulaRule(formula=[f"{fc}{CF0}=1"], fill=fill("3BAA5C"), stopIfTrue=True))
 for rng, r0 in ((body, FIRST), (f"{fc}3:{L(CL)}4", 3)):
     cs.conditional_formatting.add(rng, FormulaRule(formula=[f"COUNTIF(HOLIDAYS,{fc}$3)>0"], fill=fill(HOL),
                                                    font=Font(name=F, color="C00000"), stopIfTrue=True))
     cs.conditional_formatting.add(rng, FormulaRule(formula=[f"WEEKDAY({fc}$3,2)>5"], fill=fill("E7E6E6")))
-cs.conditional_formatting.add(f"{fc}{CNT}:{L(CL)}{CNT}",
-                              FormulaRule(formula=[f"AND(ISNUMBER({fc}{CNT}),{fc}{CNT}>=2)"],
+cs.conditional_formatting.add(f"{fc}{CNT}:{L(CL)}{PCT}",
+                              FormulaRule(formula=[f"{fc}${PCT}>LIMIT_PCT"],
                                           fill=fill(RED), font=Font(name=F, color="FFFFFF", bold=True)))
-cs.freeze_panes = cs.cell(FIRST, C0)
+cs.freeze_panes = cs.cell(CF0, C0)
 
 ws.sheet_properties.tabColor = GREEN_DARK
 cs.sheet_properties.tabColor = "3BAA5C"
 hs.sheet_properties.tabColor = "C00000"
 ws.page_setup.orientation = "landscape"; ws.page_setup.fitToWidth = 1; ws.sheet_properties.pageSetUpPr.fitToPage = True; ws.page_setup.fitToHeight = 0
+
+
+# ---------------- Свод по месяцам ----------------
+ss = wb.create_sheet("Свод по месяцам", 2)
+ss.sheet_view.showGridLines = False
+SV = "'Свод по месяцам'"
+ss["A1"] = f"Свод по месяцам {YEAR}: сколько сотрудников в отпуске одновременно"
+ss["A1"].font = font(bold=True, size=14, color=GREEN_DARK)
+
+settings = [
+    (2, "Численность (пусто = по списку ФИО)", None, "0"),
+    (3, "Численность для расчёта %", f"=IF(C2=\"\",COUNTA(Отпуска!$B${FIRST}:$B${LAST}),C2)", "0"),
+    (4, "Лимит одновременно в отпуске, %", 0.1, "0%"),
+    (5, "То есть не более, чел.", "=ROUNDDOWN(C3*C4,0)", "0"),
+]
+for r, label, val, fmt in settings:
+    ss.cell(r, 2, label).font = font(size=10)
+    ss.cell(r, 2).alignment = Alignment(horizontal="right")
+    cell = ss.cell(r, 3, val)
+    cell.number_format = fmt
+    cell.font = font(size=10, bold=True)
+    cell.border = BOX
+    cell.alignment = CENTER
+    if r in (2, 4):
+        cell.fill = fill(INPUT)
+ss["C2"].comment = Comment("Впишите штатную численность (например, 150), если в списке не все сотрудники.", "Шаблон")
+ss["E2"] = "Жёлтые ячейки можно менять. Итог по месяцу краснеет, если в какой-то день месяца в отпуске больше лимита."
+ss["E3"] = "«Макс. одновременно» — пиковое число сотрудников в отпуске в один и тот же день месяца. *Дни по месяцам — календарные, вкл. праздники внутри отпуска."
+for a in ("E2", "E3"):
+    ss[a].font = font(size=9, italic=True, color="595959")
+wb.defined_names["HEADCOUNT"] = DefinedName("HEADCOUNT", attr_text=f"{SV}!$C$3")
+wb.defined_names["LIMIT_PCT"] = DefinedName("LIMIT_PCT", attr_text=f"{SV}!$C$4")
+
+HDR = 7
+T1 = HDR + 1               # итоговые строки — сразу под шапкой, всегда видны
+R0 = T1 + 5
+RL = R0 + N - 1
+MC0 = 3                    # первый столбец месяца
+MCL = MC0 + 11
+TOT = MCL + 1
+for c, t in [(1, "№"), (2, "ФИО")] + [(MC0 + i, m) for i, m in enumerate(months)] + [(TOT, "Дней отсутствия*")]:
+    hdr(ss.cell(HDR, c), t)
+ss.row_dimensions[HDR].height = 30
+
+for i in range(N):
+    r, src = R0 + i, FIRST + i
+    ss.cell(r, 1, f"=Отпуска!A{src}")
+    ss.cell(r, 2, f'=IF(Отпуска!B{src}="","",Отпуска!B{src})')
+    for m, (a, b) in enumerate(month_cols):
+        ss.cell(r, MC0 + m, f'=IF($B{r}="","",COUNT(Календарь!{L(a)}{src + OFF}:{L(b)}{src + OFF}))')
+    ss.cell(r, TOT, f'=IF($B{r}="","",SUM({L(MC0)}{r}:{L(MCL)}{r}))')
+    for c in range(1, TOT + 1):
+        cell = ss.cell(r, c)
+        cell.font = font(size=10, bold=(c == TOT))
+        cell.border = BOX
+        cell.number_format = '0;-0;""'
+        cell.alignment = Alignment(horizontal="left" if c == 2 else "center", vertical="center")
+
+rows = [
+    (T1, "Были в отпуске в месяце, чел.", lambda c, a, b: f"=COUNTIF({c}{R0}:{c}{RL},\">0\")", "0"),
+    (T1 + 1, "Макс. одновременно в отпуске, чел.", lambda c, a, b: f"=MAX(Календарь!{a}{CNT}:{b}{CNT})", "0"),
+    (T1 + 2, "Макс. % от численности", lambda c, a, b: f"=IF(HEADCOUNT>0,{c}{T1 + 1}/HEADCOUNT,0)", "0%"),
+    (T1 + 3, "Дней сверх лимита", lambda c, a, b: f"=COUNTIF(Календарь!{a}{PCT}:{b}{PCT},\">\"&LIMIT_PCT)", "0"),
+    (T1 + 4, "ИТОГ: одновременно – %", lambda c, a, b: f"={c}{T1 + 1}&\" – \"&TEXT({c}{T1 + 2},\"0%\")", "@"),
+]
+for r, label, f, fmt in rows:
+    lc = ss.cell(r, 1, label)
+    ss.merge_cells(start_row=r, start_column=1, end_row=r, end_column=2)
+    lc.font = font(bold=True, size=10, color="FFFFFF")
+    lc.fill = fill(GREEN_DARK)
+    lc.alignment = Alignment(horizontal="right", vertical="center")
+    ss.cell(r, 2).border = BOX
+    for m, (a, b) in enumerate(month_cols):
+        c = L(MC0 + m)
+        cell = ss.cell(r, MC0 + m, f(c, L(a), L(b)))
+        cell.number_format = fmt
+    # годовой столбец
+    T = L(TOT)
+    year_f = {
+        T1: f"=SUMPRODUCT(--(N({T}{R0}:{T}{RL})>0))",
+        T1 + 1: f"=MAX({L(MC0)}{T1 + 1}:{L(MCL)}{T1 + 1})",
+        T1 + 2: f"=IF(HEADCOUNT>0,{T}{T1 + 1}/HEADCOUNT,0)",
+        T1 + 3: f"=SUM({L(MC0)}{T1 + 3}:{L(MCL)}{T1 + 3})",
+        T1 + 4: f"={T}{T1 + 1}&\" – \"&TEXT({T}{T1 + 2},\"0%\")",
+    }[r]
+    ss.cell(r, TOT, year_f).number_format = fmt
+    for c in range(MC0, TOT + 1):
+        cell = ss.cell(r, c)
+        cell.font = font(bold=True, size=10 if r < T1 + 4 else 11)
+        cell.border = BOX
+        cell.alignment = CENTER
+        cell.fill = fill(GREEN_LIGHT)
+ss.row_dimensions[T1 + 4].height = 22
+ss.cell(T1, TOT).value = f'=COUNTIF({L(TOT)}{R0}:{L(TOT)}{RL},">0")'
+
+grid = f"{L(MC0)}{R0}:{L(MCL)}{RL}"
+ss.conditional_formatting.add(grid, FormulaRule(formula=[f"AND(ISNUMBER({L(MC0)}{R0}),{L(MC0)}{R0}>0)"],
+                                                fill=fill("C6E9CF")))
+tot_rng = f"{L(MC0)}{T1 + 1}:{L(TOT)}{T1 + 4}"
+ss.conditional_formatting.add(tot_rng, FormulaRule(formula=[f"{L(MC0)}${T1 + 2}>LIMIT_PCT"],
+                                                   fill=fill(RED), font=Font(name=F, color="FFFFFF", bold=True)))
+
+ss.column_dimensions["A"].width = 5
+ss.column_dimensions["B"].width = 34
+for c in range(MC0, MCL + 1):
+    ss.column_dimensions[L(c)].width = 10
+ss.column_dimensions[L(TOT)].width = 11
+ss.freeze_panes = ss.cell(R0, MC0)
+ss.sheet_properties.tabColor = "F4B183"
+ss.page_setup.orientation = "landscape"; ss.sheet_properties.pageSetUpPr.fitToPage = True; ss.page_setup.fitToWidth = 1; ss.page_setup.fitToHeight = 0
 
 import os
 os.makedirs(os.path.dirname(OUT), exist_ok=True)
