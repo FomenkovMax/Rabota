@@ -19,7 +19,7 @@ from bankintel import __version__
 from bankintel.analytics.compare import DEFAULT_SCENARIOS, Scenario, ScenarioResult, compare
 from bankintel.analytics.facts import ProductFacts, load_facts
 from bankintel.db.models import Bank, CollectionRun, Document, FetchAttempt, Source
-from bankintel.formatting import money, pct
+from bankintel.formatting import fmt_msk, money, pct
 from bankintel.monitor import monitoring_status, recent_changes
 
 METHOD_VERSION = "1"
@@ -238,11 +238,11 @@ def validate_dataset(ds: dict) -> None:
 
 
 def fmt_dt(iso: str | None) -> str:
-    return datetime.fromisoformat(iso).strftime("%d.%m.%Y %H:%M") if iso else "—"
+    return fmt_msk(iso)
 
 
 def fmt_date(iso: str | None) -> str:
-    return datetime.fromisoformat(iso).strftime("%d.%m.%Y") if iso else "—"
+    return fmt_msk(iso, time=False)
 
 
 __all__ = ["build_dataset", "validate_dataset", "DatasetError", "dataset_id", "fmt_dt", "fmt_date", "money", "pct"]

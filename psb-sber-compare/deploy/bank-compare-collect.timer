@@ -1,0 +1,17 @@
+# Таймер еженедельного сбора. Установка:
+#   sudo cp deploy/bank-compare-collect.{service,timer} /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now bank-compare-collect.timer
+#   systemctl list-timers bank-compare-collect
+
+[Unit]
+Description=Еженедельный сбор условий по банкам
+
+[Timer]
+OnCalendar=Mon *-*-* 07:00:00
+# Если машина была выключена в момент запуска — соберём при включении.
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target

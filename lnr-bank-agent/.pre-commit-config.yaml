@@ -1,0 +1,22 @@
+repos:
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.18.4
+    hooks:
+      - id: gitleaks
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.10
+    hooks:
+      - id: ruff-check
+        files: ^lnr-bank-agent/
+        args: [--config, lnr-bank-agent/pyproject.toml]
+      - id: ruff-format
+        files: ^lnr-bank-agent/
+        args: [--config, lnr-bank-agent/pyproject.toml]
+  - repo: local
+    hooks:
+      - id: unit-tests
+        name: unit tests (lnr-bank-agent)
+        entry: bash -c 'cd lnr-bank-agent && uv run pytest -q tests/unit'
+        language: system
+        files: ^lnr-bank-agent/
+        pass_filenames: false

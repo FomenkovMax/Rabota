@@ -1,0 +1,12 @@
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+credentials.json
+secrets/
+data/
+.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/

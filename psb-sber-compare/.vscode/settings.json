@@ -1,0 +1,14 @@
+{
+  "python.analysis.extraPaths": ["${workspaceFolder}"],
+  "python.terminal.activateEnvironment": true,
+  "files.encoding": "utf8",
+  "files.eol": "\n",
+  "[python]": {
+    "editor.rulers": [100],
+    "editor.tabSize": 4
+  },
+  "files.exclude": {
+    "**/__pycache__": true,
+    "**/*.pyc": true
+  }
+}

@@ -4,6 +4,29 @@
 ар-деко, scroll-linked анимации). Дизайн, тексты и структура — без изменений;
 монолитный 2-мегабайтный HTML разобран на ассеты и собирается Vite.
 
+## Проекты в репозитории
+
+| Проект | Папка |
+| --- | --- |
+| Лендинг «ЛИФТ» | Корень репозитория |
+| Banking Intelligence | [banking-intelligence/](banking-intelligence/) |
+| Мониторинг региональных Telegram-каналов | [radar-lnr/](radar-lnr/) |
+| Банковский агент | [lnr-bank-agent/](lnr-bank-agent/) |
+| Сравнение ПСБ и Сбера | [psb-sber-compare/](psb-sber-compare/) |
+| Генератор графика отпусков | [vacations/](vacations/) |
+| Презентация о книге | [presentations/nenoch/](presentations/nenoch/) |
+
+У банковского агента есть [материалы исследования](prompts/lnr-bank-retail-agent/)
+и [спецификации](work/lnr-bank-retail-agent/).
+
+## Самостоятельные сайты и боты
+
+- [Холодильник](https://github.com/FomenkovMax/fridge) и его [Telegram-бот](https://github.com/FomenkovMax/fridge-telegram-bot)
+- [Бот «Что? Где? Когда?»](https://github.com/FomenkovMax/chgk-bot)
+- [Сайт о Годзё](https://github.com/FomenkovMax/gojo-tribute)
+- [Страницы о Гатсе и Канеки с общим движком](https://github.com/FomenkovMax/anime-frame-tributes)
+- [Веб-презентация «Тьма как путь»](https://github.com/FomenkovMax/darkness-as-a-path)
+
 ## Команды
 
 ```bash

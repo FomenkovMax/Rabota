@@ -1,0 +1,22 @@
+# Еженедельный сбор. Запускается таймером, разово.
+
+[Unit]
+Description=Сбор условий по банкам
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=bank
+WorkingDirectory=/opt/bank-compare
+Environment=PYTHONUNBUFFERED=1
+EnvironmentFile=/opt/bank-compare/.env
+ExecStart=/opt/bank-compare/.venv/bin/python run.py collect
+# Полный обход каталога занимает минуты; запас даём с избытком.
+TimeoutStartSec=3600
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/bank-compare/data

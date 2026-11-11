@@ -1,0 +1,579 @@
+"""Что делает бот под кнопками.
+
+Слой между Telegram и пайплайном: бот отвечает за диалог, здесь — работа
+с данными. Никаких aiogram-типов, чтобы всё это можно было проверить
+обычным скриптом.
+"""
+
+from __future__ import annotations
+
+import html
+import logging
+from pathlib import Path
+from typing import Any
+
+from src.ai import consultant
+from src.compare import GREEN, GREY, RED, YELLOW
+from src.pipeline import Config, load_report_data
+
+log = logging.getLogger(__name__)
+
+LIGHT_ICON = {RED: "🔴", YELLOW: "🟡", GREEN: "🟢", GREY: "⚪"}
+
+BANK_TITLES = {
+    "psb": "ПСБ",
+    "vtb": "ВТБ",
+    "cmr": "ЦМР",
+    "sber": "Сбер",
+    "tbank": "Т-Банк",
+    "rostfinance": "РостФинанс",
+}
+
+
+def _config() -> Config:
+    return Config.load()
+
+
+def _esc(value: Any) -> str:
+    return html.escape(str(value))
+
+
+# --- сравнение -------------------------------------------------------------
+
+def compare_text(bank_code: str) -> str:
+    """Короткая сводка сравнения Сбера с одним банком."""
+    config = _config()
+    data = load_report_data(config, competitor=bank_code)
+
+    title = BANK_TITLES.get(bank_code, bank_code)
+    if data is None:
+        return (f"<b>Сбер и {_esc(title)}</b>\n\n"
+                "Данных пока нет. Нажми «Обновить данные» в меню.")
+
+    counts = data["counts"]
+    lines = [
+        f"<b>Сбер и {_esc(title)}</b>",
+        f"<i>Регион: {_esc(data['region'])} · сбор {_esc(data['collected_at'])}</i>",
+        "",
+    ]
+    if data["comparisons"]:
+        lines += [f"🔴 проигрываем {counts[RED]}   🟡 паритет {counts[YELLOW]}   "
+                  f"🟢 выигрываем {counts[GREEN]}   ⚪ нет данных {counts[GREY]}", ""]
+
+    counts_by_bank = data["product_counts"]
+    rival_count = sum(counts_by_bank.get(t, 0) for t in data["competitor_titles"])
+    home_count = counts_by_bank.get(data["home_title"], 0)
+
+    comparisons = data["comparisons"]
+    if not comparisons:
+        # Различаем две разные причины пустого сравнения: нет данных
+        # по банку и данные есть, но пары не сопоставлены.
+        if rival_count == 0:
+            lines.append(f"Данных по банку {_esc(title)} в последнем сборе нет.\n"
+                         f"Собери их: «Обновить данные» → {_esc(title)}.")
+        elif home_count == 0:
+            lines.append("Данных по Сберу в последнем сборе нет — "
+                         "собери их в меню «Обновить данные».")
+        else:
+            # Ручных пар нет — сравнение по программам, как в своде: ставка
+            # Сбера против ставки банка в одной программе (вклады, семейная
+            # ипотека, кредит наличными…). Раньше кнопка писала «пары не
+            # сопоставлены» и ничего не сравнивала (жалоба 03.11.2026).
+            lines += program_lines(data.get("gaps") or [], title)
+    else:
+        lines.append("<b>Продукты</b>")
+        for c in comparisons[:12]:
+            icon = LIGHT_ICON[c.light]
+            prefix = "до" if c.rate_bound == "max" else "от"
+            left = f"{prefix} {c.psb_rate:g}%" if c.psb_rate is not None else "—"
+            right = f"{prefix} {c.sber_rate:g}%" if c.sber_rate is not None else "—"
+            delta = f" ({c.delta_rate:+g} п.п.)" if c.delta_rate is not None else ""
+            lines.append(f"{icon} <b>{_esc(c.label)}</b>\n"
+                         f"      {_esc(title)} {left} · Сбер {right}{delta}")
+        if len(comparisons) > 12:
+            lines.append(f"<i>…и ещё {len(comparisons) - 12} — смотри в своде</i>")
+
+    segments = [s for s in data["segments"] if s.verdict == "red"][:5]
+    if segments:
+        lines += ["", "<b>Где проигрываем по акциям</b>"]
+        for s in segments:
+            lines.append(f"🔴 {_esc(s.segment)}: {_esc(s.headline[:110])}")
+
+    no_region = data.get("no_region") or []
+    if no_region:
+        names = ", ".join(no_region)
+        lines += ["", f"⚠️ <i>Регион на сайте не выбран: {_esc(names)}. "
+                      "Показаны условия, которые сайт отдал по умолчанию — "
+                      "обычно московские, а не луганские.</i>"]
+
+    federal = data.get("federal") or []
+    if federal:
+        lines += ["", f"ℹ️ <i>Единые условия по РФ: {_esc(', '.join(federal))}. "
+                      "Отдельных условий для ЛНР на сайте банка нет.</i>"]
+
+    if data["unverified"]:
+        names = ", ".join(data["unverified"])
+        lines += ["", f"⚠️ <i>Сбор не подтверждён на живых данных: {_esc(names)}. "
+                      "Цифры по этим банкам сверь с первоисточником.</i>"]
+
+    return "\n".join(lines)
+
+
+_GAP_ICON = {"отстаёт": "🔴", "в рынке": "🟡", "лидер": "🟢",
+             "не найдено у Сбера": "⚪", "нет в ЛНР у Сбера": "⛔", "нет у конкурентов": "🔵"}
+
+
+def program_lines(gaps: list[Any], title: str, *, limit: int = 30) -> list[str]:
+    """Сравнение Сбера с одним банком по программам (строки для Telegram)."""
+    from src.market import BLOCK_LABEL
+
+    order = {b: i for i, b in enumerate(("DEP", "LOAN", "MTG", "CARD"))}
+    shown = sorted((g for g in gaps if g.status in _GAP_ICON),
+                   key=lambda g: order.get(g.block, 9))
+    if not shown:
+        return [f"Общих программ со ставками у Сбера и {_esc(title)} не нашлось."]
+    tally = {k: sum(1 for g in shown if g.status == k) for k in _GAP_ICON}
+    out = [f"🔴 проигрываем {tally['отстаёт']}   🟡 паритет {tally['в рынке']}   "
+           f"🟢 выигрываем {tally['лидер']}",
+           f"⚪ нет у Сбера {tally['не найдено у Сбера']}   "
+           f"⛔ нет в ЛНР у Сбера {tally['нет в ЛНР у Сбера']}   "
+           f"🔵 нет у {_esc(title)} {tally['нет у конкурентов']}", "",
+           "<b>По программам</b> <i>(автоматически; ручные пары не заданы)</i>"]
+    block = ""
+    for g in shown[:limit]:
+        if g.block != block:
+            block = g.block
+            out.append(f"\n<u>{_esc(BLOCK_LABEL.get(block, block))}</u>")
+        prefix = "до" if g.metric == "rate_max" else "от"
+        rival = next((o for o in g.offers if o.bank != "Сбер"), None) if g.offers else None
+        rival = rival or (g.best if g.best and g.best.bank != "Сбер" else None)
+        def pct(v: float) -> str:
+            return f"{v:g}".replace(".", ",") + " %"
+        theirs = f"{prefix} {pct(rival.value)}" if rival else "—"
+        ours = f"{prefix} {pct(g.sber.value)}" if g.sber else "—"
+        delta = ""
+        if g.sber and rival:
+            diff = round(g.sber.value - rival.value, 2)
+            delta = f" ({f'{diff:+g}'.replace('.', ',')} п.п.)"
+        out.append(f"{_GAP_ICON[g.status]} <b>{_esc(g.program)}</b>: "
+                   f"Сбер {ours} · {_esc(title)} {theirs}{delta}")
+    if len(shown) > limit:
+        out.append(f"<i>…и ещё {len(shown) - limit} — в дашборде пары</i>")
+    return out
+
+
+def compare_dashboard(bank_code: str) -> Path | None:
+    """Дашборд «Сбер и <банк>» — тот же свод, но только по двум банкам."""
+    from datetime import datetime
+
+    from src.report import write_report
+
+    config = _config()
+    data = load_report_data(config, competitor=bank_code)
+    if data is None:
+        return None
+    title = BANK_TITLES.get(bank_code, bank_code)
+    out_dir = config.path("export", "dir", default="data/export")
+    out_dir.mkdir(parents=True, exist_ok=True)
+    path = out_dir / f"Сбер_и_{title}_{datetime.now():%Y-%m-%d}.html"
+    write_report(path, data["html"])
+    return path
+
+
+# --- выгрузка --------------------------------------------------------------
+
+def export_files(fmt: str) -> list[Path]:
+    """Готовит файлы свода. fmt: xlsx | pdf | html | bi | all."""
+    from src.export import ALL, build_exports
+
+    config = _config()
+    data = load_report_data(config)
+    if data is None:
+        return []
+
+    formats = ALL if fmt == "all" else [fmt]
+    return build_exports(config, data, formats)
+
+
+# --- консультант -----------------------------------------------------------
+
+def ai_answer(question: str) -> str:
+    """Ответ AI-консультанта по собранным цифрам."""
+    config = _config()
+    data = load_report_data(config)
+    if data is None:
+        return ("Данных для совета пока нет — сначала обнови их в меню.")
+
+    facts = consultant.build_facts(
+        data["comparisons"], data["segments"], data["changes"],
+        region=data["region"], banks=data["banks"],
+    )
+
+    try:
+        advice = consultant.ask(facts, question)
+    except consultant.ConsultantUnavailable as exc:
+        return f"Консультант недоступен.\n{_esc(exc)}"
+
+    log.info("Совет получен: %s", advice.usage_note)
+    return advice.text
+
+
+# --- сбор ------------------------------------------------------------------
+
+ROOT = Path(__file__).resolve().parent.parent
+
+
+def collect_command(bank_code: str) -> list[str]:
+    """Команда сбора отдельным процессом: все банки или один."""
+    import sys
+
+    command = [sys.executable, str(ROOT / "run.py"), "collect"]
+    if bank_code != "all":
+        command += ["--bank", bank_code]
+    return command
+
+
+def collect_summary(bank_code: str, returncode: int, tail: list[str]) -> str:
+    """Сообщение по итогам сбора, который шёл отдельным процессом.
+
+    Сбор вынесен из процесса бота: браузер ест много памяти, и когда
+    7 октября системе её не хватило, вместе со сбором погиб и бот —
+    сообщение «готово» так и не пришло. Теперь гибнет только сбор, а бот
+    объясняет, что случилось.
+    """
+    if returncode < 0:
+        return ("⚠️ Сбор прервался: процесс остановлен системой "
+                f"(сигнал {-returncode}). Чаще всего так бывает, когда серверу "
+                "не хватает памяти. Данные прошлых сборов на месте, выгрузка "
+                "покажет их.")
+    if returncode != 0:
+        last = "\n".join(_esc(line) for line in tail[-5:])
+        return f"⚠️ Сбор завершился с ошибкой (код {returncode}).\n<pre>{last}</pre>"
+
+    data = load_report_data(_config())
+    if data is None:
+        return "Сбор завершён, но данных в базе нет — смотри лог сбора."
+    banks = ", ".join(f"{bank} {n}" for bank, n in data["product_counts"].items())
+    head = "Сбор завершён." if bank_code == "all" else "Банк обновлён."
+    # Светофор считает только ручные пары, а их может не быть вовсе —
+    # «🔴 0 🟡 0 🟢 0» читалось как «сравнивать нечего». Место Сбера на
+    # рынке считается по всем банкам сразу.
+    statuses: dict[str, int] = {}
+    for gap in data.get("gaps") or []:
+        statuses[gap.status] = statuses.get(gap.status, 0) + 1
+    place = (f"🟢 лидер {statuses.get('лидер', 0)} · 🟡 в рынке {statuses.get('в рынке', 0)} · "
+             f"🔴 отстаёт {statuses.get('отстаёт', 0)} · ⚪ не найдено у Сбера "
+             f"{statuses.get('не найдено у Сбера', 0)}")
+    manual = len(data.get("manual") or [])
+    tail = f"\nНужна ручная проверка: {manual} знач." if manual else ""
+    # Все ли страницы сайтов прочитаны — главный вопрос к сбору.
+    crawl = data.get("crawl") or {}
+    if crawl:
+        lines = []
+        for bank, c in crawl.items():
+            left = len(c["unread"]) + len(c["failed"])
+            lines.append(f"✅ {bank}: обход полный, {c['read']} стр." if c["complete"] else
+                         f"⚠️ {bank}: прочитано {c['read']} стр., не прочитано {left} — "
+                         "список в своде, цифры по ним из прошлого сбора")
+        tail += "\nПолнота обхода:\n" + "\n".join(lines)
+        # Новые страницы вне разделов обхода — возможно, новый продукт.
+        fresh = [f"{bank} — {len(c.get('new_candidates') or [])}" for bank, c in crawl.items()
+                 if c.get("new_candidates")]
+        if fresh:
+            tail += ("\n🆕 Новые страницы вне обхода (возможно, новые продукты): "
+                     + ", ".join(fresh) + " — список в своде")
+    for ref in data.get("references") or []:
+        missing = ", ".join(m.get("name", "") for m in ref.missing[:6])
+        more = f" и ещё {len(ref.missing) - 6}" if len(ref.missing) > 6 else ""
+        tail += (f"\n📋 Эталон {ref.bank}: найдено {ref.share}"
+                 + (f"; не найдены: {missing}{more}" if ref.missing else " ✅"))
+    return (f"{head}\nПродуктов: {banks}.\n"
+            f"Место Сбера по программам: {place}{tail}\n"
+            "Подробно — в «📊 Выгрузить общий свод».")
+
+
+# --- по категориям -----------------------------------------------------------
+
+#: Код кнопки → категория продукта.
+CATEGORIES = {
+    "dep": "Вклады",
+    "sav": "Накопительные счета",
+    "loan": "Кредиты",
+    "mtg": "Ипотека",
+    "cc": "Кредитные карты",
+}
+GAP_ICON = {"лидер": "🟢", "в рынке": "🟡", "отстаёт": "🔴",
+            "не найдено у Сбера": "⚪", "нет у конкурентов": "🔵", "нет данных": "▫️"}
+
+
+def _rate(value: Any, better: str) -> str:
+    if value is None:
+        return "—"
+    prefix = "до" if better == "higher" else "от"
+    return f"{prefix} {value:g} %".replace(".", ",")
+
+
+def _category_data(key: str) -> tuple[str, dict[str, Any] | None, list[Any], list[Any]]:
+    category = CATEGORIES.get(key, "")
+    data = load_report_data(_config())
+    if data is None:
+        return category, None, [], []
+    gaps = [g for g in data.get("gaps") or [] if g.category == category]
+    specials = [r for r in data.get("specials") or [] if r.category == category]
+    return category, data, gaps, specials
+
+
+def category_text(key: str) -> str:
+    """Категория целиком: место Сбера по программам и особые условия."""
+    category, data, gaps, specials = _category_data(key)
+    if not category:
+        return "Неизвестная категория."
+    if data is None:
+        return "Данных пока нет — сначала обнови их в меню."
+
+    lines = [f"<b>{_esc(category)}</b>",
+             f"<i>Сбор {_esc(data['collected_at'])} · сравниваются только базовые ставки</i>", ""]
+    if not gaps:
+        lines.append("Программ со ставками в этой категории нет.")
+    for gap in gaps:
+        icon = GAP_ICON.get(gap.status, "▫️")
+        sber = _rate(gap.sber.value, gap.better) if gap.sber else "—"
+        lines.append(f"{icon} <b>{_esc(gap.program)}</b> — {_esc(gap.status)}")
+        lines.append(f"      Сбер {sber} · место {_esc(gap.place)}")
+        top = [o for o in gap.offers if o.bank != data["home_title"]][:3]
+        if top:
+            lines.append("      " + " · ".join(
+                f"{_esc(o.bank)} {_rate(o.value, gap.better)}" for o in top))
+        if gap.comment and gap.status != "отстаёт":
+            lines.append(f"      <i>{_esc(gap.comment[:140])}</i>")
+    if specials:
+        lines += ["", f"<b>Особые условия</b> ({len(specials)}) — в сравнение не идут:"]
+        for row in specials[:8]:
+            rate = "—" if row.rate is None else f"{row.rate:g} %".replace(".", ",")
+            lines.append(f"• {_esc(row.bank)} · {_esc(row.title[:50])} — {rate} "
+                         f"<i>({_esc(row.kind_label)})</i>")
+        if len(specials) > 8:
+            lines.append(f"<i>…и ещё {len(specials) - 8} — в своде, блок «Специальные условия»</i>")
+    return "\n".join(lines)
+
+
+def script_facts(key: str) -> tuple[str, str]:
+    """Факты категории для скрипта: (категория, текст фактов)."""
+    category, data, gaps, specials = _category_data(key)
+    if data is None:
+        return category, ""
+    lines = [f"Категория: {category}. Регион: {data['region']}. Сбор: {data['collected_at']}."]
+    for gap in gaps:
+        sber = _rate(gap.sber.value, gap.better) if gap.sber else "нет данных"
+        offers = "; ".join(f"{o.bank} — {o.title}: {_rate(o.value, gap.better)}"
+                           for o in gap.offers)
+        lines.append(f"Программа «{gap.program}»: статус {gap.status}, Сбер {sber}, "
+                     f"место {gap.place}. Базовые ставки банков: {offers or 'нет'}.")
+    for row in specials:
+        rate = "—" if row.rate is None else f"{row.rate:g} %"
+        lines.append(f"Особое условие: {row.bank} — {row.title}: {rate} "
+                     f"({row.kind_label}; {row.reason}).")
+    return category, "\n".join(lines)
+
+
+def template_script(key: str) -> str:
+    """Скрипт без модели: только утверждения, которые держатся на данных."""
+    category, data, gaps, specials = _category_data(key)
+    if data is None:
+        return "Данных пока нет — сначала обнови их в меню."
+    home = data["home_title"]
+    lines = [f"<b>Аргументы для клиента: {_esc(category)}</b>",
+             "<i>Собрано по данным сбора, без допущений. Перед разговором сверь условия "
+             "по ссылке в своде.</i>", ""]
+    welcome_by_bank: dict[str, list[Any]] = {}
+    for row in specials:
+        welcome_by_bank.setdefault(row.bank, []).append(row)
+    said = 0
+    for gap in gaps:
+        if gap.sber is None:
+            continue
+        sber = _rate(gap.sber.value, gap.better)
+        median = (_rate(gap.others_median, gap.better)
+                  if gap.others_median is not None else "")
+        if gap.status in ("лидер", "в рынке"):
+            lines.append(f"• «{_esc(gap.program)}: у Сбера {sber}"
+                         + (f", по рынку в среднем {median}" if median else "") + ".»")
+            lines.append(f"   <i>(место {gap.place} среди {gap.banks_compared} банков, "
+                         "базовые ставки)</i>")
+            said += 1
+        elif gap.status == "отстаёт" and gap.best is not None:
+            best = gap.best
+            lines.append(f"• «{_esc(gap.program)}: у {_esc(best.bank)} базовая ставка "
+                         f"{_rate(best.value, gap.better)}, у Сбера {sber}.»")
+            extra = welcome_by_bank.get(best.bank, [])
+            if extra:
+                kinds = ", ".join(sorted({r.kind_label for r in extra}))
+                lines.append(f"   <i>(у {_esc(best.bank)} в категории есть ставки на особых "
+                             f"условиях: {_esc(kinds)} — уточните, на какие условия смотрит "
+                             "клиент)</i>")
+            else:
+                lines.append("   <i>(аргумента по ставке в данных нет — уточните условия у "
+                             "продуктового блока)</i>")
+            said += 1
+        elif gap.status == "нет у конкурентов":
+            lines.append(f"• «{_esc(gap.program)} — такой программы с опубликованной ставкой "
+                         f"у других банков в регионе нет, у Сбера {sber}.»")
+            said += 1
+    rivals_special = [r for r in specials if r.bank != home]
+    if rivals_special:
+        lines.append("")
+        lines.append("• Если клиент называет ставку конкурента выше нашей — проверьте, "
+                     "не на особых ли она условиях:")
+        for row in rivals_special[:5]:
+            rate = "—" if row.rate is None else f"{row.rate:g} %".replace(".", ",")
+            lines.append(f"   {_esc(row.bank)} · {_esc(row.title[:45])} {rate} — "
+                         f"<i>{_esc(row.kind_label)}</i>")
+        said += 1
+    if not said:
+        lines.append("По собранным данным аргументов нет: ставок Сбера в этой категории "
+                     "на сайте не найдено. Уточните условия у продуктового блока.")
+    return "\n".join(lines)
+
+
+def client_script(key: str) -> str:
+    """Скрипт для клиента: моделью по фактам, а без неё — по шаблону."""
+    category, facts = script_facts(key)
+    if not facts:
+        return "Данных пока нет — сначала обнови их в меню."
+    if consultant.available():
+        try:
+            advice = consultant.ask_script(facts)
+            log.info("Скрипт получен: %s", advice.usage_note)
+            return (f"<b>Аргументы для клиента: {_esc(category)}</b>\n"
+                    "<i>Подготовлено AI только по собранным данным.</i>\n\n" + advice.text)
+        except Exception as exc:                    # noqa: BLE001
+            log.warning("Скрипт моделью не получился: %s — беру шаблон", exc)
+    return template_script(key)
+
+
+# --- автоаудит ---------------------------------------------------------------
+
+def audit_command(llm: bool = False) -> list[str]:
+    import sys
+
+    command = [sys.executable, str(ROOT / "run.py"), "audit"]
+    if llm:
+        command.append("--llm")
+    return command
+
+
+def latest_audit_files() -> list[Path]:
+    """Свежие отчёт и пакет автоаудита."""
+    folder = _config().path("export", "audit_dir", default="data/audit")
+    files = sorted(folder.glob("audit_*.html"))
+    if not files:
+        return []
+    html_path = files[-1]
+    zip_path = html_path.with_suffix(".zip")
+    return [html_path] + ([zip_path] if zip_path.exists() else [])
+
+
+def audit_summary(returncode: int, tail: list[str]) -> str:
+    if returncode != 0:
+        last = "\n".join(_esc(line) for line in tail[-5:])
+        return f"⚠️ Аудит завершился с ошибкой (код {returncode}).\n<pre>{last}</pre>"
+    keep = [line for line in tail if line.strip().startswith(("Автоаудит", "  "))]
+    return "🧪 <b>Аудит готов</b>\n<pre>" + _esc("\n".join(keep[-12:])) + "</pre>"
+
+
+def missing_pages_archive() -> Path | None:
+    """Архив для доработки: страницы без ставки, калькуляторы (calc-*.json)
+    и данные, которые страницы калькуляторов скачали (net-*.json)."""
+    import zipfile
+
+    folder = ROOT / "data" / "pages-missing"
+    files = sorted(f for pattern in ("*.txt", "*.json")
+                   for f in folder.rglob(pattern)) if folder.exists() else []
+    if not files:
+        return None
+    archive = ROOT / "data" / "pages-missing.zip"
+    with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as out:
+        for path in files:
+            out.write(path, path.relative_to(folder))
+    return archive
+
+
+def full_snapshot_archive() -> Path | None:
+    """Всё, что агент видел на сайтах при последнем сборе: тексты всех
+    страниц, калькуляторы и их данные. По нему разбор дорабатывается
+    без повторных сборов."""
+    import zipfile
+
+    sources = [ROOT / "data" / "pages-all", ROOT / "data" / "pages-missing"]
+    files = [(src, f) for src in sources if src.exists()
+             for f in sorted(src.rglob("*")) if f.is_file()]
+    if not files:
+        return None
+    archive = ROOT / "data" / "snapshot.zip"
+    with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as out:
+        for src, path in files:
+            out.write(path, Path(src.name) / path.relative_to(src))
+    return archive
+
+
+# --- сколько займёт сбор ---------------------------------------------------
+
+DURATIONS = ROOT / "data" / "collect_times.json"
+# Без истории — оценка по настройкам: страниц × (пауза + ожидание скриптов +
+# загрузка и раскрытие вкладок ~4 с). Банки без лимита страниц (ПСБ — по
+# каталогу) и без браузера (ЦМР) — по наблюдениям сборов октября 2026.
+_FALLBACK_MIN = {"psb": 10, "cmr": 3}
+
+
+def remember_duration(key: str, seconds: float) -> None:
+    """Сохраняет, сколько шёл сбор: следующая оценка будет по факту."""
+    import json
+    try:
+        data = json.loads(DURATIONS.read_text(encoding="utf-8")) if DURATIONS.exists() else {}
+        data[key] = (data.get(key, []) + [round(seconds)])[-5:]
+        DURATIONS.parent.mkdir(parents=True, exist_ok=True)
+        DURATIONS.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    except (OSError, ValueError) as exc:
+        log.warning("Время сбора не сохранилось: %s", exc)
+
+
+def _formula_minutes(config: Config, code: str) -> float:
+    if code in _FALLBACK_MIN:
+        return _FALLBACK_MIN[code]
+    bank = config.get("banks", code, default={}) or {}
+    browser = config.get("browser", default={}) or {}
+    pages = int(bank.get("max_pages") or 40)
+    pause = float(bank.get("pause_s") or browser.get("pause_s") or 2)
+    settle = float(browser.get("settle_ms") or 5000) / 1000
+    # Калькуляторы: каждая страница из calculator_paths — до 2 минут перебора.
+    calc = 2 * (str(bank.get("calculator_paths") or "").count("|") + 1
+                if bank.get("calculator_paths") else 0)
+    return pages * (pause + settle + 4) / 60 + calc
+
+
+def collect_estimate(code: str) -> str:
+    """«около 30–40 минут» — по прошлым сборам этого банка, иначе по настройкам.
+
+    Сбер может закрыть доступ на время: тогда сборщик ждёт block_pause_s и
+    пробует снова — об этом честно предупреждаем отдельной фразой.
+    """
+    import json
+    import statistics
+    config = _config()
+    minutes, source = None, "по настройкам"
+    try:
+        history = json.loads(DURATIONS.read_text(encoding="utf-8")).get(code) or []
+        if history:
+            minutes, source = statistics.median(history) / 60, "по прошлым сборам"
+    except (OSError, ValueError):
+        pass
+    codes = config.enabled_banks() if code == "all" else [code]
+    if minutes is None:
+        minutes = sum(_formula_minutes(config, c) for c in codes)
+    low = max(5, int(minutes * 0.85 / 5) * 5)
+    high = max(low + 5, int(minutes * 1.15 / 5 + 0.99) * 5)
+    text = f"около {low}–{high} минут ({source})"
+    if "sber" in codes:
+        wait = int(config.get("banks", "sber", "block_pause_s", default=600)) // 60
+        text += f"; если сайт Сбера включит защиту — плюс {wait} минут на паузу"
+    return text
