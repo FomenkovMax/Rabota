@@ -335,6 +335,9 @@ def _lnr_section(rows: list[Any], total: dict[str, int], banks: list[str], home:
         else:
             value = fmt_rate(rate) if rate is not None else card_terms.summary(terms)
         name = f'<div class="pmeta">{e(title)}</div>' if title else ""
+        city = ("Расчёт для Луганска подтверждён" if st.city_confirmed
+                else "Оформление в Луганске не проверено")
+        name += f'<div class="pmeta">{city}</div>'
         if not close:
             name += '<div class="pmeta far">ближайший той же программы, не прямой аналог</div>'
         return (f'<td class="lnrc" data-b="{e(bank)}" title="{e(st.label)}: {e(st.reason)}">'
@@ -350,7 +353,7 @@ def _lnr_section(rows: list[Any], total: dict[str, int], banks: list[str], home:
                  row.cells[b].product, b, row.cells[b].close, row.cells[b].note)
             for b in rivals)
         groups.setdefault(p.category or "Прочее", []).append(
-            f'<tr><td><div class="pname">{e(p.title)}</div>'
+            f'<tr data-lugansk="{int(row.own.city_confirmed)}"><td><div class="pname">{e(p.title)}</div>'
             f'<div class="pmeta">{e(row.program)}</div></td>'
             f'{cell(row.own, rate, "", p, home)}{cells}</tr>')
     head = "".join(f"<th>{brand.name(b)}</th>" for b in [home] + rivals)
@@ -366,9 +369,14 @@ def _lnr_section(rows: list[Any], total: dict[str, int], banks: list[str], home:
              if unknown else
              '<p class="note">✅ У всех продуктов Сбера наличие в ЛНР установлено.</p>')
     return f"""<section class="card">
-  <h2>Наличие в ЛНР: продукт Сбера × банк</h2>
+  <h2>Наличие в ЛНР и Луганске: продукт Сбера × банк</h2>
+  <label>Показать продукты Сбера
+  <select onchange="this.closest('section').querySelectorAll('tr[data-lugansk]').forEach(r => r.hidden = this.value === 'city' &amp;&amp; r.dataset.lugansk !== '1')">
+    <option value="all">Весь каталог с региональными статусами</option>
+    <option value="city">Есть расчёт калькулятора для Луганска</option>
+  </select></label>
   <p class="hint">Главный вопрос ТЗ — есть ли продукт в Луганске. 🟢 условия ЛНР: регион
-  выбран на сайте или в калькуляторе банка либо банк работает только в ЛНР. 🔵 банк работает
+  выбран на сайте или в калькуляторе банка. 🔵 банк работает
   в ЛНР, но доступность конкретного продукта ещё не подтверждена. 🔴 прямое указание, что в ЛНР
   продукта нет (калькулятор, текст страницы). ⚪ не установлено. В ячейке банка — его
   продукт той же программы и ставка; «—» — аналог не найден. Наведите на значок — основание.</p>
@@ -1282,10 +1290,10 @@ def render_report(
   Источники — публичные страницы банков, раздел для частных лиц,
   регион запроса «{e(region)}».<br>
   «Единые условия по РФ» — на сайте банка нет отдельных условий для ЛНР
-  и новых территорий, поэтому действуют общероссийские; они участвуют
-  в сравнении наравне с луганскими.<br>
-  Банки, которые работают только в ЛНР (например, ЦМР), выбора региона
-  не имеют — условия на их сайтах и есть луганские.<br>
+  и новых территорий. Доступность конкретного продукта требует подтверждения;
+  до проверки такие условия исключены из регионального рейтинга и светофора.<br>
+  Настройка локального профиля банка сама по себе не подтверждает доступность
+  каждого продукта в ЛНР или возможность оформления в Луганске.<br>
   «Регион на сайте не выбран» — регион на сайте выбирается, но в сборе
   не задан, и условия получены по умолчанию сайта, как правило московские.
   Сравнивать их с луганскими напрямую нельзя.<br>

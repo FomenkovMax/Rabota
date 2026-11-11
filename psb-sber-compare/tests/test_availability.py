@@ -20,7 +20,7 @@ def _p(bank, title, rate=10.0, category="Кредиты", terms=None, method="")
 
 @pytest.mark.parametrize("method, presence, terms, code", [
     ("selector", "", {}, av.LNR),
-    ("local", "https://cmr/offices", {}, av.LNR),
+    ("local", "https://cmr/offices", {}, av.UNKNOWN),
     ("federal", "https://bankprofi.ru/...", {}, av.FEDERAL),
     ("federal", "", {}, av.UNKNOWN),
     ("not_confirmed", "x", {}, av.UNKNOWN),
@@ -246,3 +246,10 @@ def test_unconfirmed_or_absent_products_do_not_enter_lnr_traffic_light(code, sid
     status[id(own if side == "own" else rival)] = av.Status(code, "проверка")
     rows = av.matrix(items, home="Сбер", banks=["Сбер", "ВТБ"], status=status)
     assert from_matrix(rows, Thresholds()) == []
+
+
+def test_city_evidence_requires_exact_city_and_product_calculation():
+    assert av.Status(av.LNR, "калькулятор на сайте банка: ЛНР, Луганск — ставка 18%").city_confirmed
+    assert not av.Status(av.LNR, "условия получены с выбранным регионом ЛНР").city_confirmed
+    assert not av.Status(av.LNR, "калькулятор на сайте банка: Луганская Народная Республика — 18%").city_confirmed
+    assert not av.Status(av.FEDERAL, "банк имеет офис в Луганске").city_confirmed
