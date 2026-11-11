@@ -1,0 +1,7 @@
+<html><body><h1>Ипотека</h1>
+<label><input type="checkbox" id="nr"> Новые регионы (ДНР, ЛНР, Запорожская и Херсонская области)</label>
+<div id="programs">Рыночная — 24 %</div>
+<script>
+document.getElementById('nr').onchange = e => document.getElementById('programs').textContent =
+  e.target.checked ? 'Льготная ипотека для новых регионов — 2 %' : 'Рыночная — 24 %';
+</script></body></html>
