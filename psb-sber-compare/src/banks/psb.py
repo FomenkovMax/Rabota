@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime
 
-from .. import coverage
+from .. import coverage, market
 from ..psb.catalog import RETAIL_SECTIONS, build_catalog, site_paths
 from ..psb.client import PageNotFound, PsbClient, REGIONS
 from ..psb.parser import parse_product
@@ -88,7 +88,17 @@ class PsbAdapter(BankAdapter):
                     visited += 1
                     product = parse_product(html_text, page, region_label, now)
                     promos.extend(product.promos)
-                    if product.rate_raw or product.amount_raw or len(product.terms) > 1:
+                    service = product.category in {
+                        "Инвестиции", "Страхование", "Премиальное обслуживание",
+                        "Долгосрочные сбережения", "Счета и переводы", "Пенсионные продукты",
+                    }
+                    if product.rate_raw or product.amount_raw or len(product.terms) > 1 or (service and product.terms):
+                        product.terms["Город выбран на сайте банка"] = region.city_name
+                        if service and product.category not in market.RATED:
+                            if product.rate_raw:
+                                product.terms["Процентное условие услуги"] = product.rate_raw
+                            product.rate_min = product.rate_max = None
+                            product.rate_raw = ""
                         products.append(product)
 
                     if index % 25 == 0:
@@ -105,7 +115,7 @@ class PsbAdapter(BankAdapter):
         from .crawl_adapter import CRAWL_FAILED_KEY, CRAWL_READ_KEY, CRAWL_UNREAD_KEY
         site_sections.update({
             CRAWL_READ_KEY: str(visited),
-            CRAWL_UNREAD_KEY: " ".join(f"https://www.psbank.ru{u}" for u in left[:60]),
+            CRAWL_UNREAD_KEY: " ".join(f"https://www.psbank.ru{u}" for u in left),
             CRAWL_FAILED_KEY: " ".join(failed_urls)})
 
         unique: dict[str, object] = {}

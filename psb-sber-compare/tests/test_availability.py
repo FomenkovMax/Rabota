@@ -253,3 +253,18 @@ def test_city_evidence_requires_exact_city_and_product_calculation():
     assert not av.Status(av.LNR, "условия получены с выбранным регионом ЛНР").city_confirmed
     assert not av.Status(av.LNR, "калькулятор на сайте банка: Луганская Народная Республика — 18%").city_confirmed
     assert not av.Status(av.FEDERAL, "банк имеет офис в Луганске").city_confirmed
+
+
+def test_selected_city_is_preserved_as_product_evidence():
+    product = _p("ПСБ", "Вклад", terms={"Город выбран на сайте банка": "Луганск"})
+    assert av.status_of(product, region_method="selector").city_confirmed
+    assert not av.status_of(product, region_method="federal", presence="офис").city_confirmed
+
+
+def test_service_percentage_is_not_ranked_as_loan_interest():
+    from src.compare import Thresholds, from_matrix
+    items = [_p("Сбер", "Страхование квартиры", 1, category="Страхование"),
+             _p("ВТБ", "Страхование квартиры", 2, category="Страхование")]
+    status = {id(p): av.Status(av.LNR, "условия ЛНР") for p in items}
+    rows = av.matrix(items, home="Сбер", banks=["Сбер", "ВТБ"], status=status)
+    assert from_matrix(rows, Thresholds()) == []

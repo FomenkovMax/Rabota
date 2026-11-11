@@ -67,7 +67,9 @@ class Status:
     @property
     def city_confirmed(self) -> bool:
         """Калькулятор продукта дал результат для города Луганска."""
-        return (self.code == LNR and "калькулятор на сайте банка:" in self.reason
+        return (self.code == LNR
+                and ("калькулятор на сайте банка:" in self.reason
+                     or "на сайте банка выбран город" in self.reason)
                 and bool(re.search(r"\bЛуганск\b", self.reason, re.I)))
 
     @property
@@ -98,6 +100,8 @@ def status_of(product: Any, *, region_method: str, presence: str = "") -> Status
     if (calc and "регион не выбран" not in calc and re.search(r"луганск", calc, re.I)
             and re.search(r"\d\s?%", calc)):
         return Status(LNR, f"калькулятор на сайте банка: {calc}", url)
+    if region_method == "selector" and terms.get("Город выбран на сайте банка") == "Луганск":
+        return Status(LNR, "на сайте банка выбран город Луганск; условия получены для этого города", url)
     if region_method == "selector":
         return Status(LNR, "условия получены на сайте банка с выбранным регионом ЛНР", url)
     if region_method == "local":

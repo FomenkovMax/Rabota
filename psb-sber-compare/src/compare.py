@@ -123,11 +123,12 @@ def from_matrix(rows: Iterable[Any], thresholds: Thresholds) -> list[Comparison]
     иначе «Социальный вклад» 19 % сравнивался бы с обычным вкладом.
     """
     from .availability import LNR
+    from .market import RATED
 
     results: list[Comparison] = []
     for row in rows:
         own = row.product
-        if row.own.code != LNR:
+        if row.own.code != LNR or own.category not in RATED:
             continue
         for bank, cell in row.cells.items():
             twin = cell.product

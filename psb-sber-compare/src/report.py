@@ -335,7 +335,7 @@ def _lnr_section(rows: list[Any], total: dict[str, int], banks: list[str], home:
         else:
             value = fmt_rate(rate) if rate is not None else card_terms.summary(terms)
         name = f'<div class="pmeta">{e(title)}</div>' if title else ""
-        city = ("Расчёт для Луганска подтверждён" if st.city_confirmed
+        city = ("Условия для города Луганска подтверждены" if st.city_confirmed
                 else "Оформление в Луганске не проверено")
         name += f'<div class="pmeta">{city}</div>'
         if not close:
@@ -373,7 +373,7 @@ def _lnr_section(rows: list[Any], total: dict[str, int], banks: list[str], home:
   <label>Показать продукты Сбера
   <select onchange="this.closest('section').querySelectorAll('tr[data-lugansk]').forEach(r => r.hidden = this.value === 'city' &amp;&amp; r.dataset.lugansk !== '1')">
     <option value="all">Весь каталог с региональными статусами</option>
-    <option value="city">Есть расчёт калькулятора для Луганска</option>
+    <option value="city">Подтверждены условия для города Луганска</option>
   </select></label>
   <p class="hint">Главный вопрос ТЗ — есть ли продукт в Луганске. 🟢 условия ЛНР: регион
   выбран на сайте или в калькуляторе банка. 🔵 банк работает
