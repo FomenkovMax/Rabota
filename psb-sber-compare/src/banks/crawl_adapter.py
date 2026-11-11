@@ -817,7 +817,7 @@ def product_from_page(data: dict[str, Any], *, bank: str, url: str,
     title, body = describe_page(data)
     headline = title
     title = product_name(title)
-    if not is_product_title(title):
+    if not is_product_title(title) or title.casefold() in {c.casefold() for c in coverage.CATEGORIES}:
         return None
 
     product = Product(
@@ -841,7 +841,7 @@ def product_from_page(data: dict[str, Any], *, bank: str, url: str,
 
     # Ставки в описании нет, но она есть в самом заголовке страницы
     # продукта: «ВТБ-Вклад в рублях до 13,7% годовых».
-    if product.rate_min is None and headline != title:
+    if product.category in _RATE_CATEGORIES and product.rate_min is None and headline != title:
         values = rates_of(headline)
         if values:
             conditions.remember(product, conditions.scan(headline)
@@ -1463,6 +1463,11 @@ class CrawlAdapter(BankAdapter):
         for pattern, category in self.family_words:
             if re.search(pattern, path, re.I):
                 return category
+        category = coverage.classify(url)
+        if category in {"Инвестиции", "Страхование", "НПФ и ПДС",
+                        "Переводы и платежи", "Лояльность и кешбэк",
+                        "Сейфовые ячейки", "Валютные операции", "Премиальное обслуживание"}:
+            return category
         return ""
 
     def _links(self, raw: list[Any]) -> list[str]:

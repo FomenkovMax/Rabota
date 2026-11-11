@@ -997,3 +997,27 @@ def test_amount_and_term_bounds():
 def test_closed_package_no_longer_sold():
     from src.banks.crawl_adapter import _CLOSED
     assert _CLOSED.search("При оформлении ипотеки больше нельзя приобрести пакет услуг «Домклик Плюс».")
+
+
+def test_full_retail_sections_are_followed():
+    adapter = SberAdapter(region=None, settings={})
+    for path, category in [
+        ("/ru/person/investments", "Инвестиции"),
+        ("/ru/person/payments", "Переводы и платежи"),
+        ("/ru/person/insurance", "Страхование"),
+        ("/ru/person/safe", "Сейфовые ячейки"),
+    ]:
+        url = "https://www.sberbank.ru" + path
+        assert adapter._family(url) == category
+        assert adapter._links([url]) == [url]
+
+
+def test_mortgage_insurance_does_not_become_mortgage_loan():
+    product = crawl.product_from_page(
+        {"h1": "Страхование ипотеки со скидкой 20%", "title": "", "links": [],
+         "text": "Страхование ипотеки со скидкой 20%\nЗащита недвижимости"},
+        bank="Банк", url="https://bank.ru/insurance/mortgage", category="Страхование",
+        region="ЛНР", collected_at="")
+    assert product is not None
+    assert product.category == "Страхование"
+    assert product.rate_min is None and product.rate_max is None

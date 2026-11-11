@@ -360,7 +360,7 @@ def _lnr_section(rows: list[Any], total: dict[str, int], banks: list[str], home:
         f'<div class="scroll"><table class="lnrt"><thead><tr><th>Продукт Сбера</th>{head}'
         f'</tr></thead><tbody>{"".join(items)}</tbody></table></div></details>'
         for i, (cat, items) in enumerate(groups.items()))
-    unknown = total.get(av.UNKNOWN, 0)
+    unknown = total.get(av.UNKNOWN, 0) + total.get(av.FEDERAL, 0)
     check = (f'<p class="note">⚠️ У {unknown} продуктов Сбера наличие в ЛНР не установлено — '
              "это первые кандидаты на доработку сбора: основание видно при наведении на ⚪.</p>"
              if unknown else
@@ -369,7 +369,7 @@ def _lnr_section(rows: list[Any], total: dict[str, int], banks: list[str], home:
   <h2>Наличие в ЛНР: продукт Сбера × банк</h2>
   <p class="hint">Главный вопрос ТЗ — есть ли продукт в Луганске. 🟢 условия ЛНР: регион
   выбран на сайте или в калькуляторе банка либо банк работает только в ЛНР. 🔵 банк работает
-  в ЛНР, отдельных условий нет — берутся общероссийские. 🔴 прямое указание, что в ЛНР
+  в ЛНР, но доступность конкретного продукта ещё не подтверждена. 🔴 прямое указание, что в ЛНР
   продукта нет (калькулятор, текст страницы). ⚪ не установлено. В ячейке банка — его
   продукт той же программы и ставка; «—» — аналог не найден. Наведите на значок — основание.</p>
   <div class="tiles">{tiles}</div>

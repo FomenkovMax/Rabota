@@ -91,7 +91,7 @@ class SberAdapter(CrawlAdapter):
     # собираются отдельно и в каталог продуктов не идут.
     skip = re.compile(
         r"(calc|kalkul|faq|question|vopros|help|pomosh|nalog|tax|notif|uvedoml|"
-        r"compens|kompens|asv|safe|seif|sejf|nominal|assistant|gigachat|/ai\b|"
+        r"compens|kompens|asv|nominal|assistant|gigachat|/ai\b|"
         r"podderzh|support|potencial|potential|history|istori|archive|arhiv|"
         r"document|dokument|tarif|stavki|prolong|prodlen|instruction|how_to|"
         r"article|news|blog|promo|akci|action|"

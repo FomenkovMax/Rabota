@@ -433,11 +433,18 @@ def load_report_data(config: Config, *, competitor: str = "") -> dict[str, Any] 
         key_rate = key.value if key else None
 
         scope = [p for t in [home_title] + competitor_titles for p in by_bank.get(t, [])]
+        presence = bank_presence(config, competitor_codes + [HOME_BANK],
+                                 storage.coverage_of_run(run_id))
+        lnr_status = availability.statuses(scope, region_methods=region_methods,
+                                           presence=presence)
+        available_ids = {key for key, status in lnr_status.items()
+                         if status.code == availability.LNR}
+        regional_scope = [p for p in scope if id(p) in available_ids]
 
         # Витрина в блоке акций — только ставки, прошедшие проверки: иначе
         # «Платинум 5 %» (ставка льготного периода) выигрывал бы сегмент.
         def checked(products: list[Any]) -> list[Any]:
-            return [p for p in products if market.assess(
+            return [p for p in products if id(p) in available_ids and market.assess(
                 p, key_rate=key_rate, region_method=region_methods.get(p.bank, ""),
             ).confidence != market.LOW]
 
@@ -447,20 +454,16 @@ def load_report_data(config: Config, *, competitor: str = "") -> dict[str, Any] 
                                     sber_products=checked(sber_products))
         gaps = market.build_gaps(scope, home=home_title, key_rate=key_rate,
                                  region_methods=region_methods,
-                                 parity_pp=thresholds.parity)
+                                 parity_pp=thresholds.parity, available_ids=available_ids)
         quality_rows, manual = market.quality(scope, key_rate=key_rate,
                                               region_methods=region_methods)
-        special_rows = market.specials(scope, key_rate=key_rate,
+        special_rows = market.specials(regional_scope, key_rate=key_rate,
                                        region_methods=region_methods)
         coverage_matrix = coverage.matrix([home_title] + competitor_titles, scope,
                                           storage.coverage_of_run(run_id))
-        calc_offers = charts.calculator_offers(scope, key_rate=key_rate,
+        calc_offers = charts.calculator_offers(regional_scope, key_rate=key_rate,
                                                region_methods=region_methods)
         # Главное по ТЗ — есть ли продукт в Луганске: статус и основание.
-        presence = bank_presence(config, competitor_codes + [HOME_BANK],
-                                 storage.coverage_of_run(run_id))
-        lnr_status = availability.statuses(scope, region_methods=region_methods,
-                                           presence=presence)
         lnr_rows = availability.matrix(scope, home=home_title,
                                        banks=[home_title] + competitor_titles,
                                        status=lnr_status)

@@ -33,6 +33,7 @@ CATEGORIES = (
     "Лояльность и кешбэк",
     "Сейфовые ячейки",
     "Валютные операции",
+    "Премиальное обслуживание",
 )
 
 # Категорию задаёт раздел сайта — первый значимый сегмент адреса, а
@@ -42,6 +43,7 @@ CATEGORIES = (
 _PREFIX = {"ru", "en", "person", "personal", "individual", "individuals",
            "chastnym-licam", "fiz", "private", "retail"}
 _SECTION: tuple[tuple[str, re.Pattern[str]], ...] = (
+    ("Премиальное обслуживание", re.compile(r"^(?:premium|premier|privilegia|private-banking|sberpremier|sber1|sberfirst)$", re.I)),
     ("Страхование", re.compile(r"^(?:strahov\w*|insurance|polis\w*)$", re.I)),
     ("Инвестиции", re.compile(r"^(?:invest\w*|broker\w*|iis|wealth|brokerage)$", re.I)),
     ("НПФ и ПДС", re.compile(r"^(?:pds|npf|pension[-_]?savings|pensionnye[-\w]*)$", re.I)),
@@ -173,7 +175,7 @@ _RATED_TZ = {"Вклады", "Накопительные счета", "Кред�
 def tz_category(product: Any) -> str | None:
     """Категория ТЗ для продукта агента."""
     category = getattr(product, "category", "") or ""
-    tz = _PRODUCT_TO_TZ.get(category)
+    tz = _PRODUCT_TO_TZ.get(category, category if category in CATEGORIES else None)
     if tz == "Потребительские кредиты":
         title = (getattr(product, "title", "") or "").lower()
         if re.search(r"автокредит|на\s+авто|на\s+автомобил", title) and "залог" not in title:

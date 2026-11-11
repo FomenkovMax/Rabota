@@ -224,3 +224,25 @@ def test_new_money_and_welcome_are_same_kind():
     got = from_matrix(av.matrix(items, home="Сбер", banks=["Сбер", "ВТБ"], status=st), Thresholds())
     assert len(got) == 1
     assert not any("Тип ставки" in n for n in got[0].notes)
+
+
+@pytest.mark.parametrize("text", [
+    "Кредит не предоставляется в ДНР.",
+    "Программа недоступна в Донецке.",
+    "Оформление невозможно, кроме жителей Херсонской области.",
+])
+def test_other_region_restriction_does_not_mean_lnr_restriction(text):
+    assert av.find_clause(text) == ""
+
+
+@pytest.mark.parametrize("code", [av.ABSENT, av.UNKNOWN, av.FEDERAL])
+@pytest.mark.parametrize("side", ["own", "rival"])
+def test_unconfirmed_or_absent_products_do_not_enter_lnr_traffic_light(code, side):
+    from src.compare import Thresholds, from_matrix
+    own = _p("Сбер", "Кредит наличными", 18)
+    rival = _p("ВТБ", "Кредит наличными", 20)
+    items = [own, rival]
+    status = {id(p): av.Status(av.LNR, "ЛНР") for p in items}
+    status[id(own if side == "own" else rival)] = av.Status(code, "проверка")
+    rows = av.matrix(items, home="Сбер", banks=["Сбер", "ВТБ"], status=status)
+    assert from_matrix(rows, Thresholds()) == []

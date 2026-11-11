@@ -122,12 +122,16 @@ def from_matrix(rows: Iterable[Any], thresholds: Thresholds) -> list[Comparison]
     ЛНР с пометкой «не прямой аналог», но ставки по ним не сравниваются:
     иначе «Социальный вклад» 19 % сравнивался бы с обычным вкладом.
     """
+    from .availability import LNR
+
     results: list[Comparison] = []
     for row in rows:
         own = row.product
+        if row.own.code != LNR:
+            continue
         for bank, cell in row.cells.items():
             twin = cell.product
-            if twin is None or not cell.close:
+            if twin is None or not cell.close or cell.status is None or cell.status.code != LNR:
                 continue
             # Ставки нет ни у одного (дебетовые карты, платёжный счёт) —
             # сравнивать в светофоре нечего, пара остаётся в своде по ЛНР.
