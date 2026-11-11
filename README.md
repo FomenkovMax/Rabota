@@ -4,6 +4,31 @@
 ар-деко, scroll-linked анимации). Дизайн, тексты и структура — без изменений;
 монолитный 2-мегабайтный HTML разобран на ассеты и собирается Vite.
 
+## Проекты и ветки
+
+В `main` находятся два проекта с отдельными точками входа.
+
+| Проект | Код | Сборка и проверки |
+| --- | --- | --- |
+| ЛИФТ | корень репозитория | Vite и Netlify, см. ниже |
+| Banking Intelligence | [banking-intelligence/](banking-intelligence/) | Python, Docker Compose и [GitHub Actions](.github/workflows/banking-intelligence.yml) |
+
+Ветки с отдельными проектами или изменениями, которых пока нет в `main`.
+
+| Что лежит в ветке | Ветка |
+| --- | --- |
+| `radar-lnr/` | [ccr-4c4a3322-f6igfe](https://github.com/FomenkovMax/Rabota/tree/ccr-4c4a3322-f6igfe) |
+| Правки бота и отчётов Banking Intelligence | [ccr-4f3fa704-wobhz5](https://github.com/FomenkovMax/Rabota/tree/ccr-4f3fa704-wobhz5) |
+| `lnr-bank-agent/` | [ccr-d13b0862-srpe73](https://github.com/FomenkovMax/Rabota/tree/ccr-d13b0862-srpe73) |
+| `fridge/` | [claude/calorie-counter-photo-7pbj55](https://github.com/FomenkovMax/Rabota/tree/claude/calorie-counter-photo-7pbj55) |
+| `vacations/` | [claude/charming-heisenberg-3k1gtw](https://github.com/FomenkovMax/Rabota/tree/claude/charming-heisenberg-3k1gtw) |
+| `chgk_bot/` | [claude/gracious-lovelace-w0b4kc](https://github.com/FomenkovMax/Rabota/tree/claude/gracious-lovelace-w0b4kc) |
+| `psb-sber-compare/` | [claude/intelligent-edison-74x17l](https://github.com/FomenkovMax/Rabota/tree/claude/intelligent-edison-74x17l) |
+| `presentations/nenoch/` | [claude/nenoch-book-presentation-8p3z58](https://github.com/FomenkovMax/Rabota/tree/claude/nenoch-book-presentation-8p3z58) |
+| `gojo/` и `guts/` | [claude/satoru-gojo-website-xqxeyx](https://github.com/FomenkovMax/Rabota/tree/claude/satoru-gojo-website-xqxeyx) |
+
+Ветка GitHub по умолчанию — `claude/lift-landing-production-wqj9zd`. Перед её сменой проверьте, какая ветка настроена для production-деплоя в Netlify.
+
 ## Команды
 
 ```bash
