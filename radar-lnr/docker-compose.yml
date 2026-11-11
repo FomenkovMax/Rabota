@@ -1,0 +1,18 @@
+# Запуск:  docker compose up -d --build     Логи: docker compose logs -f
+services:
+  radar:
+    build: .
+    image: radar-lnr:latest
+    container_name: radar-lnr
+    restart: unless-stopped          # переживает перезагрузку VPS (docker стартует вместе с системой)
+    env_file: .env                   # секреты ТОЛЬКО здесь, в образ они не попадают
+    environment:
+      DATA_DIR: /data                # внутри контейнера, поверх значения из .env
+      TZ: Europe/Moscow
+    volumes:
+      - ./data:/data                 # SQLite, логи (data/logs), выгрузки (data/exports)
+      - ./channels.yaml:/app/channels.yaml   # список каналов правится без пересборки
+      - ./config:/app/config                 # настройки, зарплаты, конкуренты
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}

@@ -1,0 +1,22 @@
+# Альтернатива Docker: systemd-сервис. Инструкция — в README, раздел «Вариант без Docker».
+[Unit]
+Description=Radar LNR bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=radar
+WorkingDirectory=/opt/radar-lnr
+EnvironmentFile=/opt/radar-lnr/.env
+Environment=DATA_DIR=/opt/radar-lnr/data
+ExecStart=/opt/radar-lnr/.venv/bin/python -m radar bot
+Restart=always
+RestartSec=10
+# Базовая защита процесса
+NoNewPrivileges=true
+ProtectSystem=full
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
