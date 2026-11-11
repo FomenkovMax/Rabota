@@ -959,15 +959,17 @@ class CrawlAdapter(BankAdapter):
                         "а если про ЛНР на сайте ничего нет — banks.%s.region_mode: federal",
                         self.title, self.code, self.code)
 
-        max_pages = int(self.settings.get("max_pages") or 80)
+        max_pages = int(self.settings.get("max_pages", 80) or 0)
         limit_s = float(self.settings.get("section_timeout_s") or 0)
 
-        seeds = [self._normalize(url) for url in self.seeds]
+        resume_urls = self.settings.get("resume_urls") or []
+        seeds = [self._normalize(url) for url in (resume_urls or self.seeds)]
         seed_set = set(seeds)
-        first = [self._normalize(url) for url in self.priority]
+        first = [] if resume_urls else [self._normalize(url) for url in self.priority]
         first_set = set(first)
         queue: deque[str] = deque(seeds + [u for u in first if u not in seed_set])
-        seen: set[str] = set(queue)
+        seen: set[str] = set(queue) | {self._normalize(url)
+                                     for url in self.settings.get("skip_urls", [])}
 
         products: dict[str, Product] = {}
         showcase: dict[str, tuple[Any, str, str]] = {}
@@ -1000,7 +1002,7 @@ class CrawlAdapter(BankAdapter):
                         seen.add(url)
                         queue.append(url)
                         sitemap_found.add(url)
-                while queue and visited < max_pages:
+                while queue and (max_pages == 0 or visited < max_pages):
                     url = self._next(queue, popularity)
                     visited += 1
                     log.info("%s: страница %s (в очереди %s) — %s",
@@ -1120,7 +1122,7 @@ class CrawlAdapter(BankAdapter):
             site_sections.update({
                 CRAWL_READ_KEY: str(visited),
                 CRAWL_SITEMAP_KEY: str(len(sitemap_found)),
-                CRAWL_UNREAD_KEY: " ".join(unread[:60]),
+                CRAWL_UNREAD_KEY: " ".join(unread),
                 CRAWL_CANDIDATES_KEY: " ".join(sorted(self.__dict__.get("_candidates", ()))[:150]),
                 CRAWL_FAILED_KEY: " ".join(f.split(":")[0] + ":" + f.split(":")[1]
                                            for f in failures if f.startswith("http"))[:3000],
@@ -1154,7 +1156,7 @@ class CrawlAdapter(BankAdapter):
                                 + ("; ".join(failures[:3]) or "проверьте витрины"))
         return self._result(products=merged, pages_visited=visited, coverage=site_sections,
                             region_applied=applied, region_method=method,
-                            partial=blocked or bool(queue))
+                            partial=blocked or bool(queue) or bool(failures))
 
     @staticmethod
     def _next(queue: deque[str], popularity: dict[str, int]) -> str:
@@ -1317,7 +1319,7 @@ class CrawlAdapter(BankAdapter):
 
         Только разделы этого банка, без служебных и SEO-страниц. Карты нет
         или не открылась — пусто, обход идёт по ссылкам, как раньше."""
-        if not self.settings.get("sitemap"):
+        if self.settings.get("resume_urls") or not self.settings.get("sitemap"):
             return []
         host = urlsplit(self.base_url).netloc
         todo, found, read = [self.base_url.rstrip("/") + "/sitemap.xml"], [], 0

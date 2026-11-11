@@ -104,8 +104,15 @@ def collect_bank(config: Config, code: str, *, save: bool = True) -> Any:
         _drop_seo(result)
         _mark_region(result)
         storage.save_products(run_id, result.products)
-        storage.save_coverage(run_id, adapter.title, getattr(result, "coverage", {}))
-        _keep_unread(storage, result, previous, run_id)
+        collected_coverage = getattr(result, "coverage", {})
+        if previous is not None and adapter.settings.get("resume_urls"):
+            from .banks.crawl_adapter import CRAWL_READ_KEY
+            old_coverage = storage.coverage_of_run(previous).get(adapter.title, {})
+            total_read = int(old_coverage.get(CRAWL_READ_KEY, 0)) + int(collected_coverage.get(CRAWL_READ_KEY, 0))
+            collected_coverage = {**old_coverage, **collected_coverage, CRAWL_READ_KEY: str(total_read)}
+        storage.save_coverage(run_id, adapter.title, collected_coverage)
+        _keep_unread(storage, result, previous, run_id,
+                     force=bool(adapter.settings.get("resume_urls")))
         # Остальные банки берём из прошлого сбора, иначе свод после
         # обновления одного банка показал бы только его.
         if previous is not None:
@@ -147,7 +154,8 @@ def collect_all(config: Config) -> dict[str, Any]:
 KEEP_UNREAD_DAYS = 14
 
 
-def _keep_unread(storage: Storage, result: Any, previous: int | None, run_id: int) -> None:
+def _keep_unread(storage: Storage, result: Any, previous: int | None, run_id: int,
+                 *, force: bool = False) -> None:
     """Обход оборвался — непрочитанные продукты банка берём из прошлого сбора.
 
     Переносится не всё подряд. Первый перенос 07.10.2026 вернул в отчёт
@@ -158,7 +166,7 @@ def _keep_unread(storage: Storage, result: Any, previous: int | None, run_id: in
     карточки на витрине и у страницы продукта разный), страницы, которые
     нынешние правила продуктом не считают, и всё старше двух недель.
     """
-    if previous is None or not getattr(result, "partial", False):
+    if previous is None or not (force or getattr(result, "partial", False)):
         return
     from datetime import datetime, timedelta
 

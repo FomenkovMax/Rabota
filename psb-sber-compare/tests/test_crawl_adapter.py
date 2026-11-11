@@ -1021,3 +1021,34 @@ def test_mortgage_insurance_does_not_become_mortgage_loan():
     assert product is not None
     assert product.category == "Страхование"
     assert product.rate_min is None and product.rate_max is None
+
+
+def test_resume_reads_pending_urls_without_reopening_completed_pages(monkeypatch, tmp_path):
+    reader = FakeReader(None)
+    monkeypatch.setattr(crawl, "PageReader", lambda *a, **kw: reader)
+    url = BASE + "/ru/person/credits/money/consumer"
+    old = BASE + "/ru/person/credits/auto"
+    adapter = OnlyCredits(region=None, settings={
+        "resume_urls": [url], "skip_urls": [old], "sitemap": True,
+        "max_pages": 0, "pages_dir": str(tmp_path), "region_mode": "federal",
+    })
+    result = adapter.collect()
+    assert result.ok
+    assert reader.read_urls == [url]
+    assert result.coverage[crawl.CRAWL_UNREAD_KEY] == ""
+
+
+def test_zero_page_limit_means_complete_queue(monkeypatch, tmp_path):
+    urls = [BASE + f"/ru/person/credits/product-{i}" for i in range(81)]
+    pages = {url: page(f"Кредит наличными номер {i}", f"Кредит наличными номер {i}\nСтавка от 20%",
+                       [urls[i + 1].removeprefix(BASE)] if i + 1 < len(urls) else [])
+             for i, url in enumerate(urls)}
+    reader = FakeReader(None)
+    monkeypatch.setattr(reader, "read", lambda url: pages[url])
+    monkeypatch.setattr(crawl, "PageReader", lambda *a, **kw: reader)
+    result = OnlyCredits(region=None, settings={
+        "resume_urls": urls[:1], "max_pages": 0, "pages_dir": str(tmp_path),
+        "region_mode": "federal",
+    }).collect()
+    assert result.pages_visited == 81
+    assert not result.partial
