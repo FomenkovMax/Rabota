@@ -557,6 +557,11 @@ def run(config: Config) -> dict[str, Any]:
         for code, result in collect_all(config).items():
             if not result.ok:
                 failures.append(result.summary)
+                if previous_ok is not None:
+                    rows = storage.products_of_run(previous_ok, bank=result.bank)
+                    storage.copy_products(run_id, [row["id"] for row in rows])
+                    old_coverage = storage.coverage_of_run(previous_ok).get(result.bank, {})
+                    storage.save_coverage(run_id, result.bank, old_coverage)
                 continue
             banks_ok.append(result.bank)
             _drop_seo(result)
@@ -580,6 +585,7 @@ def run(config: Config) -> dict[str, Any]:
         storage.save_changes(run_id, changes)
         storage.finish_run(run_id, psb=products_total, sber=0,
                            promos=promos_total,
+                           status="ok" if banks_ok else "failed",
                            note="; ".join(failures) if failures else "")
         storage.purge_older_than(int(config.get("storage", "history_days", default=365)))
     except Exception as exc:

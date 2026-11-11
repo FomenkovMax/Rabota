@@ -72,3 +72,15 @@ def test_section_links_skip_service_pages():
     page = ('<a href="/person/card/drive-card/">a</a><a href="/person/card/card-documents/">b</a>'
             '<a href="/person/card/">c</a><a href="/person/person-loans/restructuring/">d</a>')
     assert cmr.section_links(page, "/person/card/") == ["https://cmrbank.ru/person/card/drive-card/"]
+
+
+def test_payment_service_preserves_fee_text_without_interest_rate():
+    page = """<div>Главная страница / Частным клиентам / Платежи и переводы / Переводы по реквизитам</div>
+    <p>Комиссия 1%, минимум 100 рублей.</p>
+    <a href="/files/tariff.pdf">Тариф</a><p>© Банк</p>"""
+    product = cmr.service_product(page, cmr.BASE + "/person/payments-and-transfers/requisites/",
+                                  category="Переводы и платежи", region="ЛНР", now="2026-11-11")
+    assert product.title == "Переводы по реквизитам"
+    assert "Комиссия 1%" in product.terms["Условия услуги на сайте"]
+    assert product.terms["Документы и тарифы"] == cmr.BASE + "/files/tariff.pdf"
+    assert product.rate_min is None and product.rate_max is None
