@@ -1,0 +1,42 @@
+services:
+  bot:
+    build: .
+    container_name: bank-compare-bot
+    restart: unless-stopped
+    env_file: .env
+    # Московское время для всего процесса: отчёт, база и расписание. Строка
+    # POSIX-формата, база часовых поясов в образе для неё не нужна.
+    environment:
+      TZ: "MSK-3"
+    volumes:
+      - ./data:/app/data
+      - ./config:/app/config
+    # Браузеру нужна разделяемая память, иначе Chromium падает на тяжёлых
+    # страницах с невнятной ошибкой.
+    shm_size: "1gb"
+
+  # Еженедельный сбор. Отдельный контейнер: бот должен отвечать и во
+  # время сбора, а сбор всего каталога занимает минуты.
+  collector:
+    build: .
+    container_name: bank-compare-collector
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      TZ: "MSK-3"   # иначе «07:00» ниже — это 07:00 UTC, то есть 10:00 МСК
+    volumes:
+      - ./data:/app/data
+      - ./config:/app/config
+    shm_size: "1gb"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        while true; do
+          # Понедельник, 07:00 по московскому времени.
+          now=$$(date +%u%H%M)
+          if [ "$$now" = "10700" ]; then
+            python run.py collect
+            sleep 90
+          fi
+          sleep 50
+        done

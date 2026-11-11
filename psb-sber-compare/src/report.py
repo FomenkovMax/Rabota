@@ -1,0 +1,1303 @@
+"""Генерация автономного HTML-отчёта.
+
+Отчёт — один файл без внешних зависимостей: открывается двойным кликом,
+пересылается почтой, работает без интернета. Это сознательное решение:
+адресат отчёта — руководитель, у которого не будет ни Python, ни сервера.
+
+Цветовая логика:
+  • светофор использует зарезервированные статусные цвета и всегда идёт
+    вместе со значком и подписью — цвет никогда не несёт смысл в одиночку;
+  • график истории — две серии (ПСБ / Сбер) с легендой и прямыми подписями;
+  • тёмная тема собрана отдельными шагами, а не инверсией.
+"""
+
+from __future__ import annotations
+
+import html
+import re
+from datetime import datetime
+from pathlib import Path
+from typing import Any
+
+from . import brand, conditions
+from . import charts
+from .compare import GREEN, GREY, LIGHT_LABEL, RED, YELLOW, Comparison
+
+LIGHT_ICON = {GREEN: "▲", YELLOW: "■", RED: "▼", GREY: "—"}
+LIGHT_VAR = {GREEN: "--st-good", YELLOW: "--st-warning", RED: "--st-critical", GREY: "--ink-muted"}
+
+
+def e(value: Any) -> str:
+    return html.escape("" if value is None else str(value))
+
+
+def fmt_rate(value: float | None) -> str:
+    return "—" if value is None else f"{value:.2f}".replace(".", ",") + "%"
+
+
+def fmt_money(value: float | None) -> str:
+    if value is None:
+        return "—"
+    if value >= 1e6:
+        return f"{value / 1e6:.1f}".replace(".", ",").rstrip("0").rstrip(",") + " млн ₽"
+    if value >= 1e3:
+        return f"{value / 1e3:.0f} тыс ₽"
+    return f"{value:.0f} ₽"
+
+
+def fmt_term(months: int | None) -> str:
+    if months is None:
+        return "—"
+    if months >= 12 and months % 12 == 0:
+        return f"{months // 12} лет"
+    return f"{months} мес"
+
+
+def fmt_delta(value: float | None) -> str:
+    if value is None:
+        return "—"
+    sign = "+" if value > 0 else ""
+    return f"{sign}{value:.2f}".replace(".", ",") + " п.п."
+
+
+CSS = """
+:root{
+  color-scheme:light;
+  --plane:#f9f9f7; --surface:#fcfcfb;
+  --ink:#0b0b0b; --ink-2:#52514e; --ink-muted:#898781;
+  --grid:#e1e0d9; --axis:#c3c2b7; --border:rgba(11,11,11,.10);
+  --s1:#21a038; --s2:#eb6834;
+  --st-good:#0ca30c; --st-warning:#fab219; --st-critical:#d03b3b;
+  --wash:rgba(11,11,11,.035);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --plane:#0d0d0d; --surface:#1a1a19;
+    --ink:#fff; --ink-2:#c3c2b7; --ink-muted:#898781;
+    --grid:#2c2c2a; --axis:#383835; --border:rgba(255,255,255,.10);
+    --s1:#2bc24a; --s2:#d95926;
+    --wash:rgba(255,255,255,.05);
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --plane:#0d0d0d; --surface:#1a1a19;
+  --ink:#fff; --ink-2:#c3c2b7; --ink-muted:#898781;
+  --grid:#2c2c2a; --axis:#383835; --border:rgba(255,255,255,.10);
+  --s1:#2bc24a; --s2:#d95926;
+  --wash:rgba(255,255,255,.05);
+}
+*{box-sizing:border-box}
+body{
+  margin:0;background:var(--plane);color:var(--ink);
+  font:15px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif;
+  padding:32px 16px 64px;
+}
+.wrap{max-width:1180px;margin:0 auto}
+header{margin-bottom:24px;border-radius:16px;padding:24px 26px 20px;color:#fff;
+  background:linear-gradient(120deg,#107f2c 0%,#21a038 45%,#1fa58e 100%);
+  box-shadow:0 6px 24px rgba(16,127,44,.18)}
+header h1{color:#fff}
+header .sub{color:rgba(255,255,255,.88)}header .sub b{color:#fff}
+.hbanks{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
+.hbanks .bn{background:rgba(255,255,255,.95);color:#111;border-radius:999px;padding:5px 12px 5px 6px;
+  font-size:13.5px;font-weight:600}
+.hbanks .bn.own{box-shadow:0 0 0 2px #fff}
+h1{font-size:26px;margin:0 0 6px;letter-spacing:-.01em}
+.sub{color:var(--ink-2);font-size:14px}
+.card{
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:14px;padding:20px 22px;margin-bottom:20px;
+  box-shadow:0 1px 2px rgba(0,0,0,.04),0 4px 14px rgba(0,0,0,.03);
+}
+h2{font-size:17px;margin:0 0 4px;letter-spacing:-.005em;padding-left:11px;
+  border-left:4px solid var(--s1);line-height:1.25}
+.hint{color:var(--ink-muted);font-size:13px;margin:0 0 16px}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:20px}
+.tile{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px 18px}
+.tile .v{font-size:30px;font-weight:650;line-height:1.1;letter-spacing:-.02em}
+.tile .k{color:var(--ink-2);font-size:13px;margin-top:4px}
+.tile .k b{font-weight:600}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th{
+  text-align:left;font-weight:600;color:var(--ink-2);font-size:12.5px;
+  text-transform:uppercase;letter-spacing:.04em;
+  padding:0 10px 9px;border-bottom:1px solid var(--grid);
+}
+td{padding:11px 10px;border-bottom:1px solid var(--grid);vertical-align:top}
+tr:last-child td{border-bottom:0}
+tbody tr:hover{background:var(--wash)}
+.num{font-variant-numeric:tabular-nums;white-space:nowrap}
+.chip{
+  display:inline-flex;align-items:center;gap:6px;white-space:nowrap;
+  font-size:12.5px;font-weight:600;padding:3px 9px;border-radius:999px;
+  border:1px solid currentColor;
+}
+.chip .ic{font-size:10px;line-height:1}
+.pname{font-weight:600}
+.pmeta{color:var(--ink-muted);font-size:12.5px;margin-top:2px}
+a{color:var(--s1)}
+.legend{display:flex;gap:18px;flex-wrap:wrap;font-size:13px;color:var(--ink-2);margin:0 0 14px}
+.legend i{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+.chg{border-left:3px solid var(--st-warning);padding:9px 0 9px 14px;margin-bottom:12px}
+.chg:last-child{margin-bottom:0}
+.chg.high{border-left-color:var(--st-critical)}
+.chg .t{font-weight:600;font-size:14px}
+.chg .d{color:var(--ink-2);font-size:13px;margin-top:3px}
+.bank{font-size:11.5px;font-weight:700;letter-spacing:.05em;color:var(--ink-muted)}
+.empty{color:var(--ink-muted);font-size:14px;padding:12px 0}
+.note{
+  background:var(--wash);border-radius:8px;padding:12px 14px;
+  font-size:13px;color:var(--ink-2);margin-top:14px;
+}
+footer{color:var(--ink-muted);font-size:12.5px;margin-top:28px;line-height:1.7}
+svg{display:block;max-width:100%;overflow:visible}
+.tg{
+  position:fixed;top:14px;right:14px;background:var(--surface);
+  border:1px solid var(--border);border-radius:8px;color:var(--ink-2);
+  padding:6px 11px;font:inherit;font-size:12.5px;cursor:pointer;
+}
+.seg{margin-bottom:26px;padding-bottom:20px;border-bottom:1px solid var(--grid)}
+.segcount{color:var(--ink-muted);font-size:12.5px;margin-left:auto}
+.vs{
+  display:grid;grid-template-columns:1fr auto 1fr;gap:14px;align-items:center;
+  background:var(--wash);border-radius:10px;padding:14px 16px;margin-bottom:10px;
+}
+.vs-side{min-width:0}
+.vs-bank{font-size:11.5px;font-weight:700;letter-spacing:.05em;color:var(--ink-muted)}
+.vs-val{font-size:23px;font-weight:650;line-height:1.2;margin:2px 0 3px;letter-spacing:-.01em}
+.vs-none{font-size:15px;font-weight:600;color:var(--ink-muted)}
+.vs-name{font-size:12.5px;color:var(--ink-2);overflow-wrap:anywhere}
+.vs-mid{font-size:12px;color:var(--ink-muted);white-space:nowrap}
+.segdet{margin-top:4px}
+.segdet summary{
+  cursor:pointer;font-size:13px;color:var(--ink-2);
+  padding:6px 0;user-select:none;
+}
+.segdet summary:hover{color:var(--ink)}
+.segdet[open] summary{margin-bottom:6px}
+.seg:last-of-type{margin-bottom:8px}
+.seghead{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:2px}
+.seghead h3{font-size:15px;margin:0;letter-spacing:-.005em}
+.seghint{color:var(--ink-muted);font-size:13px;margin:0 0 6px}
+.segsrc{color:var(--ink-muted);font-size:12.5px;margin:0 0 10px;font-style:italic}
+.exp{margin:8px 0 0;padding-left:18px}
+.exp li{margin-bottom:4px}
+.cat{border-bottom:1px solid var(--grid)}
+.cat:last-of-type{border-bottom:0}
+.cat>summary{
+  cursor:pointer;display:flex;align-items:center;gap:10px;
+  padding:12px 0;font-weight:600;font-size:15px;list-style:none;user-select:none;
+}
+.cat>summary::-webkit-details-marker{display:none}
+.cat>summary::before{content:"▸";color:var(--ink-muted);font-size:12px;transition:transform .15s}
+.cat[open]>summary::before{transform:rotate(90deg)}
+.cat .cnt{color:var(--ink-muted);font-size:12.5px;font-weight:500;margin-left:auto}
+.catgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:18px;padding:0 0 16px}
+.catcol h4{
+  margin:0 0 4px;font-size:11.5px;font-weight:700;letter-spacing:.05em;
+  color:var(--ink-muted);text-transform:uppercase;
+}
+.catrow{
+  display:flex;justify-content:space-between;align-items:baseline;gap:12px;
+  padding:7px 0;border-bottom:1px dashed var(--grid);font-size:13.5px;
+}
+.catrow:last-child{border-bottom:0}
+.catrow .n{min-width:0;overflow-wrap:anywhere}
+.catrow .n a{color:var(--ink);text-decoration:none}
+.catrow .n a:hover{text-decoration:underline}
+.catrow .src{display:block;color:var(--ink-muted);font-size:11.5px}
+.catrow .r{font-variant-numeric:tabular-nums;white-space:nowrap;font-weight:600}
+.catrow .r.none{color:var(--ink-muted);font-weight:500}
+.lnr{cursor:help}
+table.lnrt td.lnrc{cursor:help;min-width:110px}
+table.lnrt td.none{color:var(--ink-muted)}
+table.lnrt .far{color:var(--st-warning);font-size:11.5px}
+/* На телефоне таблица — карточками: продукт сверху, банки строками, без
+   горизонтальной прокрутки и обрезанных названий (замечание 03.11.2026). */
+@media(max-width:640px){
+  table.lnrt,table.lnrt tbody,table.lnrt tr,table.lnrt td{display:block;width:100%}
+  table.lnrt thead{display:none}
+  table.lnrt tr{padding:10px 0;border-bottom:1px solid var(--grid)}
+  table.lnrt td{border:0;padding:3px 0}
+  table.lnrt td.lnrc{display:grid;grid-template-columns:96px 1fr;gap:2px 8px;min-width:0}
+  table.lnrt td.lnrc::before{content:attr(data-b);font-weight:600;color:var(--ink-2);font-size:13px}
+}
+@media(max-width:640px){
+  .vs{grid-template-columns:1fr;gap:10px;text-align:left}
+  .vs-mid{justify-self:start}
+  body{padding:20px 12px 48px}
+  .scroll{overflow-x:auto}
+  h1{font-size:21px}
+}
+"""
+
+
+CSS += charts.CSS + brand.css() + brand.icons_css() + (
+    f":root{{{charts.VARS_LIGHT}}}"
+    f'@media (prefers-color-scheme:dark){{:root:not([data-theme="light"]){{{charts.VARS_DARK}}}}}'
+    f':root[data-theme="dark"]{{{charts.VARS_DARK}}}'
+)
+
+
+def _overview(*, gaps: list[Any], home: str, comparisons: list[Any], specials: list[Any],
+              quality_rows: list[Any], changes: list[Any], banks: list[str],
+              lnr_total: dict[str, int] | None = None) -> str:
+    """Обзор в начале отчёта: выводы и графики по тем же данным, что в таблицах."""
+    items = charts.insights(gaps, home=home, comparisons=comparisons, specials=specials,
+                            quality_rows=quality_rows, changes=changes, lnr_total=lnr_total)
+    out = ['<section class="card"><h2>Главное</h2>'
+           '<p class="hint">Выводы собраны по правилам из таблиц ниже — без модели '
+           'и без цифр со стороны. Каждую фразу можно проверить в своём разделе.</p>'
+           f"{charts.insights_block(items)}</section>"]
+    bars, flow = charts.status_bars(gaps, BLOCK_NAME), charts.funnel(quality_rows, gaps)
+    if bars or flow:
+        out.append('<div class="duo">')
+        if bars:
+            out.append('<section class="card"><h2>Место Сбера по блокам</h2>'
+                       '<p class="hint">Сколько программ блока Сбер лидирует, держится '
+                       f"в рынке, отстаёт или не найден.</p>{bars}</section>")
+        if flow:
+            out.append('<section class="card"><h2>Воронка данных</h2>'
+                       '<p class="hint">Все банки: сколько продуктов дошло от сбора '
+                       f"до рейтинга. Остальные — в «Качестве данных».</p>{flow}</section>")
+        out.append("</div>")
+        out.append('<div style="height:20px"></div>')
+    drops = charts.dumbbell(gaps, home=home)
+    if drops:
+        out.append('<section class="card"><h2>Сбер на фоне рынка</h2>'
+                   '<p class="hint">Линия — разброс ставок банков по программе, справа '
+                   'всегда выгоднее клиенту (для кредитов шкала развёрнута). Точки конкурентов — '
+                   'цветом банка, черта — медиана остальных, крупная точка — Сбер (цвет — его место). '
+                   f"Наведите на точку, чтобы увидеть банк и продукт.</p>{drops}</section>")
+    bub = charts.bubbles(gaps, home=home)
+    if bub:
+        out.append('<section class="card"><h2>Позиционирование банков</h2>'
+                   '<p class="hint">Средняя базовая ставка банка по сбережениям (вправо — '
+                   'выгоднее вкладчику) и по кредитам наличными, рефинансированию, '
+                   'автокредиту и залогу (вверх — дешевле заёмщику). Размер пузыря — '
+                   'в скольких программах у банка есть проверенная ставка. Пунктир — '
+                   f"медианы банков.</p>{bub}</section>")
+    heat = charts.heatmap(gaps, banks, home=home)
+    if heat:
+        out.append('<section class="card"><h2>Карта ставок: программа × банк</h2>'
+                   '<p class="hint">Лучшая базовая ставка банка в программе и её отклонение '
+                   'от медианы всех банков. Синий — выгоднее клиенту, красный — хуже. '
+                   f"Колонка Сбера выделена рамкой.</p>{heat}</section>")
+    return "".join(out)
+
+
+def _presence_block(presence: dict[str, str], banks: list[str]) -> str:
+    """Чем подтверждено присутствие каждого банка в ЛНР."""
+    rows = []
+    for bank in banks:
+        basis = presence.get(bank, "")
+        icon = "🏢" if basis.startswith("страница офисов") else ("📄" if basis else "❔")
+        rows.append(f'<tr><td class="pname">{brand.name(bank)}</td><td>{icon}</td>'
+                    f'<td class="pmeta">{_linkify(basis) if basis else "не подтверждено"}</td></tr>')
+    return ('<details class="cat"><summary>Присутствие банков в ЛНР — основания'
+            '<span class="cnt">🏢 адрес на сайте банка · 📄 внешний источник</span></summary>'
+            '<div class="scroll"><table><tbody>' + "".join(rows) + "</tbody></table></div></details>")
+
+
+def _linkify(text: str) -> str:
+    return re.sub(r"(https?://[^\s)»]+)",
+                  lambda m: f'<a href="{m.group(1)}" target="_blank" rel="noopener">{m.group(1)}</a>',
+                  e(text))
+
+
+def _lnr_section(rows: list[Any], total: dict[str, int], banks: list[str], home: str,
+                 presence: dict[str, str] | None = None) -> str:
+    """Таблица ТЗ: каждый продукт Сбера — есть ли он и его аналоги в ЛНР."""
+    from . import availability as av
+    if not rows:
+        return ""
+    rivals = [b for b in banks if b != home]
+    n = sum(total.values()) or 1
+    tiles = "".join(
+        f'<div class="tile"><div class="v">{av.ICONS[code]} {total.get(code, 0)}</div>'
+        f'<div class="k">{e(av.LABELS[code])} · {round(100 * total.get(code, 0) / n)} %</div></div>'
+        for code in (av.LNR, av.FEDERAL, av.ABSENT, av.UNKNOWN))
+
+    from . import card_terms
+
+    def cell(st: Any, rate: float | None, title: str = "", product: Any = None,
+             bank: str = "", close: bool = True, note: str = "") -> str:
+        if st is None:
+            why = note or "у банка не найден продукт той же программы"
+            return (f'<td class="lnrc none" data-b="{e(bank)}" title="{e(why)}">'
+                    f'<div class="lv">—{f"<div class=pmeta>{e(note)}</div>" if note else ""}</div></td>')
+        terms = getattr(product, "terms", None) or {}
+        # У карт главное — обслуживание и кешбэк, а не «5 % на остаток».
+        if getattr(product, "category", "") in card_terms.CARD_CATEGORIES:
+            value = card_terms.summary(terms) or (f"{fmt_rate(rate)} на остаток" if rate else "")
+        else:
+            value = fmt_rate(rate) if rate is not None else card_terms.summary(terms)
+        name = f'<div class="pmeta">{e(title)}</div>' if title else ""
+        if not close:
+            name += '<div class="pmeta far">ближайший той же программы, не прямой аналог</div>'
+        return (f'<td class="lnrc" data-b="{e(bank)}" title="{e(st.label)}: {e(st.reason)}">'
+                f'<div class="lv">{st.icon} <span class="num">{e(value)}</span>{name}</div></td>')
+
+    groups: dict[str, list[str]] = {}
+    for row in rows:
+        p = row.product
+        rate = p.rate_max if p.category in ("Вклады", "Накопительные счета") else p.rate_min
+        cells = "".join(
+            cell(row.cells[b].status, row.cells[b].rate,
+                 row.cells[b].product.title if row.cells[b].product else "",
+                 row.cells[b].product, b, row.cells[b].close, row.cells[b].note)
+            for b in rivals)
+        groups.setdefault(p.category or "Прочее", []).append(
+            f'<tr><td><div class="pname">{e(p.title)}</div>'
+            f'<div class="pmeta">{e(row.program)}</div></td>'
+            f'{cell(row.own, rate, "", p, home)}{cells}</tr>')
+    head = "".join(f"<th>{brand.name(b)}</th>" for b in [home] + rivals)
+    blocks = "".join(
+        f'<details class="cat"{" open" if i == 0 else ""}><summary>{e(cat)}'
+        f'<span class="cnt">{len(items)} продукт.</span></summary>'
+        f'<div class="scroll"><table class="lnrt"><thead><tr><th>Продукт Сбера</th>{head}'
+        f'</tr></thead><tbody>{"".join(items)}</tbody></table></div></details>'
+        for i, (cat, items) in enumerate(groups.items()))
+    unknown = total.get(av.UNKNOWN, 0)
+    check = (f'<p class="note">⚠️ У {unknown} продуктов Сбера наличие в ЛНР не установлено — '
+             "это первые кандидаты на доработку сбора: основание видно при наведении на ⚪.</p>"
+             if unknown else
+             '<p class="note">✅ У всех продуктов Сбера наличие в ЛНР установлено.</p>')
+    return f"""<section class="card">
+  <h2>Наличие в ЛНР: продукт Сбера × банк</h2>
+  <p class="hint">Главный вопрос ТЗ — есть ли продукт в Луганске. 🟢 условия ЛНР: регион
+  выбран на сайте или в калькуляторе банка либо банк работает только в ЛНР. 🔵 банк работает
+  в ЛНР, отдельных условий нет — берутся общероссийские. 🔴 прямое указание, что в ЛНР
+  продукта нет (калькулятор, текст страницы). ⚪ не установлено. В ячейке банка — его
+  продукт той же программы и ставка; «—» — аналог не найден. Наведите на значок — основание.</p>
+  <div class="tiles">{tiles}</div>
+  {check}
+  {_presence_block(presence or {}, banks)}
+  {blocks}
+</section>"""
+
+
+def _calculator_section(offers: list[dict[str, Any]], home: str) -> str:
+    block = charts.calculator_block(offers, home=home)
+    if not block:
+        return ""
+    return ('<section class="card"><h2>Калькулятор: сколько это стоит в каждом банке</h2>'
+            '<p class="hint">Выберите продукт и подвиньте сумму и срок — платёж, переплата '
+            'или доход посчитаются по лучшей базовой проверенной ставке каждого банка. '
+            'Плюсы и минусы — из условий продукта: пределы суммы и срока, ПСК, ставки '
+            f"на особых условиях того же банка.</p>{block}</section>")
+
+
+def _tiles(counts: dict[str, int], changes: list[Any], total_promos: int) -> str:
+    high = sum(1 for c in changes if c["severity"] == "high")
+    items = [
+        (counts[RED], "Проигрываем", "--st-critical"),
+        (counts[YELLOW], "Паритет", "--st-warning"),
+        (counts[GREEN], "Выигрываем", "--st-good"),
+        (counts[GREY], "Нет данных", "--ink-muted"),
+        (total_promos, "Действующих акций", "--s1"),
+        (high, "Важных изменений за неделю", "--s2"),
+    ]
+    cells = "".join(
+        f'<div class="tile"><div class="v" style="color:var({var})">{value}</div>'
+        f'<div class="k">{e(label)}</div></div>'
+        for value, label, var in items
+    )
+    return f'<div class="tiles">{cells}</div>'
+
+
+def _traffic_table(comparisons: list[Comparison]) -> str:
+    if not comparisons:
+        return ('<p class="empty">Прямых аналогов со ставками нет: проверь, что '
+                'собраны Сбер и банки, — продукты сопоставляются автоматически.</p>')
+
+    rows = []
+    for c in comparisons:
+        var = LIGHT_VAR[c.light]
+        chip = (f'<span class="chip" style="color:var({var})">'
+                f'<span class="ic">{LIGHT_ICON[c.light]}</span>{e(LIGHT_LABEL[c.light])}</span>')
+        # Показываем ту же границу диапазона, которая сравнивалась:
+        # «от» для кредитов, «до» для вкладов.
+        prefix = "до " if c.rate_bound == "max" else "от "
+        psb_rate = (prefix + fmt_rate(c.psb_rate)) if c.psb_rate is not None else "—"
+        sber_rate = (prefix + fmt_rate(c.sber_rate)) if c.sber_rate is not None else "—"
+        psb_extra = ""
+        if c.psb:
+            # Условия, при которых достигается ставка, важнее суммы и срока:
+            # «31% на 32 дня до 50 000 ₽» читается иначе, чем просто «31%».
+            # Саму ставку из условий убираем: она уже стоит в соседней
+            # колонке, и повтор «до 13,80% | 13,80% — 181 день» только шумит.
+            conditions = re.sub(r"^\d+[,.]\d+%\s*[—-]\s*", "",
+                                getattr(c.psb, "rate_conditions", ""))
+            # Без суммы и срока строка «— · —» только шумит.
+            limits = [v for v in (fmt_money(c.psb.amount_max),
+                                  fmt_term(c.psb.term_max_months)) if v != "—"]
+            detail = conditions or " · ".join(limits)
+            if detail:
+                psb_extra = f'<div class="pmeta">{e(detail)}</div>'
+        # Конкурентов несколько — в строке видно, с каким банком и каким
+        # его продуктом идёт сравнение (в демо-отчёте 28.10.2026 это
+        # было не понять: «Кредит наличными» стоял четыре раза подряд).
+        rival = (f"{c.psb.bank} · {c.psb.title}" if c.psb else "") or c.category
+        rows.append(
+            f"<tr>"
+            f'<td><div class="pname">{e(c.label)}</div>'
+            f'<div class="pmeta">{e(rival)}</div></td>'
+            f'<td class="num">{e(psb_rate)}{psb_extra}</td>'
+            f'<td class="num">{e(sber_rate)}</td>'
+            f'<td class="num">{e(fmt_delta(c.delta_rate))}</td>'
+            f"<td>{chip}</td>"
+            f'<td class="pmeta">{e(c.reason)}</td>'
+            f"</tr>"
+        )
+    return (
+        '<div class="scroll"><table><thead><tr>'
+        "<th>Продукт</th><th>Ставка конкурента</th><th>Ставка Сбера</th>"
+        "<th>Дельта</th><th>Светофор</th><th>Комментарий</th>"
+        "</tr></thead><tbody>" + "".join(rows) + "</tbody></table></div>"
+    )
+
+
+def _delta_chart(comparisons: list[Comparison]) -> str:
+    """Горизонтальные столбцы дельты со значением на каждом столбце."""
+    data = [c for c in comparisons if c.delta_rate is not None]
+    if not data:
+        return ""
+
+    data = sorted(data, key=lambda c: c.delta_rate or 0)
+    row_h, gap, pad_l, pad_r = 26, 8, 250, 92
+    height = len(data) * (row_h + gap) + 34
+    width, plot_w = 1080, 1080 - pad_l - pad_r
+    span = max(1.0, max(abs(c.delta_rate) for c in data)) * 1.18
+    zero_x = pad_l + plot_w / 2
+    scale = (plot_w / 2) / span
+
+    parts = [
+        f'<svg viewBox="0 0 {width} {height}" role="img" '
+        f'aria-label="Дельта ставок Сбер минус конкурент по продуктам">'
+    ]
+    parts.append(f'<line x1="{zero_x}" y1="4" x2="{zero_x}" y2="{height - 26}" '
+                 f'stroke="var(--axis)" stroke-width="1"/>')
+
+    for index, c in enumerate(data):
+        y = index * (row_h + gap) + 6
+        delta = c.delta_rate or 0.0
+        bar_w = max(2.0, abs(delta) * scale)
+        x = zero_x if delta >= 0 else zero_x - bar_w
+        var = LIGHT_VAR[c.light]
+        name = f"{c.psb.bank} · {c.label}" if c.psb else c.label
+        label = e(name if len(name) <= 34 else name[:33] + "…")
+        value_x = x + bar_w + 8 if delta >= 0 else x - 8
+        anchor = "start" if delta >= 0 else "end"
+
+        parts.append(
+            f'<text x="{pad_l - 12}" y="{y + row_h / 2 + 4}" text-anchor="end" '
+            f'font-size="12.5" fill="var(--ink-2)">{label}</text>'
+            f'<rect x="{x:.1f}" y="{y}" width="{bar_w:.1f}" height="{row_h}" rx="4" '
+            f'fill="var({var})"><title>{e(name)}: {e(fmt_delta(delta))}</title></rect>'
+            f'<text x="{value_x:.1f}" y="{y + row_h / 2 + 4}" text-anchor="{anchor}" '
+            f'font-size="12" font-weight="600" fill="var(--ink-2)" '
+            f'style="font-variant-numeric:tabular-nums">{e(fmt_delta(delta))}</text>'
+        )
+
+    parts.append(
+        f'<text x="{zero_x - 10}" y="{height - 8}" text-anchor="end" font-size="11.5" '
+        f'fill="var(--ink-muted)">← ставка Сбера ниже</text>'
+        f'<text x="{zero_x + 10}" y="{height - 8}" font-size="11.5" '
+        f'fill="var(--ink-muted)">ставка Сбера выше →</text></svg>'
+    )
+    return "".join(parts)
+
+
+def rate_label(value: float) -> str:
+    return f"{value:.2f}".replace(".", ",") + "%"
+
+
+def _history_chart(series: dict[str, list[tuple[str, float]]], title: str) -> str:
+    """Линейный график истории ставок: две серии, легенда, прямые подписи."""
+    usable = {name: points for name, points in series.items() if len(points) >= 2}
+    if not usable:
+        return ""
+
+    width, height = 1080, 260
+    pad_l, pad_r, pad_t, pad_b = 52, 120, 16, 34
+    plot_w, plot_h = width - pad_l - pad_r, height - pad_t - pad_b
+
+    all_dates = sorted({d for points in usable.values() for d, _ in points})
+    all_values = [v for points in usable.values() for _, v in points]
+    v_min, v_max = min(all_values), max(all_values)
+    if v_max - v_min < 0.5:
+        v_min, v_max = v_min - 0.5, v_max + 0.5
+    date_index = {d: i for i, d in enumerate(all_dates)}
+    step = plot_w / max(1, len(all_dates) - 1)
+
+    def x_of(date: str) -> float:
+        return pad_l + date_index[date] * step
+
+    def y_of(value: float) -> float:
+        return pad_t + plot_h - (value - v_min) / (v_max - v_min) * plot_h
+
+    parts = [f'<svg viewBox="0 0 {width} {height}" role="img" aria-label="{e(title)}">']
+
+    for tick in range(5):
+        value = v_min + (v_max - v_min) * tick / 4
+        y = y_of(value)
+        # Число форматируем отдельно: замена точки на запятую во всей строке
+        # испортила бы координаты SVG.
+        label = f"{value:.1f}".replace(".", ",")
+        parts.append(
+            f'<line x1="{pad_l}" y1="{y:.1f}" x2="{pad_l + plot_w}" y2="{y:.1f}" '
+            f'stroke="var(--grid)" stroke-width="1"/>'
+            f'<text x="{pad_l - 10}" y="{y + 4:.1f}" text-anchor="end" font-size="11" '
+            f'fill="var(--ink-muted)" style="font-variant-numeric:tabular-nums">'
+            f'{label}%</text>'
+        )
+
+    colors = ["var(--s1)", "var(--s2)"]
+    for index, (name, points) in enumerate(usable.items()):
+        color = colors[index % len(colors)]
+        path = " ".join(
+            f"{'M' if i == 0 else 'L'}{x_of(d):.1f},{y_of(v):.1f}"
+            for i, (d, v) in enumerate(points)
+        )
+        parts.append(f'<path d="{path}" fill="none" stroke="{color}" stroke-width="2" '
+                     f'stroke-linejoin="round" stroke-linecap="round"/>')
+        for d, v in points:
+            parts.append(
+                f'<circle cx="{x_of(d):.1f}" cy="{y_of(v):.1f}" r="4" fill="{color}" '
+                f'stroke="var(--surface)" stroke-width="2">'
+                f'<title>{e(name)} · {e(d[:10])}: {rate_label(v)}</title></circle>'
+            )
+        last_date, last_value = points[-1]
+        last_label = f"{last_value:.2f}".replace(".", ",")
+        parts.append(
+            f'<text x="{x_of(last_date) + 12:.1f}" y="{y_of(last_value) + 4:.1f}" '
+            f'font-size="12.5" font-weight="600" fill="var(--ink-2)">'
+            f'{e(name)} {last_label}%</text>'
+        )
+
+    for date in (all_dates[0], all_dates[-1]):
+        parts.append(
+            f'<text x="{x_of(date):.1f}" y="{height - 10}" text-anchor="middle" '
+            f'font-size="11" fill="var(--ink-muted)">{e(date[:10])}</text>'
+        )
+    parts.append("</svg>")
+
+    legend = "".join(
+        f'<span><i style="background:{colors[i % len(colors)]}"></i>{e(name)}</span>'
+        for i, name in enumerate(usable)
+    )
+    return f'<div class="legend">{legend}</div>' + "".join(parts)
+
+
+def _changes_block(changes: list[Any]) -> str:
+    from .changes import KIND_LABEL
+
+    if not changes:
+        return '<p class="empty">За неделю изменений не зафиксировано.</p>'
+
+    order = {"high": 0, "medium": 1, "info": 2}
+    ranked = sorted(changes, key=lambda c: order.get(c["severity"], 3))[:30]
+
+    blocks = []
+    for c in ranked:
+        cls = "chg high" if c["severity"] == "high" else "chg"
+        detail = ""
+        if c["kind"] == "rate" and c.get("delta") is not None:
+            arrow = "вырос" if c["delta"] > 0 else "снижен"
+            amount = f"{abs(c['delta']):.2f}".replace(".", ",")
+            detail = (f"Ставка {arrow} на {amount} п.п.: "
+                      f"{c['old_value']} → {c['new_value']}")
+        elif c["kind"] in ("promo_new", "promo_gone"):
+            detail = c.get("new_value") or c.get("old_value") or ""
+        elif c["kind"] == "terms":
+            detail = f"«{c['field']}»: {c['old_value'][:140]} → {c['new_value'][:140]}"
+        blocks.append(
+            f'<div class="{cls}"><div class="t">'
+            f'<span class="bank">{e(c["bank"])}</span> · '
+            f'{e(KIND_LABEL.get(c["kind"], c["kind"]))} — {e(c["title"][:120])}</div>'
+            f'<div class="d">{e(detail)}</div></div>'
+        )
+    tail = (f'<p class="hint" style="margin-top:14px">Показаны 30 из {len(changes)} изменений.</p>'
+            if len(changes) > 30 else "")
+    return "".join(blocks) + tail
+
+
+VERDICT_VAR = {"green": "--st-good", "yellow": "--st-warning",
+               "red": "--st-critical", "grey": "--ink-muted"}
+VERDICT_ICON = {"green": "▲", "yellow": "■", "red": "▼", "grey": "—"}
+VERDICT_LABEL = {"green": "Выигрываем", "yellow": "Паритет",
+                 "red": "Проигрываем", "grey": "Не сравнить"}
+
+
+def _promo_rows(promos: list[Any], bank: str) -> str:
+    """Строки одного банка внутри сегмента."""
+    if not promos:
+        return (f'<tr><td class="bank">{brand.name(bank)}</td>'
+                f'<td colspan="3" class="empty" style="padding:8px 10px">'
+                "Предложений нет</td></tr>")
+
+    # Гарантированная выгода сверху, розыгрыши — в конце сегмента.
+    from .promos import sort_key
+
+    ordered = sorted(promos, key=sort_key)
+    rows = []
+    for promo in ordered:
+        link = (f' <a href="{e(promo.url)}" target="_blank" rel="noopener">источник</a>'
+                if promo.url else "")
+        rows.append(
+            f'<tr><td class="bank">{e(getattr(promo, "bank", "") or bank)}</td>'
+            f'<td><div class="pname">{e(promo.title[:130])}</div>'
+            f'<div class="pmeta">{e(promo.text[:150])}{link}</div></td>'
+            f'<td class="num"><b>{e(promo.benefit_display)}</b>'
+            f'<div class="pmeta">{e(promo.benefit_label)}</div></td>'
+            f'<td class="pmeta">{e(promo.valid_display)}</td></tr>'
+        )
+    return "".join(rows)
+
+
+def _best_offer(promos: list[Any], item: Any) -> Any | None:
+    """Сильнейшее предложение банка — в тех же единицах, что и вердикт."""
+    from .promos import best_offer
+
+    return best_offer(promos, getattr(item, "best_type", ""),
+                      getattr(item, "best_unit", ""))
+
+
+def _rival_name(item: Any, promo: Any) -> str:
+    """Имя банка-конкурента в шапке сегмента — а не «ПСБ» для всех."""
+    if getattr(item, "basis", "") == "витрина продуктов" or promo is None:
+        product = getattr(item, "psb_product", None)
+        if product is not None and getattr(product, "bank", ""):
+            return product.bank
+    return getattr(promo, "bank", "") or "Конкуренты"
+
+
+def _versus(item: Any) -> str:
+    """Шапка сегмента: лучшее у конкурентов против лучшего у Сбера, крупно.
+
+    Руководителю нужен ответ за секунду, а не чтение таблицы на двадцать
+    строк. Подробности — ниже, в таблице.
+    """
+    psb, sber = _best_offer(item.psb, item), _best_offer(item.sber, item)
+    var = VERDICT_VAR.get(item.verdict, "--ink-muted")
+    use_products = getattr(item, "basis", "") == "витрина продуктов"
+
+    def side(promo: Any, bank: str, highlight: bool, product: Any = None) -> str:
+        head = f'<div class="vs-bank">{brand.name(bank)}</div>'
+
+        # Когда вывод опирается на витрину, показываем продукт, а не пустоту:
+        # «нет акций» рядом с банком, у которого вклады под 31%, — обман.
+        if (use_products or promo is None) and product is not None and product.rate is not None:
+            color = f"var({var})" if highlight else "var(--ink)"
+            return (f'<div class="vs-side">{head}'
+                    f'<div class="vs-val" style="color:{color}">{e(product.display)}</div>'
+                    f'<div class="vs-name">{e(product.title[:70])}</div></div>')
+
+        if promo is None:
+            return (f'<div class="vs-side">{head}'
+                    '<div class="vs-val vs-none">акций не найдено</div>'
+                    '<div class="vs-name">—</div></div>')
+
+        # Крупной цифрой показываем только измеримую выгоду. «Прочее»
+        # набранное в 23 пункта выглядит как результат, хотя это признание
+        # в том, что величину извлечь не удалось.
+        if promo.benefit_value is None:
+            return (f'<div class="vs-side">{head}'
+                    f'<div class="vs-val vs-none">{e(promo.benefit_label)}</div>'
+                    f'<div class="vs-name">{e(promo.title[:70])}</div></div>')
+
+        color = f"var({var})" if highlight else "var(--ink)"
+        return (f'<div class="vs-side">{head}'
+                f'<div class="vs-val" style="color:{color}">{e(promo.benefit_display)}</div>'
+                f'<div class="vs-name">{e(promo.title[:70])}</div></div>')
+
+    # Подсвечиваем того, кто сильнее: при «выигрываем» — Сбера, иначе конкурента.
+    psb_strong = item.verdict == "red"
+    sber_strong = item.verdict == "green"
+    return (f'<div class="vs">'
+            f'{side(psb, _rival_name(item, psb), psb_strong, item.psb_product)}'
+            f'<div class="vs-mid">против</div>'
+            f'{side(sber, "Сбер", sber_strong, item.sber_product)}</div>')
+
+
+def _showcase_line(item: Any) -> str:
+    """Витрина продуктов сегмента — когда вывод опирается на неё."""
+    if getattr(item, "basis", "") != "витрина продуктов":
+        return ""
+    psb, sber = item.psb_product, item.sber_product
+    if psb is None or sber is None:
+        return ""
+    return ('<p class="segsrc">Вывод построен по условиям продуктов: '
+            f'{e(psb.bank or "Конкурент")} — {e(psb.title[:60])}, '
+            f'Сбер — {e(sber.title[:60])}</p>')
+
+
+def _promo_analysis(segments: list[Any], expired: list[Any]) -> str:
+    """Сравнительный анализ акций по сегментам."""
+    if not segments:
+        return ('<p class="empty">Действующих предложений не обнаружено.</p>')
+
+    blocks = []
+    for item in segments:
+        var = VERDICT_VAR.get(item.verdict, "--ink-muted")
+        chip = (f'<span class="chip" style="color:var({var})">'
+                f'<span class="ic">{VERDICT_ICON.get(item.verdict, "—")}</span>'
+                f'{e(VERDICT_LABEL.get(item.verdict, ""))}</span>')
+        blocks.append(
+            f'<div class="seg">'
+            f'<div class="seghead"><h3>{e(item.segment)}</h3>{chip}'
+            f'<span class="segcount">Конкуренты {len(item.psb)} · Сбер {len(item.sber)}</span></div>'
+            f'<p class="seghint">{e(item.headline)}</p>'
+            + _showcase_line(item)
+            + _versus(item) +
+            '<details class="segdet"><summary>Все предложения сегмента</summary>'
+            '<div class="scroll"><table><thead><tr>'
+            "<th>Банк</th><th>Предложение</th><th>Выгода</th><th>Действует до</th>"
+            "</tr></thead><tbody>"
+            + _promo_rows(item.psb, "Конкуренты")
+            + _promo_rows(item.sber, "Сбер")
+            + "</tbody></table></div></details></div>"
+        )
+
+    # Список завершившихся акций в отчёт не выводим: прошлогодние условия
+    # решений не меняют. Они по-прежнему отсеиваются, а их число видно
+    # в логе запуска и в базе.
+    return "".join(blocks)
+
+
+_CATEGORY_ORDER = ("Вклады", "Накопительные счета", "Кредиты", "Ипотека",
+                   "Кредитные карты", "Дебетовые карты", "Банковские карты")
+
+
+def _catalog_rate(product: Any) -> tuple[str, bool]:
+    """Ставка для каталога и признак того, что это именно ставка."""
+    low = product.rate_min
+    if low is not None:
+        high = product.rate_max if product.rate_max is not None else low
+        if low == high:
+            return fmt_rate(low), True
+        return f"{fmt_rate(low)[:-1]}–{fmt_rate(high)}", True
+    if product.apr_min is not None:
+        return f"ПСК {fmt_rate(product.apr_min)}", False
+    implied = (product.terms or {}).get("Ставка по платежу калькулятора")
+    if implied:
+        return f"{implied} (из платежа)", False
+    # Карта без ставки — её главные параметры (обслуживание, кешбэк).
+    from . import card_terms
+    cards = card_terms.summary(product.terms or {})
+    if cards:
+        return cards, False
+    return "не найдена", False
+
+
+def _catalog(catalog: dict[str, list[Any]], banks: list[str],
+             lnr_status: dict[int, Any] | None = None) -> str:
+    """Все продукты банков по категориям — и те, у кого нет пары для светофора."""
+    def category_of(product: Any) -> str:
+        return product.category or "Прочее"
+
+    categories = {category_of(p) for items in catalog.values() for p in items}
+    if not categories:
+        return '<p class="empty">Продуктов нет: полный сбор по банкам ещё не запускался.</p>'
+
+    def rank(category: str) -> tuple[int, str]:
+        known = _CATEGORY_ORDER.index(category) if category in _CATEGORY_ORDER else 99
+        return known, category
+
+    blocks = []
+    for category in sorted(categories, key=rank):
+        columns, counts = [], []
+        for bank in banks:
+            items = sorted((p for p in catalog.get(bank, []) if category_of(p) == category),
+                           key=lambda p: p.title.lower())
+            counts.append(f"{bank} {len(items)}")
+            rows = []
+            for product in items:
+                rate, is_rate = _catalog_rate(product)
+                terms = product.terms or {}
+                notes = []
+                if terms.get("Источник ставки"):
+                    notes.append("ставка с карточки на витрине раздела")
+                if is_rate:
+                    kind, _ = conditions.kind_of(product)
+                    if kind != conditions.BASE:
+                        notes.append(conditions.LABELS[kind])
+                source = " · ".join(notes)
+                name = (f'<a href="{e(product.source_url)}" target="_blank" rel="noopener">'
+                        f'{e(product.title)}</a>' if product.source_url else e(product.title))
+                st = (lnr_status or {}).get(id(product))
+                mark = (f'<span class="lnr" title="{e(st.label)}: {e(st.reason)}">'
+                        f'{st.icon}</span> ' if st else "")
+                rows.append(
+                    f'<div class="catrow"><span class="n">{mark}{name}'
+                    + (f'<span class="src">{e(source)}</span>' if source else "")
+                    + f'</span><span class="r{"" if is_rate else " none"}">{e(rate)}</span></div>')
+            body = "".join(rows) or '<p class="empty">В этой категории продуктов не найдено</p>'
+            columns.append(f'<div class="catcol"><h4>{brand.name(bank)}</h4>{body}</div>')
+        blocks.append(
+            f'<details class="cat"><summary>{e(category)}'
+            f'<span class="cnt">{e(" · ".join(counts))}</span></summary>'
+            f'<div class="catgrid">{"".join(columns)}</div></details>')
+    return "".join(blocks)
+
+
+# --- место Сбера на рынке -------------------------------------------------
+
+GAP_STYLE = {
+    "лидер": ("--st-good", "▲"),
+    "в рынке": ("--st-warning", "■"),
+    "отстаёт": ("--st-critical", "▼"),
+    "не найдено у Сбера": ("--st-critical", "○"),
+    "нет у конкурентов": ("--s1", "●"),
+    "нет данных": ("--ink-muted", "—"),
+    "нет в ЛНР у Сбера": ("--st-critical", "⛔"),
+}
+
+
+def _pp(value: float) -> str:
+    return f"{abs(value):.2f}".replace(".", ",") + " п.п."
+
+
+def _versus_median(gap: Any) -> str:
+    advantage = gap.advantage
+    if advantage is None:
+        return "—"
+    if abs(advantage) < 0.005:
+        return "на уровне медианы"
+    side = "лучше" if advantage > 0 else "хуже"
+    return f"{side} медианы на {_pp(advantage)}"
+
+
+def _gap_tiles(gaps: list[Any]) -> str:
+    counts: dict[str, int] = {}
+    for gap in gaps:
+        counts[gap.status] = counts.get(gap.status, 0) + 1
+    items = [(status, counts.get(status, 0)) for status in
+             ("лидер", "в рынке", "отстаёт", "не найдено у Сбера")]
+    cells = "".join(
+        f'<div class="tile"><div class="v" style="color:var({GAP_STYLE[s][0]})">{n}</div>'
+        f'<div class="k">{e(s[:1].upper() + s[1:])}</div></div>'
+        for s, n in items)
+    return f'<div class="tiles">{cells}</div>'
+
+
+def _gaps_table(gaps: list[Any], home: str) -> str:
+    if not gaps:
+        return ('<p class="empty">Сравнивать пока нечего: нужен сбор, в котором есть '
+                'Сбер и хотя бы один конкурент.</p>')
+    rows = []
+    for gap in gaps:
+        var, icon = GAP_STYLE.get(gap.status, ("--ink-muted", "—"))
+        chip = (f'<span class="chip" style="color:var({var})">'
+                f'<span class="ic">{icon}</span>{e(gap.status)}</span>')
+        prefix = "до " if gap.better == "higher" else "от "
+
+        def offer(o: Any) -> str:
+            if o is None:
+                return "—"
+            name = (f'<a href="{e(o.url)}" target="_blank" rel="noopener">{e(o.title)}</a>'
+                    if o.url else e(o.title))
+            return (f'<span class="num">{e(prefix + fmt_rate(o.value))}</span>'
+                    f'<div class="pmeta">{brand.name(o.bank)} · {name}</div>')
+
+        best = offer(gap.best) if gap.best and gap.best.bank != home else (
+            "Сбер" if gap.best else "—")
+        median = (prefix + fmt_rate(gap.others_median)
+                  if gap.others_median is not None else "—")
+        comment = gap.comment
+        if gap.status == "отстаёт" and gap.delta_vs_best is not None:
+            comment = f"до лучшего {_pp(gap.delta_vs_best)}"
+        rows.append(
+            "<tr>"
+            f'<td><div class="pname">{e(gap.program)}</div>'
+            f'<div class="pmeta">{e(BLOCK_NAME.get(gap.block, gap.block))}</div></td>'
+            f"<td>{offer(gap.sber)}</td>"
+            f'<td class="num">{e(gap.place)}</td>'
+            f"<td>{best}</td>"
+            f'<td class="num">{e(median)}<div class="pmeta">{e(_versus_median(gap))}</div></td>'
+            f"<td>{chip}</td>"
+            f'<td class="pmeta">{e(comment)}</td>'
+            "</tr>")
+    return (
+        '<div class="scroll"><table><thead><tr>'
+        "<th>Программа</th><th>Сбер</th><th>Место</th><th>Лучший на рынке</th>"
+        "<th>Медиана остальных</th><th>Статус</th><th>Комментарий</th>"
+        "</tr></thead><tbody>" + "".join(rows) + "</tbody></table></div>")
+
+
+BLOCK_NAME = {
+    "DEP": "Сбережения", "CARD": "Карты", "LOAN": "Кредиты", "MTG": "Ипотека",
+    "DAILY": "Повседневный банкинг", "INV": "Инвестиции и страхование",
+    "SEG": "Сегментные предложения", "OTHER": "Прочее",
+}
+
+
+def _crawl_block(crawl: dict[str, dict[str, Any]]) -> str:
+    """Полнота обхода: все ли страницы розницы банка прочитаны."""
+    if not crawl:
+        return ""
+    rows = []
+    for bank, c in crawl.items():
+        left = c["unread"] + c["failed"]
+        state = "✅ полный" if c["complete"] else f"⚠️ не прочитано {len(left)}"
+        pages = "".join(f'<div class="pmeta">{_linkify(u)}</div>' for u in left[:15])
+        more = (f'<div class="pmeta">… и ещё {len(left) - 15}</div>' if len(left) > 15 else "")
+        rows.append(f'<tr><td class="pname">{brand.name(bank)}</td><td class="num">{c["read"]}</td>'
+                    f'<td class="num">{c["sitemap"] or "—"}</td><td>{state}{pages}{more}</td></tr>')
+    return ('<h3 style="margin:4px 0 10px;font-size:15px">Полнота обхода сайтов</h3>'
+            '<p class="hint">Прочитано — страниц розницы за сбор; карта сайта — сколько '
+            'страниц розницы банк сам перечислил в sitemap.xml. Не прочитанные продукты '
+            'перечислены: их цифры взяты из прошлого сбора с его датой (до 14 дней).</p>'
+            '<div class="scroll"><table><thead><tr><th>Банк</th><th>Прочитано</th>'
+            '<th>В карте сайта</th><th>Итог</th></tr></thead><tbody>' + "".join(rows)
+            + '</tbody></table></div><div style="height:18px"></div>' + _candidates_block(crawl))
+
+
+def _reference_block(checks: list[Any]) -> str:
+    """Сверка с эталоном продуктов: чего из списка банка сбор не нашёл."""
+    if not checks:
+        return ""
+    from .reference import SOURCES
+    parts = []
+    for c in checks:
+        rows = "".join(
+            f'<div class="pmeta">❌ {e(m.get("name", ""))} — {e(m.get("category", ""))}'
+            f'{" · " + _linkify("https://www.sberbank.ru" + m["path"]) if m.get("path") and c.bank == "Сбер" else ""}'
+            f' <i>({e(SOURCES.get(m.get("source", ""), m.get("source", "")))})</i></div>'
+            for m in c.missing)
+        parts.append(f'<p><b>{brand.name(c.bank)}</b>: найдено {e(c.share)} продуктов эталона'
+                     f'{"" if c.missing else " ✅"}</p>{rows}')
+    return ('<h3 style="margin:4px 0 10px;font-size:15px">Сверка с эталоном продуктов</h3>'
+            '<p class="hint">Эталон — список продуктов банка (config/reference_&lt;банк&gt;.yaml). '
+            'Не найден — сбор не дошёл до продукта или продукт закрыт: проверить и либо '
+            'добавить раздел в обход, либо убрать продукт из эталона.</p>'
+            + "".join(parts) + '<div style="height:18px"></div>')
+
+
+def _candidates_block(crawl: dict[str, dict[str, Any]]) -> str:
+    """Страницы банка вне разделов обхода: новые — на виду, остальные — списком.
+
+    Так новый продукт вне привычного меню («СберБлиже», /ru/sberblizhe)
+    виден в своде, а не пропадает молча."""
+    parts = []
+    for bank, c in crawl.items():
+        every, new = c.get("candidates") or [], c.get("new_candidates") or []
+        if not every:
+            continue
+        fresh = "".join(f'<div class="pmeta">🆕 {_linkify(u)}</div>' for u in new[:30])
+        rest = "".join(f'<div class="pmeta">{_linkify(u)}</div>' for u in every[:150])
+        parts.append(
+            f'<p><b>{brand.name(bank)}</b>: новых за неделю — {len(new)}, всего вне обхода — '
+            f'{len(every)}</p>{fresh}<details><summary class="pmeta">весь список</summary>'
+            f'{rest}</details>')
+    if not parts:
+        return ""
+    return ('<h3 style="margin:4px 0 10px;font-size:15px">Страницы вне разделов обхода</h3>'
+            '<p class="hint">Страницы сайта банка из карты сайта и ссылок, которые сбор не '
+            'читает: они вне разделов розницы в настройках. 🆕 — появились за неделю: '
+            'посмотреть, не новый ли это продукт. Если продукт — добавить раздел в обход.</p>'
+            + "".join(parts) + '<div style="height:18px"></div>')
+
+
+def _quality_block(rows: list[Any], manual: list[Any]) -> str:
+    if not rows:
+        return '<p class="empty">Данных пока нет.</p>'
+    body = []
+    for row in rows:
+        coverage = ("—" if row.coverage_pct is None
+                    else f"{row.coverage_pct:.0f} %".replace(".", ","))
+        issues = "; ".join(f"{k} — {v}" for k, v in sorted(
+            row.issues.items(), key=lambda kv: -kv[1]))
+        body.append(
+            "<tr>"
+            f"<td>{brand.name(row.bank)}</td>"
+            f"<td>{e(BLOCK_NAME.get(row.block, row.block))}</td>"
+            f'<td class="num">{row.products}</td>'
+            f'<td class="num">{row.usable} из {row.rated}</td>'
+            f'<td class="num">{e(coverage)}</td>'
+            f'<td class="pmeta">{e(issues or "—")}</td>'
+            "</tr>")
+    table = (
+        '<div class="scroll"><table><thead><tr>'
+        "<th>Банк</th><th>Блок</th><th>Продуктов</th><th>Ставка проверена</th>"
+        "<th>Покрытие</th><th>Замечания</th>"
+        "</tr></thead><tbody>" + "".join(body) + "</tbody></table></div>")
+
+    if not manual:
+        checks = '<p class="empty">Подозрительных значений не найдено.</p>'
+    else:
+        items = []
+        for product, check in manual:
+            name = (f'<a href="{e(product.source_url)}" target="_blank" rel="noopener">'
+                    f'{e(product.title)}</a>' if product.source_url else e(product.title))
+            rate, _ = _catalog_rate(product)
+            items.append(
+                f'<div class="chg high"><div class="t">{brand.name(product.bank)} · {name} — '
+                f'{e(rate)}</div><div class="d">{e("; ".join(check.issues))}</div></div>')
+        checks = "".join(items)
+    return (table + '<h3 style="margin:22px 0 10px;font-size:15px">Нужна ручная проверка</h3>'
+            '<p class="hint">Эти значения есть в данных, но в место Сбера и выводы '
+            "не идут, пока их не сверят с сайтом.</p>" + checks)
+
+
+COVERAGE_ICON = {"compared": ("--st-good", "●"), "collected": ("--s1", "◐"),
+                 "link": ("--st-warning", "○"), "none": ("--ink-muted", "—")}
+
+
+def _coverage_block(matrix: dict[str, dict[str, Any]], banks: list[str]) -> str:
+    """Матрица «категория × банк»: что сравнивается, что собрано, что только есть."""
+    if not matrix:
+        return '<p class="empty">Данных об охвате пока нет: нужен свежий сбор.</p>'
+    head = "".join(f"<th>{brand.name(bank)}</th>" for bank in banks)
+    rows = []
+    for category, cells in matrix.items():
+        tds = []
+        for bank in banks:
+            cell = cells.get(bank)
+            if cell is None:
+                tds.append("<td>—</td>")
+                continue
+            var, icon = COVERAGE_ICON.get(cell.status, ("--ink-muted", "—"))
+            count = f" {cell.products}" if cell.products else ""
+            inner = f'<span style="color:var({var})">{icon}</span>{count}'
+            if cell.url:
+                inner = (f'<a href="{e(cell.url)}" target="_blank" rel="noopener" '
+                         f'title="{e(cell.label)}">{inner}</a>')
+            tds.append(f'<td class="num" title="{e(cell.label)}">{inner}</td>')
+        rows.append(f"<tr><td>{e(category)}</td>{''.join(tds)}</tr>")
+    legend = " · ".join(
+        f'<span style="color:var({COVERAGE_ICON[k][0]})">{COVERAGE_ICON[k][1]}</span> {e(v)}'
+        for k, v in (("compared", "ставки сравниваются"),
+                     ("collected", "продукты собраны, ставки не сравниваются"),
+                     ("link", "раздел есть у банка (ссылка), агент его не собирает"),
+                     ("none", "раздел на сайте не найден")))
+    return (f'<p class="pmeta" style="margin-bottom:10px">{legend}</p>'
+            '<div class="scroll"><table><thead><tr><th>Категория</th>'
+            + head + "</tr></thead><tbody>" + "".join(rows) + "</tbody></table></div>")
+
+
+def _specials_block(rows: list[Any]) -> str:
+    """Ставки на особых условиях: в «Место Сбера» не идут, но и не теряются."""
+    if not rows:
+        return '<p class="empty">Ставок на особых условиях не найдено.</p>'
+    body = []
+    for row in rows:
+        name = (f'<a href="{e(row.url)}" target="_blank" rel="noopener">{e(row.title)}</a>'
+                if row.url else e(row.title))
+        rate = "—" if row.rate is None else fmt_rate(row.rate)
+        body.append(
+            "<tr>"
+            f'<td><div class="pname">{e(row.program)}</div>'
+            f'<div class="pmeta">{e(row.category)}</div></td>'
+            f"<td>{brand.name(row.bank)}</td>"
+            f"<td>{name}</td>"
+            f'<td class="num">{e(rate)}</td>'
+            f"<td>{e(row.kind_label)}</td>"
+            f'<td class="pmeta">{e(row.reason)}</td>'
+            "</tr>")
+    return (
+        '<div class="scroll"><table><thead><tr>'
+        "<th>Программа</th><th>Банк</th><th>Продукт</th><th>Ставка</th>"
+        "<th>Условие</th><th>Где сказано</th>"
+        "</tr></thead><tbody>" + "".join(body) + "</tbody></table></div>")
+
+
+def render_report(
+    *,
+    comparisons: list[Comparison],
+    counts: dict[str, int],
+    changes: list[Any],
+    promo_segments: list[Any],
+    expired_promos: list[Any],
+    promo_active_total: int,
+    history: dict[str, list[tuple[str, float]]],
+    region: str,
+    generated_at: str,
+    run_count: int,
+    psb_total: int,
+    sber_total: int,
+    thresholds: Any,
+    catalog: dict[str, list[Any]] | None = None,
+    catalog_banks: list[str] | None = None,
+    key_rate: str = "",
+    gaps: list[Any] | None = None,
+    quality_rows: list[Any] | None = None,
+    manual: list[Any] | None = None,
+    home: str = "Сбер",
+    specials: list[Any] | None = None,
+    coverage_matrix: dict[str, dict[str, Any]] | None = None,
+    calculator: list[dict[str, Any]] | None = None,
+    lnr_rows: list[Any] | None = None,
+    lnr_total: dict[str, int] | None = None,
+    lnr_status: dict[int, Any] | None = None,
+    presence: dict[str, str] | None = None,
+    crawl: dict[str, dict[str, Any]] | None = None,
+    references: list[Any] | None = None,
+) -> str:
+    total_promos = promo_active_total
+    delta_chart = _delta_chart(comparisons)
+    history_chart = _history_chart(history, "История ставок за год")
+
+    delta_section = ""
+    if delta_chart:
+        delta_section = (
+            '<section class="card"><h2>Дельта ставок по продуктам</h2>'
+            '<p class="hint">Ставка Сбера минус ставка конкурента по каждой паре '
+            "светофора. Цвет столбца повторяет светофор, значение подписано на "
+            "каждом столбце.</p>"
+            f"{delta_chart}</section>"
+        )
+
+    history_section = ""
+    if history_chart:
+        history_section = (
+            '<section class="card"><h2>История ставок</h2>'
+            '<p class="hint">Средняя витринная ставка по сопоставленным продуктам, '
+            "по неделям сбора: «от» для кредитных продуктов, «до» для сберегательных. "
+            "Глубина хранения — один календарный год.</p>"
+            f"{history_chart}</section>"
+        )
+
+    return brand.decorate(f"""<!DOCTYPE html>
+<html lang="ru"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Сбер и конкуренты — {e(region)}</title>
+<style>{CSS}</style></head>
+<body>
+<button class="tg" onclick="var r=document.documentElement;
+  r.dataset.theme = r.dataset.theme==='dark' ? 'light' : 'dark';">Тема</button>
+<div class="wrap">
+<header>
+  <h1>Сравнение розничных продуктов: Сбер и конкуренты</h1>
+  <div class="sub">Регион: <b>{e(region)}</b> · Отчёт сформирован {e(generated_at)} ·
+  Собрано продуктов: конкуренты {psb_total}, Сбер {sber_total} · Запусков в истории: {run_count}
+  · Ключевая ставка ЦБ: <b>{e(key_rate or "н/д")}</b></div>
+  <div class="hbanks">{"".join(brand.name(b).replace('class="bn"', 'class="bn own"' if b == home else 'class="bn"')
+                               for b in (catalog_banks or list((catalog or {}).keys())))}</div>
+</header>
+
+{_overview(gaps=gaps or [], home=home, comparisons=comparisons, specials=specials or [],
+           quality_rows=quality_rows or [], changes=changes,
+           banks=catalog_banks or list((catalog or {}).keys()), lnr_total=lnr_total)}
+
+{_lnr_section(lnr_rows or [], lnr_total or {}, catalog_banks or [], home, presence or {})}
+
+{_calculator_section(calculator or [], home)}
+
+<section class="card">
+  <h2>Место Сбера на рынке</h2>
+  <p class="hint">Все банки сразу, без ручных пар. Продукты разложены по программам:
+  семейная ипотека сравнивается с семейной, рыночная — с рыночной. По каждой программе
+  у банка берётся лучшая витринная ставка: «до» для вкладов и счетов, «от» для кредитов.
+  «В рынке» — отклонение от медианы остальных банков не больше
+  {str(thresholds.parity).replace(".", ",")} п.п. В расчёт не идут ставки, которые
+  не прошли проверку (раздел «Качество данных»), и условия не ЛНР.
+  Сравниваются только базовые ставки: приветственные, на «новые деньги»,
+  премиальные, зарплатные, с подпиской, короткие и нишевые продукты вынесены
+  в блок «Специальные условия» ниже — сравнивать их с обычными нельзя.
+  Витринная ставка — это лучший случай: перед выводом смотрите продукт по ссылке.</p>
+  {_gap_tiles(gaps or [])}
+  {_gaps_table(gaps or [], home)}
+</section>
+
+<section class="card">
+  <h2>Специальные условия и нишевые предложения</h2>
+  <p class="hint">Ставки, которые доступны не всем или не на весь срок: приветственные
+  и для новых клиентов, на «новые деньги», для премиальных и зарплатных клиентов,
+  с подпиской или платной услугой, вклады до месяца, нишевые продукты (ПДС,
+  драгметаллы, пенсионные, детские, валютные). Условие найдено в тексте рядом со
+  ставкой на странице банка — колонка «Где сказано».</p>
+  {_specials_block(specials or [])}
+</section>
+
+{_tiles(counts, changes, total_promos)}
+
+<section class="card">
+  <h2>Светофор по прямым аналогам</h2>
+  <p class="hint">Пары подобраны автоматически по сути продукта: та же программа, тот же
+  клиент (пенсионер, ребёнок, зарплатный…), тот же механизм и тип ставки. Похожие, но
+  не прямые аналоги в светофор не идут — они есть в своде по ЛНР.
+  Пороги: паритет до {str(thresholds.parity).replace(".", ",")} п.п.,
+  проигрыш от {str(thresholds.loss).replace(".", ",")} п.п.
+  Для вкладов и накопительных счетов выгодой клиента считается ставка выше, для кредитов — ниже.</p>
+  {_traffic_table(comparisons)}
+</section>
+
+<section class="card">
+  <h2>Охват розницы: банк × категория</h2>
+  <p class="hint">Все категории Розничного блока. Ставки сравниваются по вкладам,
+  счетам, кредитам, ипотеке и кредитным картам. По инвестициям, страхованию, НПФ,
+  переводам, лояльности, ячейкам и валюте — факт наличия раздела у банка со
+  ссылкой на него. Ссылки взяты из меню сайта банка при сборе; число — сколько
+  продуктов агент собрал в категории.</p>
+  {_coverage_block(coverage_matrix or {}, catalog_banks or list((catalog or {}).keys()))}
+</section>
+
+<section class="card">
+  <h2>Каталог продуктов</h2>
+  <p class="hint">Все розничные продукты, найденные на сайтах банков, — в том числе те,
+  для которых пара в светофоре не настроена. Нажмите на категорию, чтобы раскрыть.
+  «Не найдена» — сборщик не нашёл ставку на странице продукта (бывает, что она
+  только в калькуляторе или документе); цифру мы не додумываем.
+  «ПСК» — указана только полная стоимость кредита, она не равна ставке.
+  Название ведёт на страницу-источник.</p>
+  {_catalog(catalog or {}, catalog_banks or list((catalog or {}).keys()), lnr_status or {})}
+</section>
+
+<section class="card">
+  <h2>Качество данных</h2>
+  <p class="hint">Покрытие — доля продуктов, у которых ставка найдена и прошла проверки:
+  вклад не выше ключевой ЦБ больше чем на 3 п.п., кредит не дешевле ключевой без
+  госпрограммы, ПСК не ниже ставки, регион подтверждён. Для карт без ставки,
+  страховки и акций покрытие не считается — у них ключевой параметр не ставка.</p>
+  {_reference_block(references or [])}
+  {_crawl_block(crawl or {})}
+  {_quality_block(quality_rows or [], manual or [])}
+</section>
+
+{delta_section}
+
+<section class="card">
+  <h2>Изменения за неделю</h2>
+  <p class="hint">Сопоставление с предыдущим успешным сбором.</p>
+  {_changes_block(changes)}
+</section>
+
+{history_section}
+
+<section class="card">
+  <h2>Акции: сравнительный анализ по сегментам</h2>
+  <p class="hint">Только действующие предложения — завершившиеся отсеяны.
+  Внутри сегмента сравнивается однотипная выгода: кешбэк с кешбэком, ставка со ставкой.
+  Если размеченных акций у банка нет, вывод строится по условиям его продуктов —
+  отсутствие промо-баннера не означает отсутствие продукта.
+  Данные собраны с публичных сайтов банков.</p>
+  {_promo_analysis(promo_segments, expired_promos)}
+</section>
+
+<footer>
+  Источники — публичные страницы банков, раздел для частных лиц,
+  регион запроса «{e(region)}».<br>
+  «Единые условия по РФ» — на сайте банка нет отдельных условий для ЛНР
+  и новых территорий, поэтому действуют общероссийские; они участвуют
+  в сравнении наравне с луганскими.<br>
+  Банки, которые работают только в ЛНР (например, ЦМР), выбора региона
+  не имеют — условия на их сайтах и есть луганские.<br>
+  «Регион на сайте не выбран» — регион на сайте выбирается, но в сборе
+  не задан, и условия получены по умолчанию сайта, как правило московские.
+  Сравнивать их с луганскими напрямую нельзя.<br>
+  Ставки указаны как минимальные заявленные и носят справочный характер:
+  фактическая ставка определяется индивидуально. Перед использованием
+  в управленческих решениях сверьтесь с первоисточником по ссылке в строке продукта.
+</footer>
+</div></body></html>""")
+
+
+def write_report(path: str | Path, html_text: str) -> Path:
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(html_text, encoding="utf-8")
+    return path

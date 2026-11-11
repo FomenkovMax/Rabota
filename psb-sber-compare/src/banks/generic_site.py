@@ -1,0 +1,373 @@
+"""Разбор условий с обычной страницы банка — по видимому тексту.
+
+Для ПСБ мы разбираем структурированный JSON, и это лучший случай. У
+остальных банков такого состояния нет: условия свёрстаны карточками, а
+часть подгружается скриптами. Там приходится читать то же, что видит
+человек, — отрендеренный текст.
+
+Разбор по тексту заведомо грубее разбора по структуре, поэтому здесь
+важно не делать вид, что точность та же. Модуль извлекает только то, что
+однозначно читается: название продукта и ставку рядом с ним. Всё
+сомнительное остаётся пустым, а не заполняется догадкой.
+"""
+
+from __future__ import annotations
+
+import logging
+import re
+from dataclasses import dataclass
+from typing import Iterable
+
+from ..psb.parser import Product, parse_money, parse_rates, parse_term_months
+
+log = logging.getLogger(__name__)
+
+# Дробная часть необязательна: у Сбера половина витрины подписана
+# целыми — «до 14%», «до 22%».
+_RATE_LINE = re.compile(r"(?:от|до|до\s+)?\s*\d{1,2}(?:[,.]\d{1,2})?\s?%")
+
+# Ставка, выраженная через чужую величину: «Ставка ЦБ минус 2%». Число
+# здесь — поправка, а не условие вклада, и выдавать его за ставку нельзя.
+_RELATIVE_RATE = re.compile(r"ключев\w*\s+ставк|ставк\w*\s+цб|цб\s*[+−+-]|"
+                            r"мину́?с\s*\d|плюс\s*\d|"
+                            # «Ставка ниже до 5%» у рефинансирования ВТБ —
+                            # на сколько снизится ставка, а не сама ставка.
+                            r"(?:ниже|выше|снизим|снижени\w*)\s+(?:на|до)\s*\d", re.I)
+
+# Процент на странице банка — далеко не всегда ставка. На карточке
+# семейной ипотеки Сбера первой строкой идёт «Первоначальный взнос от
+# 20,1%»: принятый за ставку, он переворачивает сравнение, потому что
+# у ипотеки меньшая ставка лучше, а взнос к ставке отношения не имеет.
+# Вырезается вместе с числом: от слова-признака до ближайшего процента.
+# Класс [^%] не даёт захватить чужой процент, поэтому совпадение всегда
+# обрывается на своём. Так строка «При взносе от 20,1% ставка 11,3%
+# годовых» теряет взнос и сохраняет ставку, в каком бы порядке они ни
+# стояли.
+_NOT_A_RATE = re.compile(
+    r"(?:первоначальн\w*\s+)?"
+    r"(?:взнос\w*|комисси\w*|к[еэ]шб[еэ]к\w*|cashback|скидк\w*|страхов\w*|"
+    r"ндфл|удержан\w*|дол[яию]\w*|долей|аванс\w*|"
+    # «доходность до 15,21%» — эффективная доходность с капитализацией,
+    # а не ставка вклада: сравнивать её со ставками других банков нельзя.
+    r"доходност\w*|эффективн\w*\s+ставк\w*)"
+    r"[^%]{0,40}?\d{1,3}(?:[,.]\d{1,2})?\s?%",
+    re.I,
+)
+# Процент, за которым сказано, от чего он: «до 80% от стоимости
+# недвижимости» — это доля, а не ставка.
+_SHARE_AFTER = re.compile(
+    # «79,9% договорной стоимости», «60% оценочной стоимости» (Сбер, сбор
+    # 28.10.2026) — доля, а не ставка: прилагательное перед «стоимости».
+    r"\d{1,3}(?:[,.]\d{1,2})?\s?%\s*(?:(?:от|из)\s+)?"
+    r"(?:[а-яё]+(?:ой|ая|ую|ого|ей)\s+)?(?:стоимост|цен|суммы|рыночн|"
+    r"дохода|платеж|покупк|зарплат|мил[ьи]|бонус|балл|чек|к[еэ]шб[еэ]к|cashback|"
+    # «До 6% скидка на покупки» (кредитная карта ВТБ, 28.10.2026).
+    r"скидк|"
+    # «До 7% за авиабилеты», «2% за повседневные покупки» — кешбэк по
+    # категориям у карт Т-Банка (29.10.2026), «0,025% за сделку» — комиссия.
+    r"за\s+(?:авиа|отел|тур|ж/?д|ж\.\s?д|билет|повседневн|такси|кафе|рестора|"
+    r"супермаркет|продукт|аптек|азс|топлив|транспорт|категори|сделк|путешеств|"
+    r"развлечен|кино|одежд|связь|подписк|перевод|сняти))\w*",
+    re.I,
+)
+
+# Подпись под цифрой. У Сбера число и его смысл стоят отдельными строками:
+# «от 20,1%», ниже — «первоначальный взнос». Сама строка с числом выглядит
+# как ставка, понять, что это не она, можно только по подписи.
+_NOT_RATE_CAPTION = re.compile(
+    r"^(?:(?:первоначальн|перв)\w*\s+)?взнос|^к[еэ]шб[еэ]к|"
+    r"^от\s+(?:рыночн\w*\s+)?(?:стоимост|цен|суммы)|"
+    r"^стоимост|^(?:скидк|комисси|дол[яи]|аванс|снижени|возврат|бонус)\w*|"
+    r"снизил|сократил|баллами|бонусами|начислени\w*\s+бонус|бонусов|"
+    r"^доходност|^эффективн|"
+    # «до 50% / за покупки у партнеров» (ВТБ, 29.10.2026) — кешбэк.
+    r"^за\s+покупк\w*\s+у\s+партн|^у\s+партн[её]р|^в\s+выбранн\w*\s+категори|"
+    # «До 5% / Ставка с залогом ниже» (ВТБ, 28.10.2026) — на сколько ниже.
+    r"^ставк\w*[^.]{0,30}\b(?:ниже|меньше|выше)\b",
+    re.I,
+)
+
+
+def caption_rules_out(caption: str) -> bool:
+    """Подпись рядом с числом говорит, что это не ставка."""
+    return bool(_NOT_RATE_CAPTION.search((caption or "").strip()))
+
+
+_PURE_RATE = re.compile(r"^\s*(?:от|до)?\s*\d{1,2}(?:[,.]\d{1,2})?\s?%\s*$", re.I)
+
+# Строки, которые ставкой быть не могут, хотя процент в них есть.
+_NOISE = re.compile(
+    r"ключев\w*\s+ставк|минимальн\w*\s+гарантирован|инфляц|"
+    r"комисси\w*\s+за|пеня|неустойк|штраф|"
+    # ПСК на карточке стоит рядом со ставкой: «Полная стоимость кредита
+    # 17,016 – 24,135%», ниже «Ставка от 16,9%». Ставка — вторая строка.
+    r"полн\w*\s+стоимост|\bпск\b", re.I
+)
+
+# Слово, обозначающее продукт.
+_PRODUCT_WORD = re.compile(
+    r"вклад|кредит|карт|счет|счёт|ипотек|накопительн|депозит", re.I
+)
+# Кавычки в названии — сильный признак продукта: «ЦМР Старт», "Копилка".
+_QUOTED = re.compile(r"[«\"\u201c\u2018][^»\"\u201d\u2019]{2,40}[»\"\u201d\u2019]")
+# Строки-характеристики: слово продукта в них есть, а продуктом они не являются.
+# «Ежемесячно на вклад» — это способ выплаты процентов из калькулятора,
+# и без этой проверки он попадает в отчёт как название продукта.
+_ATTRIBUTE_LINE = re.compile(
+    r"^(ежемесячн|ежеквартальн|в\s+конце\s+срока|пополнение|снятие|"
+    r"доходность|выплата|капитализац|процентная\s+ставка|ставка|срок|"
+    r"сумма|валюта|минимальн|максимальн|доход\s+по|при\s+|для\s+|"
+    r"на\s+имя|условия|способ)", re.I
+)
+_SERVICE_LINE = re.compile(
+    r"^(главная|меню|контакты|документы|тариф|подробнее|оформить|"
+    r"открыть|рассчитать|все |архив|©|версия)", re.I
+)
+
+# Заголовок раздела — не продукт. «Вклады и счета» содержит слово «вклад»
+# и без этой проверки перехватывает ставку у первой карточки под ним,
+# а неверная привязка ставки хуже, чем её отсутствие.
+_SECTION_HEADING = re.compile(
+    r"^(вклад(ы|у)?|кредит(ы|ование)?|карт(а|ы)|счет(а|ов)?|счёт(а|ов)?|"
+    r"депозит(ы)?|ипотек(а|и)|накопительные\s+счета|дебетовые\s+карты|"
+    r"кредитные\s+карты|банковские\s+карты|вклады\s+и\s+счета|"
+    r"кредиты\s+и\s+карты|частным\s+клиентам|физическим\s+лицам)"
+    r"\s*$", re.I
+)
+
+
+@dataclass
+class TextProduct:
+    """Продукт, вычитанный из текста страницы."""
+
+    title: str
+    rate_min: float | None = None
+    rate_max: float | None = None
+    rate_raw: str = ""
+    context: str = ""
+
+
+def _is_product_title(line: str) -> bool:
+    if len(line) < 5 or len(line) > 90:
+        return False
+    if _SERVICE_LINE.match(line):
+        return False
+    if _PURE_RATE.match(line):
+        return False
+    if _SECTION_HEADING.match(line):
+        return False
+    if _ATTRIBUTE_LINE.match(line):
+        return False
+
+    # Название в кавычках — почти всегда продукт.
+    if _QUOTED.search(line) and _PRODUCT_WORD.search(line):
+        return True
+
+    # Иначе слово продукта должно стоять в начале названия: «Вклад …»,
+    # «Кредит наличными», «Дебетовая карта …». Если оно встретилось
+    # в середине фразы, это, как правило, описание, а не заголовок.
+    head = " ".join(line.split()[:2])
+    return bool(_PRODUCT_WORD.search(head))
+
+
+def rates_of(line: str) -> list[float] | None:
+    """Ставки строки, если это вообще строка про ставку."""
+    if not _RATE_LINE.search(line):
+        return None
+    if _RELATIVE_RATE.search(line):
+        return None
+    # Сначала доля с подписью после числа («до 10% кешбэка»), потом слова-
+    # исключения: в обратном порядке слово уходило раньше, а «до 10%»
+    # оставалось ставкой (кредитная СберКарта, сбор 28.10.2026).
+    measured = _NOT_A_RATE.sub(" ", _SHARE_AFTER.sub(" ", line))
+    if not _RATE_LINE.search(measured):
+        return None
+    # 0,01 % — настоящая ставка счетов и валютных вкладов Сбера («Ставка —
+    # 0,01% годовых», 29.10.2026), но только с подписью: голые доли процента
+    # бывают комиссиями и неустойками.
+    floor = 0.01 if _TINY_RATE_OK.search(measured) else 0.1
+    values = [r for r in parse_rates(measured) if floor <= r <= 100]
+    return values or None
+
+
+_TINY_RATE_OK = re.compile(r"ставк\w*|годовых", re.I)
+
+
+def _rate_above_title(lines: list[str], titles: list[int]) -> bool:
+    """Где на карточках этой страницы стоит ставка — над названием или под.
+
+    У ПСБ и ЦМР ставка идёт под названием, у Сбера — над ним: «до 14%»,
+    следом «Вклад «Сбер Рядом»». Отдельно взятая тройка «название,
+    ставка, название» подходит обоим случаям, поэтому решает страница
+    целиком: для каждого названия смотрим, чья ставка ближе — та, что
+    выше, или та, что ниже, — и берём вёрстку, за которую голосов
+    больше. При равенстве остаётся привычная, с ставкой под названием.
+    """
+    mark = set(titles)
+    above_wins = below_wins = 0
+
+    for position, index in enumerate(titles):
+        stop_up = titles[position - 1] if position else -1
+        distance_up = None
+        for step in range(index - 1, stop_up, -1):
+            if step in mark:
+                break
+            if rates_of(lines[step]) is not None:
+                distance_up = index - step
+                break
+
+        stop_down = titles[position + 1] if position + 1 < len(titles) else len(lines)
+        distance_down = None
+        for step in range(index + 1, stop_down):
+            if rates_of(lines[step]) is not None:
+                distance_down = step - index
+                break
+
+        if distance_up is not None and (distance_down is None
+                                        or distance_up < distance_down):
+            above_wins += 1
+        elif distance_down is not None:
+            below_wins += 1
+
+    return above_wins > below_wins
+
+
+def extract_products(text: str, *, window: int = 6) -> list[TextProduct]:
+    """Ищет пары «название продукта ↔ ставка рядом».
+
+    Окно в несколько строк — компромисс: в карточке название и ставка
+    стоят рядом, но между ними бывают подписи вроде «Пополнение» и
+    «Снятие». Брать ставку издалека нельзя: так она приклеится к чужому
+    продукту, а неверная привязка хуже отсутствия данных.
+
+    Сторона, с которой стоит ставка, у банков разная, поэтому сначала
+    определяется вёрстка страницы, а потом по ней разбираются карточки.
+    """
+    lines = [l.strip() for l in text.split("\n") if l.strip()]
+    titles = [i for i, line in enumerate(lines) if _is_product_title(line)]
+    if not titles:
+        return []
+
+    mark = set(titles)
+    found: list[TextProduct] = []
+    used_rate_lines: set[int] = set()
+
+    if _rate_above_title(lines, titles):
+        for index in titles:
+            above = index - 1
+            if above < 0 or above in used_rate_lines or above in mark:
+                continue
+            values = rates_of(lines[above])
+            if values is None or _NOISE.search(lines[above]):
+                continue
+            before = lines[above - 1] if above > 0 and above - 1 not in mark else ""
+            if caption_rules_out(before):
+                continue
+            used_rate_lines.add(above)
+            found.append(TextProduct(
+                title=lines[index],
+                rate_min=min(values),
+                rate_max=max(values),
+                rate_raw=lines[above],
+                context=" · ".join(lines[above:index + 3])[:300],
+            ))
+        return found
+
+    for index in titles:
+        for offset in range(1, window + 1):
+            candidate_index = index + offset
+            if candidate_index >= len(lines) or candidate_index in mark:
+                break
+            if candidate_index in used_rate_lines:
+                continue
+            candidate = lines[candidate_index]
+            if _NOISE.search(candidate):
+                continue
+            values = rates_of(candidate)
+            if values is None:
+                continue
+            after = candidate_index + 1
+            if after < len(lines) and after not in mark and caption_rules_out(lines[after]):
+                continue
+            used_rate_lines.add(candidate_index)
+            found.append(TextProduct(
+                title=lines[index],
+                rate_min=min(values),
+                rate_max=max(values),
+                rate_raw=candidate,
+                context=" · ".join(lines[index:candidate_index + 2])[:300],
+            ))
+            break
+
+    return found
+
+
+# Продукт сам говорит, что он такое, — и это надёжнее страницы, на
+# которой он оказался. У Сбера «Накопительный счёт Рядом» стоит на
+# витрине вкладов; записанный вкладом, он сравнивался бы со вкладами
+# конкурента, хотя его пара — их накопительный счёт.
+_CATEGORY_BY_TITLE = (
+    # «Накопительный ВТБ-Счет» — между словами название банка через дефис.
+    (re.compile(r"накопительн\w*\s+(?:\w+-)?сч[её]т", re.I), "Накопительные счета"),
+    # «Сберегательный счёт», «Вклад до востребования» Сбера (28.10.2026) — по
+    # сути счета: деньги снимаются в любой момент, срока нет.
+    (re.compile(r"сберегательн\w*\s+сч[её]т|до\s+востребования", re.I), "Накопительные счета"),
+    # «Кредитная СберКарта» — карта внутри слова, поэтому \w* перед «карт».
+    (re.compile(r"кредитн\w*\s+\w*карт", re.I), "Кредитные карты"),
+    (re.compile(r"дебетов\w*\s+\w*карт", re.I), "Дебетовые карты"),
+    (re.compile(r"ипотек", re.I), "Ипотека"),
+    # «Пополняемый вклад» на витрине накоплений Т-Банка — вклад, а не счёт.
+    (re.compile(r"\bвклад\b", re.I), "Вклады"),
+)
+
+
+def category_for(title: str, page_category: str) -> str:
+    """Категория по названию продукта, если оно однозначно; иначе — по странице."""
+    for pattern, category in _CATEGORY_BY_TITLE:
+        if pattern.search(title):
+            return category
+    return page_category
+
+
+def to_products(items: Iterable[TextProduct], *, bank: str, category: str,
+                region: str, collected_at: str, source_url: str) -> list[Product]:
+    """Переводит вычитанное в общую модель продукта."""
+    out: list[Product] = []
+    seen: set[str] = set()
+
+    for item in items:
+        key = item.title.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+
+        product = Product(
+            bank=bank,
+            # Страница одна на несколько продуктов: ключ — адрес плюс
+            # название, иначе история изменений склеит продукты в один.
+            url_path=f"{source_url}#{key}",
+            title=item.title,
+            category=category_for(item.title, category),
+            region=region,
+            rate_min=item.rate_min,
+            rate_max=item.rate_max,
+            rate_raw=item.rate_raw,
+            source_url=source_url,
+            collected_at=collected_at,
+        )
+        if item.context:
+            product.terms["Контекст на странице"] = item.context
+        # Сумму и срок пробуем достать из того же контекста — но только
+        # если они там есть явно.
+        amounts = parse_money(item.context)
+        if amounts:
+            product.amount_min, product.amount_max = min(amounts), max(amounts)
+            product.amount_raw = item.context[:200]
+        months = parse_term_months(item.context)
+        if months:
+            product.term_min_months, product.term_max_months = min(months), max(months)
+            product.term_raw = item.context[:200]
+
+        out.append(product)
+
+    return out

@@ -1,0 +1,317 @@
+"""Адаптеры Сбера, ВТБ, Т-Банка и РостФинанса.
+
+ГенБанк удалён 07.10.2026: присутствие в ЛНР по аудиту не подтвердилось.
+
+Все четверо читаются браузером. Разница между ними — адреса разделов и
+то, какую проверку сайт показывает до содержимого.
+
+Про `verified`. Сначала все четверо были написаны по разобранной структуре
+сайтов без живой проверки, и отчёт помечал их данные как неподтверждённые.
+С 28.10 по 02.11.2026 на сервере прошли полные живые сборы всех четырёх
+(снимки страниц разобраны построчно, ставки сверены с текстом страниц) —
+флаг снят. Новый банк получает `verified = True` только после такого же
+живого сбора.
+"""
+
+from __future__ import annotations
+
+import re
+
+from .base import registry
+from .crawl_adapter import CrawlAdapter
+
+
+@registry.register
+class SberAdapter(CrawlAdapter):
+    """Сбер: обход розницы по ссылкам, условия — со страницы каждого продукта.
+
+    Витрины Сбера показывают ставку не у всех продуктов: у кредитов на
+    карточке только сумма и срок. Поэтому с витрин собираются ссылки, а
+    условия берутся со страницы продукта; ставка с карточки витрины —
+    запасная, с пометкой источника.
+    """
+
+    code = "sber"
+    title = "Сбер"
+    strategy = "браузер: обход витрин и страниц продуктов"
+    protection = "JS-челлендж F5 (переменная bobcmn в ответе)"
+    verified = True
+
+    base_url = "https://www.sberbank.ru"
+    seeds = (
+        # Проверено по обходу 06.10.2026: /contributions/savings отдаёт 404,
+        # а /credits/homenew — витрина всех ипотечных программ.
+        "https://www.sberbank.ru/ru/person/contributions/deposits",
+        "https://www.sberbank.ru/ru/person/credits/money",
+        "https://www.sberbank.ru/ru/person/credits/homenew",
+        "https://www.sberbank.ru/ru/person/bank_cards/credit_cards",
+        "https://www.sberbank.ru/ru/person/bank_cards/debit",
+    )
+    # Главные продукты для сравнения — их адреса видны в обходе 06.10.2026.
+    # Сбер пускает около 30 страниц за сеанс, поэтому они идут первыми.
+    priority = (
+        "https://www.sberbank.ru/ru/person/bank_cards/debit/sberkarta",
+        "https://www.sberbank.ru/ru/person/bank_cards/credit_cards/credit_sberkarta",
+        "https://www.sberbank.ru/ru/person/credits/home/family",
+        # Госпрограммы ипотеки — в обходе 07.10.2026 страница осталась в
+        # очереди, и 9 программ вышли «не найдено у Сбера» (аудит).
+        "https://www.sberbank.ru/ru/person/credits/home/gos_2020",
+        "https://www.sberbank.ru/ru/person/credits/money/consumer_unsecured",
+        "https://www.sberbank.ru/ru/person/credits/money/consumer_refinance",
+        "https://www.sberbank.ru/ru/person/credits/money/avtokredit",
+        "https://www.sberbank.ru/ru/person/credits/home/buying_project",
+        "https://www.sberbank.ru/ru/person/credits/home/buying_complete_house",
+        "https://www.sberbank.ru/ru/person/contributions/deposits/vklad/vklad_luchshiy_procent",
+        "https://www.sberbank.ru/ru/person/contributions/deposits/vklad_kluchevoy",
+        "https://www.sberbank.ru/ru/person/contributions/deposits/nakopi",
+        # Подписка «СберБлиже» (вместе с ней — вклад «Сбер Рядом»): страница
+        # вне /ru/person, по ссылкам из разделов розницы до неё не дойти
+        # (сбор 02.11.2026 — не найдена, адрес прислал заказчик).
+        "https://www.sberbank.ru/ru/sberblizhe",
+    )
+    # Порядок важен: точный префикс раньше общего.
+    families = (
+        ("/ru/person/contributions/deposits/nakopi", "Накопительные счета"),
+        ("/ru/person/credits/homenew", "Ипотека"),
+        ("/ru/person/contributions", "Вклады"),
+        ("/ru/person/credits/home", "Ипотека"),
+        ("/ru/person/credits", "Кредиты"),
+        # Префикс сравнивается по целому сегменту пути: «…/credit» не ловит
+        # «…/credit_cards/credit_sberkarta_fix» (29.10.2026 «Карта Фикс» ушла
+        # в «Банковские карты»).
+        ("/ru/person/bank_cards/credit_cards", "Кредитные карты"),
+        ("/ru/person/bank_cards/credit", "Кредитные карты"),
+        ("/ru/person/bank_cards/debit", "Дебетовые карты"),
+        ("/ru/person/bank_cards", "Банковские карты"),
+        ("/ru/sberblizhe", "Специальные предложения"),
+    )
+    # Служебное внутри розничных разделов: из меню Сбера это «Полезное» —
+    # калькуляторы, вопросы, налоги, уведомления, компенсации, выплаты АСВ,
+    # сейфы, номинальный счёт, ИИ-помощник, кредитная история. Акции
+    # собираются отдельно и в каталог продуктов не идут.
+    skip = re.compile(
+        r"(calc|kalkul|faq|question|vopros|help|pomosh|nalog|tax|notif|uvedoml|"
+        r"compens|kompens|asv|safe|seif|sejf|nominal|assistant|gigachat|/ai\b|"
+        r"podderzh|support|potencial|potential|history|istori|archive|arhiv|"
+        r"document|dokument|tarif|stavki|prolong|prodlen|instruction|how_to|"
+        r"article|news|blog|promo|akci|action|"
+        # Рекламные дубли одного продукта: «кредит на 50 000 рублей», «на 2
+        # года», «с 18 лет», «в Казани», «без справок», «по паспорту»… В
+        # первом сборе они съели половину лимита страниц, а до семейной
+        # ипотеки и кредитных карт обход так и не дошёл.
+        r"[/_-]na[_-]\d|rublej|/s[_-]\d+[_-](let|goda)|/kredit[_-]s[_-]|/\d+[_-]dn|"
+        r"/s[_-]limitom|/kreditnaya-karta-\d|-million|"
+        r"/(sankt-peterburg|novosibirsk|ekaterinburg|kazan|nizhny-novgorod|"
+        r"chelyabinsk|samara|omsk|perm|ufa|rostov-na-donu|krasnoyarsk|voronezh|"
+        r"volgograd|moskva|krasnodar|saratov|tyumen|izhevsk|barnaul|irkutsk)\b|"
+        r"/vklad-v-|/bez-|/bez_|/po-pasportu|/na-kartu|/v-den-|/na-otpusk|"
+        r"/credit-na-svadbu|/na-telefon|/na-lecheniye|/tehnika$|/remont$|"
+        r"/necelevoy|/na-pokupku|/ekspress|/dlya-samozanyat|/dlya_samozanyat|"
+        r"/gallery|/izmenenie|onlajn-zayavka|/design_konstructor|/services/|"
+        # Очередь сбора 28.10.2026: A/B-копии страниц («_b»), заявки и заказ
+        # карты, склеенные адреса («…/home/ru/person/…»), магазины приложений,
+        # каникулы, урегулирование долга, права заёмщика, таблицы расчёта,
+        # SEO-подборки и партнёрские списки — не продукты.
+        r"_b$|/zayavka|/order_|/ru/person/.*/ru/person|/ru/person_new|/rustore|"
+        r"/app-gallery|/galaxy-store|kanikul|/uregulirovanie|/mirovoe|/moi-prava|"
+        r"/tablica|/seo/|/pos/|/transfer_payments|/collection|_sticker$|/sberfest|"
+        # Сбор 29.10.2026 (карта сайта): статьи и служебные страницы — отказ в
+        # кредите, условия погашения, заявки, отсрочка, комиссии, обременение,
+        # оценщики, калькуляторы.
+        r"/otkaz|delivery_and|/trns$|/order$|/sn_obr|/oc_org|pogashen|otsrochka|"
+        r"commission|/calk$|zayvka|/avtokredit/dc|"
+        # Снимок 29.10.2026: статьи и видео («/media»), розыск счетов,
+        # совместный доступ, счета для недееспособных, памятки для новых
+        # держателей карт и перевыпуска на «Мир», школьные сервисы, переводы
+        # страниц для нерезидентов на другие языки — не продукты.
+        r"/media(?:/|$)|/finder$|nedeesposob|sovmestnyi_dostup|nonresident-friendly_|"
+        r"/onboarding$|/debet_new/|school_services|/foreign/(?:en|tj|uz|kr|kg|kz)$|"
+        # Сверка с эталоном 03.11.2026: памятки, игры, страховка «в подарок»,
+        # замена карт, старые копии страниц, акции и функции карты — не продукты.
+        r"/lost_cards|/kids_day|/sberkarta_kids/sberkids|/sberterritoria|/visa_electron|"
+        r"/card_classic/maestro|/sberkarta/insurance|/pack/gold/zdorovie|/13-to-14|"
+        r"/vsp_1mln|/supreme_old|/credit_sberkarta/bnpl|/debet_new$|"
+        # Витрина пакетов («Повышаем») и услуга снятия наличных в магазинах —
+        # не продукты; сами пакеты (/pack/gold, /pack/zarp) остаются.
+        r"/bank_cards/pack$|/rural_cash)",
+        re.I,
+    )
+
+
+@registry.register
+class VtbAdapter(CrawlAdapter):
+    """ВТБ: обход розницы по ссылкам, как у Сбера.
+
+    По спецификации у ВТБ есть отдельная ипотека для новых регионов —
+    её страница в главных продуктах. Выбора города на сайте нет, поэтому
+    остальные условия — единые по РФ (region_mode: federal).
+    """
+
+    code = "vtb"
+    title = "ВТБ"
+    strategy = "браузер: обход витрин и страниц продуктов"
+    protection = "не проверено"
+    verified = True
+
+    base_url = "https://www.vtb.ru"
+    seeds = (
+        "https://www.vtb.ru/personal/vklady-i-scheta/",
+        "https://www.vtb.ru/personal/kredit/",
+        "https://www.vtb.ru/personal/ipoteka/",
+        "https://www.vtb.ru/personal/karty/kreditnye/",
+        "https://www.vtb.ru/personal/karty/debetovye/",
+    )
+    # Главные продукты — адреса из обхода 07.10.2026. Витрина вкладов ВТБ
+    # ссылается на десятки подборок и городов, и без этого списка лимит
+    # страниц уходил на них, а до ипотеки и карт обход не доходил.
+    priority = (
+        "https://www.vtb.ru/personal/ipoteka/new-regions/",
+        "https://www.vtb.ru/personal/kredit/nalichnymi/",
+        "https://www.vtb.ru/personal/kredit/refinansirovanie/",
+        "https://www.vtb.ru/personal/kredit/pod-zalog-avto/",
+        "https://www.vtb.ru/personal/ipoteka/novostrojki/",
+        "https://www.vtb.ru/personal/ipoteka/vtorichnoe-zhile/",
+        "https://www.vtb.ru/personal/ipoteka/it/",
+        "https://www.vtb.ru/personal/ipoteka/refinansirovanie/",
+        "https://www.vtb.ru/personal/ipoteka/stroitelstvo-doma/",
+        "https://www.vtb.ru/personal/vklady-i-scheta/vtb-vklad-r/",
+        "https://www.vtb.ru/personal/vklady-i-scheta/vklad-klyuchevoj/",
+        "https://www.vtb.ru/personal/vklady-i-scheta/vtb-schet/",
+        "https://www.vtb.ru/personal/vklady-i-scheta/den-v-plyuse/",
+        "https://www.vtb.ru/personal/vklady-i-scheta/socvklad/",
+        # Карты: в сборе 07.10.2026 до них не доходил лимит страниц (аудит).
+        "https://www.vtb.ru/personal/karty/debetovye/multikarta/",
+        "https://www.vtb.ru/personal/karty/kreditnye/vozmozhnosti/",
+        "https://www.vtb.ru/personal/karty/debetovye/detskaya/",
+    )
+    families = (
+        ("/personal/vklady-i-scheta/nakopitelnyi-schet", "Накопительные счета"),
+        ("/personal/vklady-i-scheta", "Вклады"),
+        ("/personal/ipoteka", "Ипотека"),
+        ("/personal/kredit", "Кредиты"),
+        ("/personal/karty/kreditnye", "Кредитные карты"),
+        ("/personal/karty/debetovye", "Дебетовые карты"),
+        ("/personal/karty", "Банковские карты"),
+    )
+    family_words = ()
+    skip = re.compile(
+        r"(calc|kalkul|faq|question|vopros|help|pomosh|nalog|tax|document|dokument|"
+        r"tarif|archive|arhiv|news|blog|promo|akci|action|business|biz|/legal|"
+        r"[/_-]na[_-]\d|rublej|/(moskva|sankt-peterburg|novosibirsk|ekaterinburg|kazan)\b|"
+        r"/bez-|/dlya-|/onlajn-zayavka|/form\b|/anketa|"
+        # Подборки, города и служебное в разделе вкладов ВТБ (обход 07.10.2026).
+        r"/vklad-\d|/vklady-(?!i-scheta)|/so-snyatiem|/sberezhenija$|/nakopitelnyy-chet-|"
+        r"/kurs-|/monety|metallicheskij|/seyfovye|/strahovanie|asv|/informacija|"
+        r"/restrukturizaciya|/spisok-partnerov|/katalog-nedvizhimosti|/maksimum-vygody|"
+        r"/zarplatnyj-proekt|/vtbpay|"
+        # Опция к вкладам («Надбавка за покупки») и программа лояльности
+        # («Дополнительные категории кешбэка») — не продукты (03.11.2026).
+        r"/vklady-i-scheta/traty|/programma-loyalnosti|"
+        # Языковые копии страниц («…/foreign/ZH», «/en», «/UZ», «/HI», 03.11.2026).
+        r"/(?:en|zh|uz|hi|tj|kg|kz|ky|tg|ar|tr)$|"
+        r"/(nizhniy-novgorod|chelyabinsk|yekaterinburg|krasnodar|rostov-na-donu|ufa|"
+        r"samara|voronezh|krasnoyarsk|tyumen|perm|volgograd|omsk|saratov|irkutsk|"
+        r"izhevsk|ryazan|barnaul|tolyatti|ulyanovsk|yaroslavl|khabarovsk|vladivostok|"
+        r"tomsk|kemerovo|novokuznetsk|orenburg|astrakhan|penza|lipetsk|kirov|tula|"
+        r"cheboksary|kaliningrad|kursk|stavropol|sochi|tver|belgorod|bryansk|ivanovo|"
+        r"vladimir|smolensk|kaluga|orel|tambov|kostroma|murmansk|arkhangelsk)$)", re.I)
+
+
+#: Разделы розницы по словам в адресе — для сайтов, структуру которых мы ещё
+#: не разбирали. Порядок важен: «кредитная карта» раньше «кредита» и «карты».
+RETAIL_WORDS: tuple[tuple[str, str], ...] = (
+    # Вклад раньше «savings»: у Т-Банка вклад живёт по адресу /savings/deposit.
+    (r"vklad|deposit", "Вклады"),
+    (r"nakopit|savings|saving-account", "Накопительные счета"),
+    (r"ipotek|mortgage", "Ипотека"),
+    (r"credit[-_]?card|kreditn\w*[-_]kart", "Кредитные карты"),
+    (r"debit|debet", "Дебетовые карты"),
+    (r"kredit|credit|loan|zaim|zaym", "Кредиты"),
+    (r"/cards?\b|/kart", "Банковские карты"),
+)
+
+#: Не розница для физлиц и не продукты: бизнес, документы, новости, помощь.
+NOT_RETAIL = re.compile(
+    r"(business|biz|/corp|corporate|/legal|/yur|/msb|/sme|/ip/|partner|investor|"
+    r"about|news|press|career|vacanc|help|faq|support|document|tarif|"
+    r"calc|kalkul|promo|akci|blog|journal|/media|login|auth)",
+    re.I,
+)
+
+
+@registry.register
+class TbankAdapter(CrawlAdapter):
+    """Т-Банк: условия едины по РФ (подтвердил заказчик 07.10.2026).
+
+    Офисов в ЛНР у банка нет, обслуживание онлайн. Структуру сайта мы ещё
+    не разбирали, поэтому раздел определяется по словам в адресе; после
+    первой проверки (check-bank tbank) сюда лягут точные витрины.
+    """
+
+    code = "tbank"
+    title = "Т-Банк"
+    strategy = "браузер: обход витрин и страниц продуктов"
+    protection = "не проверено"
+    verified = True
+
+    base_url = "https://www.tbank.ru"
+    # Главные продукты — по обходу 07.10.2026; иначе лимит уходит на
+    # рекламные копии карты Black («для студентов», «именная»…).
+    priority = (
+        "https://www.tbank.ru/cards/debit-cards/tinkoff-black/",
+        "https://www.tbank.ru/cards/credit-cards/tinkoff-platinum/",
+        "https://www.tbank.ru/loans/cash-loan/",
+        "https://www.tbank.ru/loans/refinance/",
+        "https://www.tbank.ru/loans/auto-loan/",
+        "https://www.tbank.ru/savings/deposit/",
+        "https://www.tbank.ru/savings/saving-account/",
+        "https://www.tbank.ru/cards/debit-cards/tinkoff-black/pension/",
+    )
+    seeds = (
+        "https://www.tbank.ru/",
+        "https://www.tbank.ru/cards/debit-cards/",
+        "https://www.tbank.ru/cards/credit-cards/",
+        "https://www.tbank.ru/loans/",
+        "https://www.tbank.ru/mortgage/",
+        "https://www.tbank.ru/savings/",
+    )
+    family_words = RETAIL_WORDS
+    skip = re.compile(NOT_RETAIL.pattern + "|" + (
+        r"/city/|/foreign|/form$|/(dlya|bez|s)-|virtualnaya|beskontaktnaya|"
+        r"nakopitelnaya-karta|mezhdunarodnaya|imennaya|besplatnaya|momentalnaya|"
+        r"/debit-cards/(premium|travel|driver|games|shopping)$|insurance|"
+        # Сбор 28.10.2026: «как погасить», карты сайта, формы заявок и
+        # оплаты, партнёрские рассрочки в магазинах — не продукты.
+        r"how-repay|/sitemap|/form/|/new-form|/payment$|/purpose$|/service$|"
+        # Языковые копии страниц: «…/islam-card/eng» (03.11.2026).
+        r"/(?:eng?|uz|tj|kg|kz)$|"
+        r"/pos-loans/[\w/-]+|/credit-history|/payments/|/specialty-check"), re.I)
+
+
+@registry.register
+class RostfinanceAdapter(CrawlAdapter):
+    """РостФинанс — сайт https://www.rostfinance.ru/ (дал заказчик 07.10.2026).
+
+    Структуру сайта мы ещё не видели: обход начинается с главной, раздел
+    определяется по словам в адресе. После первой проверки
+    (check-bank rostfinance) сюда лягут точные витрины.
+    """
+
+    code = "rostfinance"
+    title = "РостФинанс"
+    strategy = "браузер: обход витрин и страниц продуктов"
+    protection = "не проверено"
+    verified = True
+
+    base_url = "https://www.rostfinance.ru"
+    # Без «/» в конце адреса сайт отдаёт 404 (обход 07.10.2026).
+    keep_slash = True
+    seeds = (
+        "https://www.rostfinance.ru/",
+        "https://www.rostfinance.ru/deposits/",
+        "https://www.rostfinance.ru/credit/",
+        "https://www.rostfinance.ru/mortgage/",
+        "https://www.rostfinance.ru/cards/",
+    )
+    family_words = RETAIL_WORDS
+    skip = NOT_RETAIL
