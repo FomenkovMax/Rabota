@@ -2,8 +2,8 @@
 
 Аудит 07.10.2026 просил матрицу «банк × категория» по всему Розничному
 блоку: вклады, карты, кредиты, ипотека, но и инвестиции, страхование,
-НПФ, переводы, лояльность, ячейки, валюта. Ставки по последним
-сравнивать не договорились — достаточно факта «есть у банка» со ссылкой.
+НПФ, переводы, лояльность, ячейки, валюта. Условия каждого продукта
+и его региональная доступность проверяются отдельно.
 
 Факт берётся из ссылок самого сайта банка: меню и подвал любой страницы
 ведут во все разделы розницы. Ссылка на раздел — проверяемое
@@ -41,7 +41,7 @@ CATEGORIES = (
 # — вклад, а не инвестиции; «/deposits/vklady-dolgosrochnye» — вклад, а
 # не ПДС; «/bank_cards/credit» — кредитная карта.
 _PREFIX = {"ru", "en", "person", "personal", "individual", "individuals",
-           "chastnym-licam", "fiz", "private", "retail"}
+           "chastnym-licam", "chastnym-litsam", "fiz", "private", "retail"}
 _SECTION: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("Премиальное обслуживание", re.compile(r"^(?:premium|premier|privilegia|private-banking|sberpremier|sber1|sberfirst)$", re.I)),
     ("Страхование", re.compile(r"^(?:strahov\w*|insurance|polis\w*)$", re.I)),
@@ -97,7 +97,7 @@ def classify(url: str) -> str | None:
         return "НПФ и ПДС"
     if any(re.fullmatch(r"(?:insurance|strahovanie|strakhovanie|strahovye-produkty)", s, re.I) for s in rest):
         return "Страхование"
-    if any(re.search(r"^(?:precious[-_]?metals?|dragmetall\w*|metallichesk[\w-]*|monety|oms)$", s, re.I) for s in segments):
+    if any(re.search(r"^(?:precious[-_]?metals?|dragmetall\w*|metallichesk[\w-]*|monety(?:-iz-dragotsennykh-metallov)?|slitki-iz-zolota|oms)$", s, re.I) for s in segments):
         return "Инвестиции"
     if any(re.search(r"^(?:programma[-_]loyalnosti|loyalty)$", s, re.I) for s in segments):
         return "Лояльность и кешбэк"

@@ -23,7 +23,15 @@ class GenbankAdapter(CrawlAdapter):
     keep_slash = True
 
     def _family(self, url: str) -> str:
-        if urlsplit(url).path == "/":
+        path = urlsplit(url).path
+        if path == "/":
+            return "Прочее"
+        if path.startswith("/chastnym-litsam/discounts/"):
+            return "Лояльность и кешбэк"
+        if path.startswith(("/chastnym-litsam/raschetno-kassovoe-obsluzhivanie/",
+                            "/chastnym-litsam/yuridicheskie-i-konsaltingovye-uslugi/",
+                            "/chastnym-litsam/uslugi/", "/chastnym-litsam/tariff/",
+                            "/services/")):
             return "Прочее"
         category = coverage.classify(url)
         return {"Потребительские кредиты": "Кредиты"}.get(category, category or "")
