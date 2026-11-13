@@ -6,6 +6,19 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from src import tariffs
+from datetime import date
+
+
+def test_tariff_selection_ignores_future_expired_and_archived_editions():
+    links = [["https://bank.example/future.pdf", "Тарифы действуют с 24.11.2026"],
+             ["https://bank.example/expired.pdf", "Тарифы действуют по 02.09.2026"],
+             ["https://bank.example/archive.pdf", "Архивные тарифы"],
+             ["https://bank.example/current.pdf", "Тарифы действуют по 23.11.2026"]]
+    assert tariffs.tariff_links(links, on=date(2026, 11, 13)) == [links[-1][0]]
+    assert tariffs.tariff_links(links, on=date(2026, 11, 24)) == [links[0][0]]
+    assert tariffs.current_document_label("Тарифы от 01.01.2020", on=date(2026, 11, 13))
+    assert tariffs.current_document_label("Тарифы по 13.11.2026", on=date(2026, 11, 13))
+    assert not tariffs.current_document_label("Тарифы до 13.11.2026", on=date(2026, 11, 13))
 
 
 def test_tariff_links_skip_requirements_and_loyalty():
