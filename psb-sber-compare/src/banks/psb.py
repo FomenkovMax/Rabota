@@ -7,6 +7,8 @@
 from __future__ import annotations
 
 import logging
+import html
+import re
 from datetime import datetime
 
 from .. import coverage, market
@@ -16,6 +18,13 @@ from ..psb.parser import parse_product
 from .base import BankAdapter, CollectResult, registry
 
 log = logging.getLogger(__name__)
+
+
+def selected_city(page_html: str) -> str:
+    """City returned in the bank's selected-location header, not its city list."""
+    match = re.search(r'<[^>]+class=[\"\'][^\"\']*\bheader-location__text\b[^\"\']*[\"\'][^>]*>(.*?)</',
+                      page_html, re.S | re.I)
+    return html.unescape(re.sub(r"<[^>]+>", "", match.group(1))).strip() if match else ""
 
 
 @registry.register
@@ -93,7 +102,13 @@ class PsbAdapter(BankAdapter):
                         "Долгосрочные сбережения", "Счета и переводы", "Пенсионные продукты",
                     }
                     if product.rate_raw or product.amount_raw or len(product.terms) > 1 or (service and product.terms):
-                        product.terms["Город выбран на сайте банка"] = region.city_name
+                        city = selected_city(html_text)
+                        product.region_method = "selector" if city == region.city_name else "not_confirmed"
+                        if city == region.city_name:
+                            product.terms["Город выбран на сайте банка"] = city
+                            product.terms["Подтверждение выбора города"] = "город в шапке ответа сайта банка"
+                        else:
+                            product.terms["Проверка города"] = f"запрошен {region.city_name}, сайт показал: {city or 'не найден'}"
                         if service and product.category not in market.RATED:
                             if product.rate_raw:
                                 product.terms["Процентное условие услуги"] = product.rate_raw
