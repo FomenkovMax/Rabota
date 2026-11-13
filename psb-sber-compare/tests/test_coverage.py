@@ -94,3 +94,10 @@ def test_coverage_separates_bank_catalogue_from_city_availability():
     }
     cell = coverage.matrix(["Банк"], products, {}, statuses=status)["Страхование"]["Банк"]
     assert (cell.products, cell.lnr, cell.lugansk, cell.unresolved) == (3, 2, 1, 1)
+
+
+def test_nested_vtb_insurance_and_pds_keep_their_retail_categories():
+    assert coverage.classify("https://www.vtb.ru/privilegia/strahovye-produkty/nakopitelnoe-strakhovanie-zhizni/zabota-o-semje") == "Страхование"
+    assert coverage.classify("https://www.vtb.ru/personal/investicii/pds-detskiy") == "НПФ и ПДС"
+    assert coverage.classify("https://www.vtb.ru/personal/investicii/ops") == "НПФ и ПДС"
+    assert coverage.classify("https://www.vtb.ru/personal/vklady-i-scheta/invest-plus") == "Вклады"

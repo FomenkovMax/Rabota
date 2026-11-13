@@ -381,6 +381,10 @@ def load_report_data(config: Config, *, competitor: str = "") -> dict[str, Any] 
         from .banks.crawl_adapter import is_product_title
         all_products = [p for p in _rows_to_products(storage.products_of_run(run_id))
                         if not is_seo_page(p.source_url) and is_product_title(p.title)]
+        for product in all_products:
+            category = coverage.classify(product.source_url)
+            if product.category in {"Инвестиции", "Премиальное обслуживание"} and category in {"Страхование", "НПФ и ПДС"}:
+                product.category = category
         mark_not_in_region(config, all_products)
         by_bank: dict[str, list[Any]] = {}
         for product in all_products:

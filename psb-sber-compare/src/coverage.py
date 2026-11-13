@@ -91,6 +91,12 @@ def classify(url: str) -> str | None:
     if not segments:
         return None
     rest = segments[1:]
+    # Pension and insurance products may be nested under investments or
+    # premium banking (VTB's actual catalogue), not separate top-level menus.
+    if any(re.fullmatch(r"(?:pds(?:[-_][\w-]+)?|npf|ops|pensionnye[-\w]*)", s, re.I) for s in rest):
+        return "НПФ и ПДС"
+    if any(re.fullmatch(r"(?:insurance|strahovanie|strakhovanie|strahovye-produkty)", s, re.I) for s in rest):
+        return "Страхование"
     if any(re.search(r"^(?:precious[-_]?metals?|dragmetall\w*|metallichesk[\w-]*|monety|oms)$", s, re.I) for s in segments):
         return "Инвестиции"
     if any(re.search(r"^(?:programma[-_]loyalnosti|loyalty)$", s, re.I) for s in segments):
