@@ -116,7 +116,7 @@ def test_product_id_collision_and_shared_page():
 
 def gaps(products, methods=None):
     found = market.build_gaps(products, home="Сбер", key_rate=KEY,
-                              region_methods=methods or {}, parity_pp=0.5)
+                              region_methods={**{p.bank: "selector" for p in products}, **(methods or {})}, parity_pp=0.5)
     return {g.program: g for g in found}
 
 
@@ -167,7 +167,7 @@ def test_quality_coverage_and_manual_list():
         P("ПСБ", "Вклад «Мой доход»", "Вклады", 13.8),
         P("ПСБ", "Вклад «Без ставки»", "Вклады"),
         P("ПСБ", "Дебетовая карта", "Дебетовые карты", 7.0),
-    ], key_rate=KEY, region_methods={})
+    ], key_rate=KEY, region_methods={"ПСБ": "selector"})
     dep = next(r for r in rows if r.block == "DEP")
     card = next(r for r in rows if r.block == "CARD")
     assert (dep.products, dep.rated, dep.usable) == (3, 3, 1)
@@ -325,3 +325,8 @@ def test_snapshot_mortgages_do_not_create_false_rankings():
     assert military.best.value == 19.0
     assert all(offer.bank != "ПСБ" for offer in military.offers)
     assert result["Семейная военная ипотека"].status == market.NO_SBER
+
+
+def test_missing_region_evidence_is_not_a_selected_region():
+    p = P("Банк", "Вклад", "Вклады", 12)
+    assert market.method_of(p, {}) == "not_confirmed"

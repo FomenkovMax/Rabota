@@ -308,13 +308,13 @@ def test_check_bank_saves_page_texts(monkeypatch, tmp_path):
     assert page.startswith("URL: https://") and "ТЕКСТ:" in page
 
 
-def test_local_bank_counts_as_lnr():
-    """ЦМР работает только в ЛНР: условия его сайта — луганские, не «по РФ»."""
+def test_local_profile_does_not_claim_lnr_availability():
+    """Локальный профиль не подтверждает доступность каждого продукта."""
     from src.banks.base import region_binding
     from src.pipeline import Config, bank_region_methods
 
     method, label = region_binding(False, {"region_mode": "local"})
-    assert method == "local" and "только в ЛНР" in label
+    assert method == "local" and "не подтверждена" in label
     assert bank_region_methods(Config.load(), ["cmr"]) == {"ЦМР": "local"}
 
 
@@ -1060,3 +1060,30 @@ def test_retail_insurance_and_metals_titles_are_products():
     for title in ("ОСАГО", "КАСКО", "Обезличенный металлический счёт", "Монеты из драгоценных металлов"):
         assert crawl.is_product_title(title)
     assert not crawl.is_product_title("ВКЛАДЫ И СЧЕТА")
+
+
+def test_vtb_service_sections_are_not_filtered_as_junk():
+    from src.banks.others import VtbAdapter
+    adapter = VtbAdapter(region=None, settings={})
+    for path, category in [
+        ("/personal/strahovanie", "Страхование"),
+        ("/personal/seyfovye-yacheyki", "Сейфовые ячейки"),
+        ("/personal/programma-loyalnosti", "Лояльность и кешбэк"),
+        ("/personal/vklady-i-scheta/metallicheskij-schet", "Инвестиции"),
+    ]:
+        url = adapter.base_url + path
+        assert adapter._links([url]) == [url]
+        assert adapter._family(url) == category
+
+
+def test_service_terms_and_tariff_are_kept_without_a_loan_rate():
+    product = crawl.product_from_page(
+        {"h1": "ОСАГО", "text": "ОСАГО\nКомиссия 2%\nПокрытие по договору",
+         "links": ["https://bank.example/osago.pdf"]},
+        bank="Банк", url="https://bank.example/insurance/osago",
+        category="Страхование", region="", collected_at="")
+    assert product is not None
+    assert product.rate_min is None
+    assert "2%" in product.terms["Условия услуги на сайте"]
+    assert product.terms["Документы и тарифы"].endswith("osago.pdf")
+    assert "Ставка" not in product.terms

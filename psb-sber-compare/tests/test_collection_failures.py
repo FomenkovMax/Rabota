@@ -37,3 +37,12 @@ def test_failed_bank_keeps_previous_products_and_all_failed_run_is_not_success(t
         assert result["failures"]
     finally:
         storage.close()
+
+
+def test_empty_region_evidence_does_not_become_selector():
+    from src.banks.base import CollectResult
+    product = Product(bank="Банк", title="Вклад", category="Вклады")
+    result = CollectResult(bank="Банк", products=[product])
+    assert not result.region_applied
+    pipeline._mark_region(result)
+    assert product.region_method == "not_confirmed"

@@ -203,7 +203,7 @@ def _mark_region(result: Any) -> None:
     """Каждому продукту — способ привязки к ЛНР, с которым его собрали."""
     for product in result.products:
         if not getattr(product, "region_method", ""):
-            product.region_method = getattr(result, "region_method", "") or "selector"
+            product.region_method = getattr(result, "region_method", "") or "not_confirmed"
 
 
 # --- история --------------------------------------------------------------
@@ -468,7 +468,7 @@ def load_report_data(config: Config, *, competitor: str = "") -> dict[str, Any] 
         special_rows = market.specials(regional_scope, key_rate=key_rate,
                                        region_methods=region_methods)
         coverage_matrix = coverage.matrix([home_title] + competitor_titles, scope,
-                                          storage.coverage_of_run(run_id))
+                                          storage.coverage_of_run(run_id), statuses=lnr_status)
         calc_offers = charts.calculator_offers(regional_scope, key_rate=key_rate,
                                                region_methods=region_methods)
         # Главное по ТЗ — есть ли продукт в Луганске: статус и основание.

@@ -201,12 +201,12 @@ class VtbAdapter(CrawlAdapter):
         r"/bez-|/dlya-|/onlajn-zayavka|/form\b|/anketa|"
         # Подборки, города и служебное в разделе вкладов ВТБ (обход 07.10.2026).
         r"/vklad-\d|/vklady-(?!i-scheta)|/so-snyatiem|/sberezhenija$|/nakopitelnyy-chet-|"
-        r"/kurs-|/monety|metallicheskij|/seyfovye|/strahovanie|asv|/informacija|"
+        r"/kurs-|asv|/informacija|"
         r"/restrukturizaciya|/spisok-partnerov|/katalog-nedvizhimosti|/maksimum-vygody|"
         r"/zarplatnyj-proekt|/vtbpay|"
         # Опция к вкладам («Надбавка за покупки») и программа лояльности
         # («Дополнительные категории кешбэка») — не продукты (03.11.2026).
-        r"/vklady-i-scheta/traty|/programma-loyalnosti|"
+        r"/vklady-i-scheta/traty|"
         # Языковые копии страниц («…/foreign/ZH», «/en», «/UZ», «/HI», 03.11.2026).
         r"/(?:en|zh|uz|hi|tj|kg|kz|ky|tg|ar|tr)$|"
         r"/(nizhniy-novgorod|chelyabinsk|yekaterinburg|krasnodar|rostov-na-donu|ufa|"

@@ -153,7 +153,7 @@ def method_of(product: Any, region_methods: dict[str, str]) -> str:
     configured = region_methods.get(product.bank, "")
     if stored in ("", "not_confirmed") and configured in ("local", "federal"):
         return configured
-    return stored or configured or "selector"
+    return stored or configured or "not_confirmed"
 
 
 def bank_code(bank: str) -> str:

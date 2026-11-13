@@ -1074,13 +1074,16 @@ def _coverage_block(matrix: dict[str, dict[str, Any]], banks: list[str]) -> str:
             if cell.url:
                 inner = (f'<a href="{e(cell.url)}" target="_blank" rel="noopener" '
                          f'title="{e(cell.label)}">{inner}</a>')
+            if getattr(cell, "regional_checked", False) and cell.products:
+                inner += (f'<div class="pmeta">ЛНР: {cell.lnr}; Луганск: {cell.lugansk}'
+                          f'<br>не подтверждено: {cell.unresolved}</div>')
             tds.append(f'<td class="num" title="{e(cell.label)}">{inner}</td>')
         rows.append(f"<tr><td>{e(category)}</td>{''.join(tds)}</tr>")
     legend = " · ".join(
         f'<span style="color:var({COVERAGE_ICON[k][0]})">{COVERAGE_ICON[k][1]}</span> {e(v)}'
-        for k, v in (("compared", "ставки сравниваются"),
+        for k, v in (("compared", "продукты собраны со ставкой"),
                      ("collected", "продукты собраны, ставки не сравниваются"),
-                     ("link", "раздел есть у банка (ссылка), агент его не собирает"),
+                     ("link", "найдена ссылка на раздел, продукты ещё не собраны"),
                      ("none", "раздел на сайте не найден")))
     return (f'<p class="pmeta" style="margin-bottom:10px">{legend}</p>'
             '<div class="scroll"><table><thead><tr><th>Категория</th>'
@@ -1237,10 +1240,11 @@ def render_report(
 <section class="card">
   <h2>Охват розницы: банк × категория</h2>
   <p class="hint">Все категории Розничного блока. Ставки сравниваются по вкладам,
-  счетам, кредитам, ипотеке и кредитным картам. По инвестициям, страхованию, НПФ,
-  переводам, лояльности, ячейкам и валюте — факт наличия раздела у банка со
-  ссылкой на него. Ссылки взяты из меню сайта банка при сборе; число — сколько
-  продуктов агент собрал в категории.</p>
+  счетам, кредитам, ипотеке и кредитным картам при подтверждённой доступности в ЛНР.
+  По остальным услугам сохраняются условия и ссылки на тарифы. Число — количество
+  найденных продуктов, а не процент полноты. Отдельно указаны подтверждения для ЛНР
+  и именно города Луганска; Луганск входит в число ЛНР. Наличие раздела или офиса банка
+  само по себе не подтверждает доступность каждого продукта.</p>
   {_coverage_block(coverage_matrix or {}, catalog_banks or list((catalog or {}).keys()))}
 </section>
 

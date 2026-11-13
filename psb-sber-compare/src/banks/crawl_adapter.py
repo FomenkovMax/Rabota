@@ -85,7 +85,7 @@ _NOT_A_PRODUCT = re.compile(
     # Подборки ВТБ во множественном числе: «Вклады в Самаре», «Вклады на
     # 1 год», «Накопительные счета до востребования», «Сберегательные вклады».
     r"^(?:вклады|накопительные\s+сч[её]та|сберегательные\s+вклады)\b|"
-    # Драгметаллы и курсы — не розничные вклады и кредиты для сравнения.
+    # Таблица курсов сама по себе не является отдельным продуктом.
     r"^курс\s|^услуги\s+по\s+размещению",
     re.I,
 )
@@ -871,6 +871,17 @@ def product_from_page(data: dict[str, Any], *, bank: str, url: str,
                                    else "на странице продукта не указана")
     if body:
         product.terms["Контекст на странице"] = " · ".join(body[:8])[:300]
+    if product.category in coverage.CATEGORIES and product.category not in _RATE_CATEGORIES and product.category not in card_terms.CARD_CATEGORIES:
+        product.terms.pop("Ставка", None)
+        if body:
+            product.terms["Условия услуги на сайте"] = "\n".join(body)[:4000]
+        documents = []
+        for item in data.get("links") or []:
+            href = item[0] if isinstance(item, (tuple, list)) else str(item)
+            if re.search(r"\.(?:pdf|docx?|xlsx?)(?:$|\?)", href, re.I):
+                documents.append(href)
+        if documents:
+            product.terms["Документы и тарифы"] = "\n".join(dict.fromkeys(documents))
     base_rate_without_service(product, data.get("text") or "")
     # «Карта больше не выпускается», «приём заявок прекращён» — продукт есть
     # на сайте, но оформить его нельзя: в сравнение не идёт.
@@ -1462,6 +1473,8 @@ class CrawlAdapter(BankAdapter):
 
     def _family(self, url: str) -> str:
         path = urlsplit(url).path
+        if re.search(r"/(?:precious[-_]?metals?|dragmetall\w*|metallichesk[\w-]*|monety|oms)(?:/|$)", path, re.I):
+            return "Инвестиции"
         for prefix, category in self.families:
             if path == prefix or path.startswith(prefix + "/"):
                 return category

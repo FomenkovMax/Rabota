@@ -91,6 +91,10 @@ def classify(url: str) -> str | None:
     if not segments:
         return None
     rest = segments[1:]
+    if any(re.search(r"^(?:precious[-_]?metals?|dragmetall\w*|metallichesk[\w-]*|monety|oms)$", s, re.I) for s in segments):
+        return "Инвестиции"
+    if any(re.search(r"^(?:programma[-_]loyalnosti|loyalty)$", s, re.I) for s in segments):
+        return "Лояльность и кешбэк"
     if any(_SAFE.search(s) for s in segments):
         return "Сейфовые ячейки"
     # «/person/person-deposit», «/person/obmen-valjuty»,
@@ -145,7 +149,7 @@ def collect(urls: Iterable[str], found: dict[str, str], *, base_url: str = "") -
 
 COMPARED, COLLECTED, LINK_ONLY, NOT_FOUND = "compared", "collected", "link", "none"
 STATUS_LABEL = {
-    COMPARED: "сравнивается",
+    COMPARED: "собрано со ставкой",
     COLLECTED: "собрано, без сравнения ставок",
     LINK_ONLY: "есть у банка (ссылка), не собирается",
     NOT_FOUND: "не найдено на сайте",
@@ -189,6 +193,10 @@ class Cell:
     products: int = 0
     rated: int = 0
     url: str = ""
+    lnr: int = 0
+    lugansk: int = 0
+    unresolved: int = 0
+    regional_checked: bool = False
 
     @property
     def label(self) -> str:
@@ -196,10 +204,12 @@ class Cell:
 
 
 def matrix(banks: list[str], products: Iterable[Any],
-           links: dict[str, dict[str, str]]) -> dict[str, dict[str, Cell]]:
+           links: dict[str, dict[str, str]], *,
+           statuses: dict[int, Any] | None = None) -> dict[str, dict[str, Cell]]:
     """category → bank → Cell."""
     counts: dict[tuple[str, str], list[int]] = {}
     first_url: dict[tuple[str, str], str] = {}
+    regional: dict[tuple[str, str], list[int]] = {}
     for product in products:
         tz = tz_category(product)
         if tz is None:
@@ -207,6 +217,12 @@ def matrix(banks: list[str], products: Iterable[Any],
         key = (tz, product.bank)
         slot = counts.setdefault(key, [0, 0])
         slot[0] += 1
+        if statuses is not None:
+            status = statuses.get(id(product))
+            region_counts = regional.setdefault(key, [0, 0, 0])
+            region_counts[0] += int(status is not None and status.code == "lnr")
+            region_counts[1] += int(status is not None and status.city_confirmed)
+            region_counts[2] += int(status is None or status.code in {"unknown", "federal"})
         has_rate = product.rate_min is not None or product.rate_max is not None
         if has_rate and tz in _RATED_TZ:
             slot[1] += 1
@@ -226,6 +242,9 @@ def matrix(banks: list[str], products: Iterable[Any],
                 cell = Cell(LINK_ONLY, 0, 0, link)
             else:
                 cell = Cell(NOT_FOUND)
+            if statuses is not None:
+                cell.lnr, cell.lugansk, cell.unresolved = regional.get((tz, bank), [0, 0, 0])
+                cell.regional_checked = True
             row[bank] = cell
         out[tz] = row
     return out

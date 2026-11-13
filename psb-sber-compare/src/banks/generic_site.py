@@ -327,6 +327,8 @@ def category_for(title: str, page_category: str) -> str:
                          "Премиальное обслуживание", "Переводы и платежи",
                          "Лояльность и кешбэк", "Сейфовые ячейки", "Валютные операции"}:
         return page_category
+    if re.search(r"металлическ\w*\s+сч[её]т|монет\w*\s+из\s+драгоцен", title, re.I):
+        return "Инвестиции"
     for pattern, category in _CATEGORY_BY_TITLE:
         if pattern.search(title):
             return category

@@ -123,5 +123,6 @@ class PsbAdapter(BankAdapter):
             unique.setdefault(promo.key(), promo)
 
         return self._result(products=products, promos=list(unique.values()),
+                            region_applied=True, region_method="selector",
                             pages_visited=visited, collected_at=now,
                             coverage=site_sections)
