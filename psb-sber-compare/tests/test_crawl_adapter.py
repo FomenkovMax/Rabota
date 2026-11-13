@@ -661,8 +661,7 @@ def test_vtb_first_check_junk():
 
     for title in ("Вклады в Самаре", "Вклады на 1 год", "Вклады с капитализацией",
                   "Накопительные счета в Санкт-Петербурге", "Сберегательные вклады",
-                  "Курс покупки и продажи золота", "Монеты из драгоценных металлов",
-                  "Обезличенный металлический счет", "Услуги по размещению сбережений"):
+                  "Курс покупки и продажи золота", "Услуги по размещению сбережений"):
         assert not crawl.is_product_title(title), title
     for title in ("Накопительный ВТБ-Счет в рублях", "ВТБ-Вклад", "Ипотека на новых территориях"):
         assert crawl.is_product_title(title), title
@@ -1032,7 +1031,10 @@ def test_resume_reads_pending_urls_without_reopening_completed_pages(monkeypatch
         "resume_urls": [url], "skip_urls": [old], "sitemap": True,
         "max_pages": 0, "pages_dir": str(tmp_path), "region_mode": "federal",
     })
+    evidence = tmp_path / "001-previous.txt"
+    evidence.write_text("Previously read product", encoding="utf-8")
     result = adapter.collect()
+    assert evidence.read_text(encoding="utf-8") == "Previously read product"
     assert result.ok
     assert reader.read_urls == [url]
     assert result.coverage[crawl.CRAWL_UNREAD_KEY] == ""
@@ -1052,3 +1054,9 @@ def test_zero_page_limit_means_complete_queue(monkeypatch, tmp_path):
     }).collect()
     assert result.pages_visited == 81
     assert not result.partial
+
+
+def test_retail_insurance_and_metals_titles_are_products():
+    for title in ("ОСАГО", "КАСКО", "Обезличенный металлический счёт", "Монеты из драгоценных металлов"):
+        assert crawl.is_product_title(title)
+    assert not crawl.is_product_title("ВКЛАДЫ И СЧЕТА")

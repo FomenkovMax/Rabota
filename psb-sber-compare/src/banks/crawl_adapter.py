@@ -86,7 +86,7 @@ _NOT_A_PRODUCT = re.compile(
     # 1 год», «Накопительные счета до востребования», «Сберегательные вклады».
     r"^(?:вклады|накопительные\s+сч[её]та|сберегательные\s+вклады)\b|"
     # Драгметаллы и курсы — не розничные вклады и кредиты для сравнения.
-    r"^курс\s|монет\w*\s+из\s+драгоцен|металлическ\w*\s+сч[её]т|^услуги\s+по\s+размещению",
+    r"^курс\s|^услуги\s+по\s+размещению",
     re.I,
 )
 
@@ -94,6 +94,8 @@ _NOT_A_PRODUCT = re.compile(
 def _shouting(title: str) -> bool:
     """Заголовок раздела заглавными буквами: «ВКЛАДЫ И CЧЕТА», «ИПОТЕКА»."""
     letters = [ch for ch in title if ch.isalpha()]
+    if title.strip() in {"ОСАГО", "КАСКО", "ИИС", "ПДС", "ОМС"}:
+        return False
     return len(letters) > 4 and all(ch.isupper() for ch in letters)
 
 
@@ -975,7 +977,8 @@ class CrawlAdapter(BankAdapter):
         showcase: dict[str, tuple[Any, str, str]] = {}
         failures: list[str] = []
         visited = 0
-        self._clear_missing()
+        if not resume_urls:
+            self._clear_missing()
         calc_blocked: dict[str, str] = {}      # программа → что сказал калькулятор
         calc_found: list[tuple[str, dict[str, Any]]] = []   # (адрес, результат калькулятора)
         sitemap_found: set[str] = set()         # страницы из карты сайта
