@@ -915,6 +915,8 @@ def product_from_page(data: dict[str, Any], *, bank: str, url: str,
     clause = find_clause("\n".join(body + rates_section(data)))
     if clause:
         product.terms.setdefault(market.REGION_KEY, f"на странице банка: «{clause}»")
+    from .. import securities
+    securities.remember(product, body)
     return product
 
 
@@ -977,9 +979,10 @@ class CrawlAdapter(BankAdapter):
 
         resume_urls = self.settings.get("resume_urls") or []
         seeds = [self._normalize(url) for url in (resume_urls or self.seeds)]
-        seed_set = set(seeds)
+        # Resume URLs are product pages, not showcase seeds.
+        seed_set = {self._normalize(url) for url in self.seeds}
         first = [] if resume_urls else [self._normalize(url) for url in self.priority]
-        first_set = set(first)
+        first_set = {self._normalize(url) for url in self.priority}
         queue: deque[str] = deque(seeds + [u for u in first if u not in seed_set])
         seen: set[str] = set(queue) | {self._normalize(url)
                                      for url in self.settings.get("skip_urls", [])}

@@ -94,6 +94,9 @@ def status_of(product: Any, *, region_method: str, presence: str = "") -> Status
     absent = terms.get(market.REGION_KEY)
     if absent:
         return Status(ABSENT, str(absent), url)
+    if terms.get("Вид ценной бумаги"):
+        return Status(UNKNOWN, str(terms.get("Доступность торгов в Луганске") or
+                      "доступность торгов этим выпуском через банк в Луганске не подтверждена"), url)
     calc = str(terms.get("Калькулятор на сайте") or "")
     # «Есть в ЛНР» — только если калькулятор для ЛНР показал хоть одну ставку:
     # строка из одних «недоступно» и «не показал расчёт» этого не доказывает.

@@ -279,13 +279,13 @@ class TbankAdapter(CrawlAdapter):
     skip = re.compile(NOT_RETAIL.pattern + "|" + (
         r"/city/|/foreign|/form$|/(dlya|bez|s)-|virtualnaya|beskontaktnaya|"
         r"nakopitelnaya-karta|mezhdunarodnaya|imennaya|besplatnaya|momentalnaya|"
-        r"/debit-cards/(premium|travel|driver|games|shopping)$|insurance|"
+        r"/debit-cards/(premium|travel|driver|games|shopping)$|"
         # Сбор 28.10.2026: «как погасить», карты сайта, формы заявок и
         # оплаты, партнёрские рассрочки в магазинах — не продукты.
         r"how-repay|/sitemap|/form/|/new-form|/payment$|/purpose$|/service$|"
         # Языковые копии страниц: «…/islam-card/eng» (03.11.2026).
         r"/(?:eng?|uz|tj|kg|kz)$|"
-        r"/pos-loans/[\w/-]+|/credit-history|/payments/|/specialty-check"), re.I)
+        r"/pos-loans/[\w/-]+|/credit-history|/specialty-check"), re.I)
 
 
 @registry.register

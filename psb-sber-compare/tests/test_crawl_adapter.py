@@ -1053,6 +1053,8 @@ def test_zero_page_limit_means_complete_queue(monkeypatch, tmp_path):
         "region_mode": "federal",
     }).collect()
     assert result.pages_visited == 81
+    assert len(result.products) == 81
+    assert all("#" not in p.url_path for p in result.products)
     assert not result.partial
 
 

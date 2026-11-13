@@ -801,6 +801,34 @@ def _catalog_rate(product: Any) -> tuple[str, bool]:
     return "не найдена", False
 
 
+def _securities_block(catalog: dict[str, list[Any]]) -> str:
+    from . import securities
+    groups = securities.groups(p for items in catalog.values() for p in items)
+    if not groups:
+        return '<p class="empty">Отдельные акции и облигации ещё не извлечены из страниц банков.</p>'
+    rows = []
+    for group in groups:
+        first = group[0]
+        isin = first.terms.get(securities.ISIN) or "не найден — сопоставление не выполнено"
+        sources = []
+        for product in group:
+            terms = product.terms or {}
+            details = " · ".join(str(terms[k]) for k in (
+                "Тикер", "Валюта бумаги", "Номинал", "Дата погашения", "Купон",
+                "Квалификация инвестора") if terms.get(k))
+            sources.append(
+                f'<div><a href="{e(product.source_url)}" target="_blank" rel="noopener">'
+                f'{e(product.bank)}: {e(product.title)}</a>'
+                f'<div class="pmeta">Собрано: {e(product.collected_at)} · {e(details)}</div></div>')
+        rows.append(f'<tr><td>{e(first.terms.get(securities.KIND))}<br>{e(isin)}</td>'
+                    f'<td>{"".join(sources)}</td><td>Доступность покупки в Луганске '
+                    'не подтверждена</td></tr>')
+    return ('<details><summary>Найдено выпусков и несопоставленных страниц: '
+            f'{len(groups)}</summary><div class="scroll"><table><thead><tr>'
+            '<th>Вид / ISIN</th><th>Источники и условия выпуска</th><th>Луганск</th>'
+            '</tr></thead><tbody>' + "".join(rows) + '</tbody></table></div></details>')
+
+
 def _catalog(catalog: dict[str, list[Any]], banks: list[str],
              lnr_status: dict[int, Any] | None = None) -> str:
     """Все продукты банков по категориям — и те, у кого нет пары для светофора."""
@@ -1246,6 +1274,15 @@ def render_report(
   и именно города Луганска; Луганск входит в число ЛНР. Наличие раздела или офиса банка
   само по себе не подтверждает доступность каждого продукта.</p>
   {_coverage_block(coverage_matrix or {}, catalog_banks or list((catalog or {}).keys()))}
+</section>
+
+<section class="card">
+  <h2>Акции и облигации</h2>
+  <p class="hint">Один выпуск объединяется между банками только по ISIN с корректной
+  контрольной цифрой. Без однозначного ISIN страницы остаются отдельными.
+  Купон и историческая доходность не являются ставкой вклада. Наличие бумаги
+  на сайте не подтверждает возможность её покупки через банк в Луганске.</p>
+  {_securities_block(catalog or {})}
 </section>
 
 <section class="card">
