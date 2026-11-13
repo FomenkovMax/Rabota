@@ -74,7 +74,15 @@ def groups(products):
         terms = product.terms or {}
         if not terms.get(KIND):
             continue
-        code = terms.get(ISIN, "")
+        code = str(terms.get(ISIN) or "")
+        path = urlsplit(product.source_url).path
+        if re.search(r"/(?:edu|digest|events|memos|news|blog|journal)(?:/|$)", path, re.I):
+            continue
+        issue_path = re.search(r"/(?:stocks|bonds)/([^/]+)/?$", path, re.I)
+        if not valid_isin(code) and not issue_path:
+            continue
+        if issue_path and issue_path.group(1).lower() in {"offer", "offer_ofz", "all", "catalog"}:
+            continue
         key = code if valid_isin(code) else (product.bank, product.source_url, product.title)
         out.setdefault(key, []).append(product)
     return list(out.values())

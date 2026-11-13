@@ -58,3 +58,9 @@ def test_lessons_and_market_overviews_are_not_security_issues():
         p = instrument(title=title, url=url)
         securities.remember(p, [])
         assert securities.KIND not in p.terms
+
+
+def test_legacy_lesson_metadata_does_not_enter_registry():
+    p = instrument(title="Рынок акций", url="https://bank.example/investments/stocks")
+    p.terms[securities.KIND] = "Акция"
+    assert securities.groups([p]) == []
