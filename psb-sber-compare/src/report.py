@@ -871,6 +871,12 @@ def _catalog(catalog: dict[str, list[Any]], banks: list[str],
                     f'<div class="catrow"><span class="n">{mark}{name}'
                     + (f'<span class="src">{e(source)}</span>' if source else "")
                     + f'</span><span class="r{"" if is_rate else " none"}">{e(rate)}</span></div>')
+                if terms.get("Условия услуги на сайте") or terms.get("Вид ценной бумаги"):
+                    detail = "".join(f"<dt>{e(k)}</dt><dd>{_linkify(str(v))}</dd>"
+                                     for k, v in terms.items() if k != "Контекст на странице")
+                    region_note = f"<p>{e(st.label)}: {e(st.reason)}</p>" if st else ""
+                    rows.append('<details class="pmeta"><summary>Условия и документы</summary>'
+                                + f'<p>Собрано: {e(product.collected_at)}</p>{region_note}<dl>{detail}</dl></details>')
             body = "".join(rows) or '<p class="empty">В этой категории продуктов не найдено</p>'
             columns.append(f'<div class="catcol"><h4>{brand.name(bank)}</h4>{body}</div>')
         blocks.append(

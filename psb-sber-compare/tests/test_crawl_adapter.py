@@ -1089,3 +1089,18 @@ def test_service_terms_and_tariff_are_kept_without_a_loan_rate():
     assert "2%" in product.terms["Условия услуги на сайте"]
     assert product.terms["Документы и тарифы"].endswith("osago.pdf")
     assert "Ставка" not in product.terms
+
+
+def test_tbank_insurance_and_payments_are_retail_not_loans():
+    from src.banks.others import TbankAdapter
+    adapter = TbankAdapter(region=None, settings={})
+    for path, category in [("/insurance/mortgage/", "Страхование"),
+                           ("/payments/mobile/", "Переводы и платежи")]:
+        url = adapter.base_url + path.rstrip("/")
+        assert adapter._links([url]) == [url]
+        assert adapter._family(url) == category
+
+
+def test_lessons_and_error_pages_do_not_become_products():
+    assert not crawl.is_product_title("Урок 5. Как рассчитать доходность по облигациям")
+    assert not crawl.is_product_title("У нас проблема")

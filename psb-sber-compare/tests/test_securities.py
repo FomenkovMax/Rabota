@@ -47,3 +47,14 @@ def test_registry_renders_sources_and_keeps_different_issues_separate():
     html = _securities_block({a.bank: [a], b.bank: [b]})
     assert "RU0009029540" in html and "RU0009029557" in html
     assert "Доступность покупки в Луганске не подтверждена" in html
+
+
+def test_lessons_and_market_overviews_are_not_security_issues():
+    for url, title in [
+        ("https://bank.example/investments/edu/courses/bonds/lesson", "Урок 5. Облигации"),
+        ("https://bank.example/investments/bonds", "Облигации в валюте"),
+        ("https://bank.example/investments/stocks/offer", "Купить акции"),
+    ]:
+        p = instrument(title=title, url=url)
+        securities.remember(p, [])
+        assert securities.KIND not in p.terms

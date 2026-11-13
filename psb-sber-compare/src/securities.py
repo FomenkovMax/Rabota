@@ -26,13 +26,18 @@ def remember(product, body: list[str]) -> None:
         return
     path = urlsplit(product.source_url).path
     title = product.title
+    if re.search(r"/(?:edu|digest|events|memos|news|blog|journal)(?:/|$)", path, re.I):
+        return
+    issue_path = re.search(r"/(?:stocks|bonds)/([^/]+)/?$", path, re.I)
+    if issue_path and issue_path.group(1).lower() in {"offer", "offer_ofz", "all", "catalog"}:
+        return
     kind = ("Облигация" if re.search(r"/bonds/[^/]+|\bоблигаци", path + " " + title, re.I)
             else "Акция" if re.search(r"/stocks/[^/]+|\bакци[яиюй]\b", path + " " + title, re.I)
             else "")
     # An index/listing is not a specific issue. A unique ISIN can identify
     # an issue even when the heading omits the instrument type.
     codes = sorted({c for c in _CODE.findall("\n".join([title, *body])) if valid_isin(c)})
-    if not kind and len(codes) != 1:
+    if not issue_path and len(codes) != 1:
         return
     product.terms[KIND] = kind or "Ценная бумага"
     if len(codes) == 1:

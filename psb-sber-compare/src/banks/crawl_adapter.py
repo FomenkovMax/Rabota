@@ -73,9 +73,9 @@ def is_blocked(data: dict[str, Any]) -> bool:
 # услуги и функции («Ипотечные каникулы», «Управляйте списаниями…»),
 # призывы («Открыть СберВклад онлайн») и заголовок-домен вместо названия.
 _NOT_A_PRODUCT = re.compile(
-    r"^(?:платите|управляйте|создайте|привез[её]м|покупайте|открыть|откройте|"
+    r"^(?:урок|платите|управляйте|создайте|привез[её]м|покупайте|открыть|откройте|"
     r"оформите|узнайте|получите|переведите|подключите)\b|каникул|"
-    r"программ\w*\s+поддержк|^[\w.-]+\.(?:ru|рф|com)$|^404|страница не найдена|"
+    r"программ\w*\s+поддержк|^[\w.-]+\.(?:ru|рф|com)$|^404|страница не найдена|^у нас проблема|"
     # Служебные страницы РостФинанса (обход 07.10.2026).
     r"способы\s+пополнения|страхование\s+вкладов|^выпуск\s+карты|соотношение|"
     r"^вклады\s+и\s+[сc]ч[её]та|^кредиты\s+наличными$|^кредитный\s+лимит|^вкладывайте|"
@@ -1481,14 +1481,14 @@ class CrawlAdapter(BankAdapter):
         for prefix, category in self.families:
             if path == prefix or path.startswith(prefix + "/"):
                 return category
-        for pattern, category in self.family_words:
-            if re.search(pattern, path, re.I):
-                return category
         category = coverage.classify(url)
         if category in {"Инвестиции", "Страхование", "НПФ и ПДС",
                         "Переводы и платежи", "Лояльность и кешбэк",
                         "Сейфовые ячейки", "Валютные операции", "Премиальное обслуживание"}:
             return category
+        for pattern, category in self.family_words:
+            if re.search(pattern, path, re.I):
+                return category
         return ""
 
     def _links(self, raw: list[Any]) -> list[str]:
