@@ -323,6 +323,12 @@ _CATEGORY_BY_TITLE = (
 
 def category_for(title: str, page_category: str) -> str:
     """Категория по названию продукта, если оно однозначно; иначе — по странице."""
+    if page_category in {"Страхование", "Инвестиции", "НПФ и ПДС",
+                         "Премиальное обслуживание", "Переводы и платежи",
+                         "Лояльность и кешбэк", "Сейфовые ячейки", "Валютные операции"}:
+        return page_category
+    if re.search(r"металлическ\w*\s+сч[её]т|монет\w*\s+из\s+драгоцен", title, re.I):
+        return "Инвестиции"
     for pattern, category in _CATEGORY_BY_TITLE:
         if pattern.search(title):
             return category

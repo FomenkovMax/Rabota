@@ -30,7 +30,7 @@ from . import conditions
 #: Код банка для product_id и BI. Новый банк — новая строка.
 BANK_CODE = {
     "Сбер": "SBER", "ПСБ": "PSB", "ВТБ": "VTB", "Т-Банк": "TBANK",
-    "ЦМР": "CMR", "РостФинанс": "ROSTFIN",
+    "ЦМР": "CMR", "РостФинанс": "ROSTFIN", "Генбанк": "GENBANK",
 }
 
 #: Категория продукта → продуктовый блок спецификации.
@@ -62,10 +62,14 @@ CREDIT = {"Кредиты", "Автокредиты", "Ипотека", "Кре�
 RATED = SAVINGS | CREDIT
 
 #: Программы внутри категории. Порядок важен: первое совпадение побеждает,
-#: поэтому «Семейная военная ипотека» уходит в военную, а не в семейную.
+#: сначала проверяем сочетания программ и специальные виды объектов.
 _PROGRAMS: dict[str, tuple[tuple[str, str], ...]] = {
     "Ипотека": (
         (r"(?<!без )залог", "Кредит под залог недвижимости"),
+        (r"(?=.*семейн)(?=.*военн)", "Семейная военная ипотека"),
+        (r"(?=.*военн)(?=.*рефинанс)", "Рефинансирование военной ипотеки"),
+        (r"(?=.*военн)(?=.*(?:нов\w*\s+(?:регион|субъект|территор)|днр|лнр))",
+         "Военная ипотека для новых регионов"),
         (r"военн", "Военная ипотека"),
         (r"рефинанс", "Рефинансирование ипотеки"),
         (r"семейн", "Семейная ипотека"),
@@ -79,6 +83,9 @@ _PROGRAMS: dict[str, tuple[tuple[str, str], ...]] = {
         (r"ижс|строительств|построй|построить", "Строительство дома"),
         (r"готов\w*\s+дом|загородн|\bдом\b|дачн|коттедж|таунхаус", "Готовый дом и загородная недвижимость"),
         (r"материнск", "С материнским капиталом"),
+        (r"коммерческ|нежил", "Коммерческая недвижимость"),
+        (r"комнат", "Комната"),
+        (r"гараж|машино.?мест", "Гараж и машино-место"),
         (r"вторичн|готов", "Вторичное жильё"),
         (r"новостро|строящ", "Новостройки"),
     ),
@@ -146,7 +153,7 @@ def method_of(product: Any, region_methods: dict[str, str]) -> str:
     configured = region_methods.get(product.bank, "")
     if stored in ("", "not_confirmed") and configured in ("local", "federal"):
         return configured
-    return stored or configured or "selector"
+    return stored or configured or "not_confirmed"
 
 
 def bank_code(bank: str) -> str:
@@ -389,7 +396,8 @@ class Gap:
 
 
 def build_gaps(products: Iterable[Any], *, home: str, key_rate: float | None,
-               region_methods: dict[str, str], parity_pp: float = 0.5) -> list[Gap]:
+               region_methods: dict[str, str], parity_pp: float = 0.5,
+               available_ids: set[int] | None = None) -> list[Gap]:
     """Место Сбера по каждой программе, где ставка что-то значит.
 
     В расчёт идут только продукты с пригодной ставкой: регион подтверждён,
@@ -425,6 +433,10 @@ def build_gaps(products: Iterable[Any], *, home: str, key_rate: float | None,
             if (getattr(product, "terms", None) or {}).get(REGION_KEY):
                 if product.bank == home:
                     absent_home = product.terms[REGION_KEY]
+                continue
+            if available_ids is not None and id(product) not in available_ids:
+                if product.bank == home:
+                    skipped_home += 1
                 continue
             # Программу не представляет продукт узкого назначения: «Ипотека для
             # иностранных граждан» Сбера против «Комбинированной ипотеки» ВТБ

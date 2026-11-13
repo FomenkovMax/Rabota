@@ -32,6 +32,7 @@ RETAIL_SECTIONS: dict[str, str] = {
     "pensioncards": "Пенсионные карты",
     "pensioners": "Пенсионные продукты",
     "insurance": "Страхование",
+    "wealth": "Инвестиции",
     "premium": "Премиальное обслуживание",
     "pds": "Долгосрочные сбережения",
     "ecommerce": "Счета и переводы",

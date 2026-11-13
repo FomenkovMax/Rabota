@@ -7,15 +7,24 @@
 from __future__ import annotations
 
 import logging
+import html
+import re
 from datetime import datetime
 
-from .. import coverage
+from .. import coverage, market
 from ..psb.catalog import RETAIL_SECTIONS, build_catalog, site_paths
 from ..psb.client import PageNotFound, PsbClient, REGIONS
 from ..psb.parser import parse_product
 from .base import BankAdapter, CollectResult, registry
 
 log = logging.getLogger(__name__)
+
+
+def selected_city(page_html: str) -> str:
+    """City returned in the bank's selected-location header, not its city list."""
+    match = re.search(r'<[^>]+class=[\"\'][^\"\']*\bheader-location__text\b[^\"\']*[\"\'][^>]*>(.*?)</',
+                      page_html, re.S | re.I)
+    return html.unescape(re.sub(r"<[^>]+>", "", match.group(1))).strip() if match else ""
 
 
 @registry.register
@@ -88,7 +97,23 @@ class PsbAdapter(BankAdapter):
                     visited += 1
                     product = parse_product(html_text, page, region_label, now)
                     promos.extend(product.promos)
-                    if product.rate_raw or product.amount_raw or len(product.terms) > 1:
+                    service = product.category in {
+                        "Инвестиции", "Страхование", "Премиальное обслуживание",
+                        "Долгосрочные сбережения", "Счета и переводы", "Пенсионные продукты",
+                    }
+                    if product.rate_raw or product.amount_raw or len(product.terms) > 1 or (service and product.terms):
+                        city = selected_city(html_text)
+                        product.region_method = "selector" if city == region.city_name else "not_confirmed"
+                        if city == region.city_name:
+                            product.terms["Город выбран на сайте банка"] = city
+                            product.terms["Подтверждение выбора города"] = "город в шапке ответа сайта банка"
+                        else:
+                            product.terms["Проверка города"] = f"запрошен {region.city_name}, сайт показал: {city or 'не найден'}"
+                        if service and product.category not in market.RATED:
+                            if product.rate_raw:
+                                product.terms["Процентное условие услуги"] = product.rate_raw
+                            product.rate_min = product.rate_max = None
+                            product.rate_raw = ""
                         products.append(product)
 
                     if index % 25 == 0:
@@ -105,7 +130,7 @@ class PsbAdapter(BankAdapter):
         from .crawl_adapter import CRAWL_FAILED_KEY, CRAWL_READ_KEY, CRAWL_UNREAD_KEY
         site_sections.update({
             CRAWL_READ_KEY: str(visited),
-            CRAWL_UNREAD_KEY: " ".join(f"https://www.psbank.ru{u}" for u in left[:60]),
+            CRAWL_UNREAD_KEY: " ".join(f"https://www.psbank.ru{u}" for u in left),
             CRAWL_FAILED_KEY: " ".join(failed_urls)})
 
         unique: dict[str, object] = {}
@@ -113,5 +138,6 @@ class PsbAdapter(BankAdapter):
             unique.setdefault(promo.key(), promo)
 
         return self._result(products=products, promos=list(unique.values()),
+                            region_applied=True, region_method="selector",
                             pages_visited=visited, collected_at=now,
                             coverage=site_sections)

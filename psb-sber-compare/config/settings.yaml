@@ -34,7 +34,7 @@ banks:
   sber:
     sitemap: true         # страницы розницы из карты сайта, а не только по ссылкам
     # Присутствие в ЛНР — источник для аудита (охват банков).
-    presence_source: "https://bankprofi.ru/blog/sberbank-v-lnr-karty-uslugi-rezhim-raboty-bankomaty"
+    presence_source: "https://www.cbr.ru/banking_sector/credit/cstat/"
     enabled: true
     # Сколько ждать один раздел, секунды. Защита Сбера то отдаёт страницу
     # за восемь секунд, то закручивает проверку надолго; по истечении
@@ -46,7 +46,7 @@ banks:
     # 28.10.2026: 80 не хватало — в очереди осталось 53 страницы, среди них
     # продукты («Выгодный старт плюс», «СберКарта Премиальная» кредитная,
     # «Автонакопления»). С картой сайта и фильтром мусора — до 220.
-    max_pages: 220
+    max_pages: 0          # полный обход без ограничения числа страниц
     # Пауза между страницами, секунды. В первом сборе после ~30 страниц
     # подряд защита Сбера начала отдавать заглушку вместо страниц. Реже —
     # дольше, но без блокировки. Если заглушка всё же пришла, обход ждёт
@@ -89,7 +89,7 @@ banks:
       - {name: "sbrf.region_manual", value: "true", domain: "www.sberbank.ru"}
       - {name: "sbrf.region_set",    value: "true", domain: "www.sberbank.ru"}
   psb:
-    presence_source: "https://bankprofi.ru/blog/kakie-banki-rabotayut-v-lnr-v-2026-godu"
+    presence_source: "https://www.cbr.ru/banking_sector/credit/cstat/"
     enabled: true
     pause: 1.5            # пауза между страницами, секунды
     timeout: 30
@@ -100,11 +100,11 @@ banks:
     max_pages: 0          # 0 = без ограничения; поставь 30 для быстрой пробы
   vtb:
     sitemap: true         # страницы розницы из карты сайта, а не только по ссылкам
-    presence_source: "https://bankprofi.ru/blog/kakie-banki-rabotayut-v-lnr-v-2026-godu"
+    presence_source: "https://www.cbr.ru/banking_sector/credit/cstat/"
     enabled: true         # проверено check-bank vtb 07.10.2026
     # 28.10.2026: при 60 в очереди осталось 65 страниц, среди них вклады
     # «Вместе», «Выгодное начало», «Инвест плюс». Мусор отфильтрован.
-    max_pages: 130
+    max_pages: 0          # полный обход без ограничения числа страниц
     pause_s: 6
     # Выбора города на vtb.ru нет (проверил заказчик 07.10.2026): кука
     # user_region ставится сама по адресу посетителя (MOW), вручную не
@@ -118,20 +118,20 @@ banks:
     calculator_paths: "/personal/(ipoteka|kredit|avtokredity)/[\\w-]*$"
   tbank:
     sitemap: true         # страницы розницы из карты сайта, а не только по ссылкам
-    presence_source: "https://bankprofi.ru/blog/kakie-banki-rabotayut-v-lnr-v-2026-godu"
+    presence_source: ""  # Доставка конкретного продукта в Луганске требует подтверждения.
     enabled: true         # проверен check-bank 07.10.2026
     # Условия Т-Банка едины по РФ (подтвердил заказчик 07.10.2026).
     region_mode: federal
     # 28.10.2026: при 40 осталось 124 страницы, среди них ипотека на вторичку
     # и новостройку, автокредит, вклады. Подборки и бренды авто — отфильтрованы.
-    max_pages: 120
+    max_pages: 0          # полный обход без ограничения числа страниц
     pause_s: 6
     calculator_paths: "/mortgage/?$|/loans/[\\w-]+/?$"
   rostfinance:
     sitemap: true         # страницы розницы из карты сайта, а не только по ссылкам
     presence_source: "https://www.rostfinance.ru/ (город Луганск в списке городов, проверено 07.10.2026)"
     enabled: true         # проверен check-bank 07.10.2026, регион Луганск
-    max_pages: 40
+    max_pages: 0          # полный обход без ограничения числа страниц
     pause_s: 4
     # Город на сайте РостФинанса — кука current_region_normal. 1877 —
     # значение после выбора «Луганск» (браузер заказчика, 07.10.2026).
@@ -141,14 +141,22 @@ banks:
     region_cookies:
       - {name: "current_region_normal", value: "1877", domain: "www.rostfinance.ru"}
     calculator_paths: "/(mortgage|credit)/[\\w-]+/?$"
+  genbank:
+    enabled: true
+    presence_source: "https://cbr.ru/finorg/foinfo/branches/?id=1315037838877"
+    # Офис в Луганске подтверждён ЦБ. Условия продуктов ещё требуют проверки.
+    max_pages: 0
+    sitemap: true
+    section_timeout_s: 90
+    pause_s: 3
   cmr:
     presence_source: "https://cmrbank.ru/offices/69/69002.html"
     # Разделов нет в меню сайта (07.10.2026) — в охвате эти клетки не считаются.
     coverage_not_offered: ["Ипотека", "Кредитные карты", "Автокредиты", "Инвестиции",
                            "НПФ и ПДС", "Сейфовые ячейки"]
     enabled: true
-    # ЦМР работает только в ЛНР, выбора региона на сайте нет: условия
-    # на сайте и есть луганские.
+    # Региональный профиль банка не подтверждает доступность продукта.
+    # Для включения в рейтинг нужна проверка конкретных условий в Луганске.
     region_mode: local
 
 # Браузер — для банков, которые показывают JS-проверку до содержимого.
@@ -180,3 +188,5 @@ export:
 notify:
   digest_file: "data/changes_digest.txt"
   only_significant: true
+
+

@@ -1,6 +1,6 @@
 """Адаптеры Сбера, ВТБ, Т-Банка и РостФинанса.
 
-ГенБанк удалён 07.10.2026: присутствие в ЛНР по аудиту не подтвердилось.
+Генбанк зарегистрирован отдельным адаптером по справочнику Банка России.
 
 Все четверо читаются браузером. Разница между ними — адреса разделов и
 то, какую проверку сайт показывает до содержимого.
@@ -91,7 +91,7 @@ class SberAdapter(CrawlAdapter):
     # собираются отдельно и в каталог продуктов не идут.
     skip = re.compile(
         r"(calc|kalkul|faq|question|vopros|help|pomosh|nalog|tax|notif|uvedoml|"
-        r"compens|kompens|asv|safe|seif|sejf|nominal|assistant|gigachat|/ai\b|"
+        r"compens|kompens|asv|nominal|assistant|gigachat|/ai\b|"
         r"podderzh|support|potencial|potential|history|istori|archive|arhiv|"
         r"document|dokument|tarif|stavki|prolong|prodlen|instruction|how_to|"
         r"article|news|blog|promo|akci|action|"
@@ -201,12 +201,12 @@ class VtbAdapter(CrawlAdapter):
         r"/bez-|/dlya-|/onlajn-zayavka|/form\b|/anketa|"
         # Подборки, города и служебное в разделе вкладов ВТБ (обход 07.10.2026).
         r"/vklad-\d|/vklady-(?!i-scheta)|/so-snyatiem|/sberezhenija$|/nakopitelnyy-chet-|"
-        r"/kurs-|/monety|metallicheskij|/seyfovye|/strahovanie|asv|/informacija|"
+        r"/kurs-|asv|/informacija|"
         r"/restrukturizaciya|/spisok-partnerov|/katalog-nedvizhimosti|/maksimum-vygody|"
         r"/zarplatnyj-proekt|/vtbpay|"
         # Опция к вкладам («Надбавка за покупки») и программа лояльности
         # («Дополнительные категории кешбэка») — не продукты (03.11.2026).
-        r"/vklady-i-scheta/traty|/programma-loyalnosti|"
+        r"/vklady-i-scheta/traty|"
         # Языковые копии страниц («…/foreign/ZH», «/en», «/UZ», «/HI», 03.11.2026).
         r"/(?:en|zh|uz|hi|tj|kg|kz|ky|tg|ar|tr)$|"
         r"/(nizhniy-novgorod|chelyabinsk|yekaterinburg|krasnodar|rostov-na-donu|ufa|"
@@ -279,13 +279,13 @@ class TbankAdapter(CrawlAdapter):
     skip = re.compile(NOT_RETAIL.pattern + "|" + (
         r"/city/|/foreign|/form$|/(dlya|bez|s)-|virtualnaya|beskontaktnaya|"
         r"nakopitelnaya-karta|mezhdunarodnaya|imennaya|besplatnaya|momentalnaya|"
-        r"/debit-cards/(premium|travel|driver|games|shopping)$|insurance|"
+        r"/debit-cards/(premium|travel|driver|games|shopping)$|"
         # Сбор 28.10.2026: «как погасить», карты сайта, формы заявок и
         # оплаты, партнёрские рассрочки в магазинах — не продукты.
         r"how-repay|/sitemap|/form/|/new-form|/payment$|/purpose$|/service$|"
         # Языковые копии страниц: «…/islam-card/eng» (03.11.2026).
         r"/(?:eng?|uz|tj|kg|kz)$|"
-        r"/pos-loans/[\w/-]+|/credit-history|/payments/|/specialty-check"), re.I)
+        r"/pos-loans/[\w/-]+|/credit-history|/specialty-check"), re.I)
 
 
 @registry.register

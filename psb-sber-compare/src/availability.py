@@ -3,10 +3,9 @@
 У каждого продукта — один из четырёх статусов и основание для него:
 
 * «есть в ЛНР, условия ЛНР» — регион ЛНР выбран на сайте или в калькуляторе
-  банка, либо банк работает только в ЛНР (ЦМР);
-* «есть в ЛНР, условия общероссийские» — банк в ЛНР работает (источник в
-  настройке presence_source), а отдельных условий для ЛНР на сайте нет:
-  по ТЗ тогда берутся общероссийские;
+  банка, либо конкретная услуга указана для луганского офиса;
+* «общероссийские условия» — присутствие банка в ЛНР подтверждено,
+  доступность конкретного продукта требует проверки;
 * «нет в ЛНР» — есть прямое указание: калькулятор пишет «недоступно в
   вашем регионе», на странице сказано «не предоставляется в … ЛНР» и т. п.;
 * «не установлено» — ни того, ни другого; что проверено, сказано в
@@ -25,10 +24,27 @@ from typing import Any, Iterable
 from . import card_terms, conditions, market
 
 LNR, FEDERAL, ABSENT, UNKNOWN = "lnr", "federal", "absent", "unknown"
+SERVICE_CITY_KEY = "Услуга в офисе Луганска: цитата"
+SERVICE_SOURCE_KEY = "Услуга в офисе Луганска: источник"
+
+
+def remember_service_city(product: Any, text: str) -> None:
+    """A service-specific office list is stronger evidence than a bank footer."""
+    if product.category != "Сейфовые ячейки":
+        return
+    block = re.search(r"Перечень\s+ВСП,?\s+в\s+которых\s+предоставляется\s+услуга\s*:(.*)",
+                      text or "", re.I | re.S)
+    if not block:
+        return
+    body = re.split(r"Заявка на|Мобильный банк|Обратная связь|Реквизиты", block[1], maxsplit=1, flags=re.I)[0]
+    match = re.search(r"ДО\s+[«\"]Луганск[»\"],?\s+адрес[^\n]{0,250}", body, re.I)
+    if match and re.search(r"Советская|Луганская Народная Республика", match[0], re.I):
+        product.terms[SERVICE_CITY_KEY] = " ".join(match[0].split())
+        product.terms[SERVICE_SOURCE_KEY] = product.source_url
 
 LABELS = {
     LNR: "есть в ЛНР, условия ЛНР",
-    FEDERAL: "есть в ЛНР, условия общероссийские",
+    FEDERAL: "общероссийские условия; доступность в ЛНР не подтверждена",
     ABSENT: "нет в ЛНР",
     UNKNOWN: "не установлено",
 }
@@ -36,7 +52,7 @@ ICONS = {LNR: "🟢", FEDERAL: "🔵", ABSENT: "🔴", UNKNOWN: "⚪"}
 #: Какой статус сильнее, когда у банка несколько продуктов одной программы.
 RANK = {LNR: 3, FEDERAL: 2, UNKNOWN: 1, ABSENT: 0}
 
-_REGION_WORDS = (r"(?:ДНР|ЛНР|Луганск\w*|Донецк\w*|Запорожск\w*|Херсонск\w*|"
+_REGION_WORDS = (r"(?:ЛНР|Луганск\w*|"
                  r"нов\w+\s+(?:регион|субъект|территори)\w*)")
 # «Не предоставляется в ДНР, ЛНР…», «недоступна для жителей новых регионов»,
 # «кроме Луганской Народной Республики». Только в одном предложении с
@@ -66,6 +82,15 @@ class Status:
     source: str = ""     # ссылка или настройка
 
     @property
+    def city_confirmed(self) -> bool:
+        """Калькулятор продукта дал результат для города Луганска."""
+        return (self.code == LNR
+                and ("калькулятор на сайте банка:" in self.reason
+                     or "на сайте банка выбран город" in self.reason
+                     or "услуга предоставляется в офисе Луганска:" in self.reason)
+                and bool(re.search(r"\bЛуганск\b", self.reason, re.I)))
+
+    @property
     def label(self) -> str:
         return LABELS[self.code]
 
@@ -87,21 +112,30 @@ def status_of(product: Any, *, region_method: str, presence: str = "") -> Status
     absent = terms.get(market.REGION_KEY)
     if absent:
         return Status(ABSENT, str(absent), url)
+    if terms.get("Вид ценной бумаги"):
+        return Status(UNKNOWN, str(terms.get("Доступность торгов в Луганске") or
+                      "доступность торгов этим выпуском через банк в Луганске не подтверждена"), url)
+    if (getattr(product, "category", "") == "Сейфовые ячейки" and terms.get(SERVICE_CITY_KEY)
+            and url and terms.get(SERVICE_SOURCE_KEY) == url):
+        return Status(LNR, f"услуга предоставляется в офисе Луганска: {terms[SERVICE_CITY_KEY]}", url)
     calc = str(terms.get("Калькулятор на сайте") or "")
     # «Есть в ЛНР» — только если калькулятор для ЛНР показал хоть одну ставку:
     # строка из одних «недоступно» и «не показал расчёт» этого не доказывает.
     if (calc and "регион не выбран" not in calc and re.search(r"луганск", calc, re.I)
             and re.search(r"\d\s?%", calc)):
         return Status(LNR, f"калькулятор на сайте банка: {calc}", url)
+    if region_method == "selector" and terms.get("Город выбран на сайте банка") == "Луганск":
+        return Status(LNR, "на сайте банка выбран город Луганск; условия получены для этого города", url)
     if region_method == "selector":
         return Status(LNR, "условия получены на сайте банка с выбранным регионом ЛНР", url)
     if region_method == "local":
-        return Status(LNR, "банк работает только в ЛНР — условия на сайте луганские",
-                      presence or url)
+        return Status(UNKNOWN, "в настройках указан локальный профиль банка; доступность "
+                          "конкретного продукта в ЛНР и Луганске требует подтверждения",
+                          presence or url)
     if region_method == "federal":
         if presence:
-            return Status(FEDERAL, "банк работает в ЛНР, отдельных условий для ЛНР на "
-                                   "сайте нет — по ТЗ берутся общероссийские", presence)
+            return Status(FEDERAL, "присутствие банка в ЛНР подтверждено; доступность этого "
+                                   "продукта и способ оформления в Луганске требуют проверки", presence)
         return Status(UNKNOWN, "отдельных условий для ЛНР на сайте нет, а присутствие "
                                "банка в ЛНР не подтверждено источником", url)
     return Status(UNKNOWN, "регион на сайте банка при сборе не выбран — чьи это "

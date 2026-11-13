@@ -20,7 +20,7 @@ def _p(bank, title, rate=10.0, category="Кредиты", terms=None, method="")
 
 @pytest.mark.parametrize("method, presence, terms, code", [
     ("selector", "", {}, av.LNR),
-    ("local", "https://cmr/offices", {}, av.LNR),
+    ("local", "https://cmr/offices", {}, av.UNKNOWN),
     ("federal", "https://bankprofi.ru/...", {}, av.FEDERAL),
     ("federal", "", {}, av.UNKNOWN),
     ("not_confirmed", "x", {}, av.UNKNOWN),
@@ -224,3 +224,63 @@ def test_new_money_and_welcome_are_same_kind():
     got = from_matrix(av.matrix(items, home="Сбер", banks=["Сбер", "ВТБ"], status=st), Thresholds())
     assert len(got) == 1
     assert not any("Тип ставки" in n for n in got[0].notes)
+
+
+@pytest.mark.parametrize("text", [
+    "Кредит не предоставляется в ДНР.",
+    "Программа недоступна в Донецке.",
+    "Оформление невозможно, кроме жителей Херсонской области.",
+])
+def test_other_region_restriction_does_not_mean_lnr_restriction(text):
+    assert av.find_clause(text) == ""
+
+
+@pytest.mark.parametrize("code", [av.ABSENT, av.UNKNOWN, av.FEDERAL])
+@pytest.mark.parametrize("side", ["own", "rival"])
+def test_unconfirmed_or_absent_products_do_not_enter_lnr_traffic_light(code, side):
+    from src.compare import Thresholds, from_matrix
+    own = _p("Сбер", "Кредит наличными", 18)
+    rival = _p("ВТБ", "Кредит наличными", 20)
+    items = [own, rival]
+    status = {id(p): av.Status(av.LNR, "ЛНР") for p in items}
+    status[id(own if side == "own" else rival)] = av.Status(code, "проверка")
+    rows = av.matrix(items, home="Сбер", banks=["Сбер", "ВТБ"], status=status)
+    assert from_matrix(rows, Thresholds()) == []
+
+
+def test_city_evidence_requires_exact_city_and_product_calculation():
+    assert av.Status(av.LNR, "калькулятор на сайте банка: ЛНР, Луганск — ставка 18%").city_confirmed
+    assert not av.Status(av.LNR, "условия получены с выбранным регионом ЛНР").city_confirmed
+    assert not av.Status(av.LNR, "калькулятор на сайте банка: Луганская Народная Республика — 18%").city_confirmed
+    assert not av.Status(av.FEDERAL, "банк имеет офис в Луганске").city_confirmed
+
+
+def test_selected_city_is_preserved_as_product_evidence():
+    product = _p("ПСБ", "Вклад", terms={"Город выбран на сайте банка": "Луганск"})
+    assert av.status_of(product, region_method="selector").city_confirmed
+    assert not av.status_of(product, region_method="federal", presence="офис").city_confirmed
+
+
+def test_service_percentage_is_not_ranked_as_loan_interest():
+    from src.compare import Thresholds, from_matrix
+    items = [_p("Сбер", "Страхование квартиры", 1, category="Страхование"),
+             _p("ВТБ", "Страхование квартиры", 2, category="Страхование")]
+    status = {id(p): av.Status(av.LNR, "условия ЛНР") for p in items}
+    rows = av.matrix(items, home="Сбер", banks=["Сбер", "ВТБ"], status=status)
+    assert from_matrix(rows, Thresholds()) == []
+def test_safe_deposit_city_requires_service_specific_office_list():
+    from src import availability
+    from src.psb.parser import Product
+    p = Product(bank="Генбанк", title="Сейфовые ячейки", category="Сейфовые ячейки",
+                source_url="https://www.genbank.ru/chastnym-litsam/seyfovye-yacheyki/")
+    office = 'ДО «Луганск», адрес 291011, Луганская Народная Республика, г. Луганск, ул. Советская, д. 86А'
+    availability.remember_service_city(p, 'Отделения банка\n' + office)
+    assert availability.status_of(p, region_method="not_confirmed").code == availability.UNKNOWN
+    availability.remember_service_city(p, 'Перечень ВСП, в которых предоставляется услуга:\nДО «Москва»\nМобильный банк\n' + office)
+    assert availability.status_of(p, region_method="not_confirmed").code == availability.UNKNOWN
+    availability.remember_service_city(p, 'Перечень ВСП, в которых предоставляется услуга:\n' + office + '\nЗаявка на аренду сейфовой ячейки')
+    status = availability.status_of(p, region_method="not_confirmed")
+    assert status.code == availability.LNR and status.city_confirmed
+    p.terms[availability.SERVICE_SOURCE_KEY] = "https://www.genbank.ru/about/"
+    assert availability.status_of(p, region_method="not_confirmed").code == availability.UNKNOWN
+

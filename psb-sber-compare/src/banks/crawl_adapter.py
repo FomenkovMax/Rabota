@@ -73,9 +73,9 @@ def is_blocked(data: dict[str, Any]) -> bool:
 # услуги и функции («Ипотечные каникулы», «Управляйте списаниями…»),
 # призывы («Открыть СберВклад онлайн») и заголовок-домен вместо названия.
 _NOT_A_PRODUCT = re.compile(
-    r"^(?:платите|управляйте|создайте|привез[её]м|покупайте|открыть|откройте|"
+    r"^(?:урок|платите|управляйте|создайте|привез[её]м|покупайте|открыть|откройте|"
     r"оформите|узнайте|получите|переведите|подключите)\b|каникул|"
-    r"программ\w*\s+поддержк|^[\w.-]+\.(?:ru|рф|com)$|^404|страница не найдена|"
+    r"программ\w*\s+поддержк|^[\w.-]+\.(?:ru|рф|com)$|^404|страница не найдена|^у нас проблема|"
     # Служебные страницы РостФинанса (обход 07.10.2026).
     r"способы\s+пополнения|страхование\s+вкладов|^выпуск\s+карты|соотношение|"
     r"^вклады\s+и\s+[сc]ч[её]та|^кредиты\s+наличными$|^кредитный\s+лимит|^вкладывайте|"
@@ -85,8 +85,8 @@ _NOT_A_PRODUCT = re.compile(
     # Подборки ВТБ во множественном числе: «Вклады в Самаре», «Вклады на
     # 1 год», «Накопительные счета до востребования», «Сберегательные вклады».
     r"^(?:вклады|накопительные\s+сч[её]та|сберегательные\s+вклады)\b|"
-    # Драгметаллы и курсы — не розничные вклады и кредиты для сравнения.
-    r"^курс\s|монет\w*\s+из\s+драгоцен|металлическ\w*\s+сч[её]т|^услуги\s+по\s+размещению",
+    # Таблица курсов сама по себе не является отдельным продуктом.
+    r"^курс\s|^услуги\s+по\s+размещению",
     re.I,
 )
 
@@ -94,6 +94,8 @@ _NOT_A_PRODUCT = re.compile(
 def _shouting(title: str) -> bool:
     """Заголовок раздела заглавными буквами: «ВКЛАДЫ И CЧЕТА», «ИПОТЕКА»."""
     letters = [ch for ch in title if ch.isalpha()]
+    if title.strip() in {"ОСАГО", "КАСКО", "ИИС", "ПДС", "ОМС"}:
+        return False
     return len(letters) > 4 and all(ch.isupper() for ch in letters)
 
 
@@ -817,7 +819,7 @@ def product_from_page(data: dict[str, Any], *, bank: str, url: str,
     title, body = describe_page(data)
     headline = title
     title = product_name(title)
-    if not is_product_title(title):
+    if not is_product_title(title) or title.casefold() in {c.casefold() for c in coverage.CATEGORIES}:
         return None
 
     product = Product(
@@ -841,7 +843,7 @@ def product_from_page(data: dict[str, Any], *, bank: str, url: str,
 
     # Ставки в описании нет, но она есть в самом заголовке страницы
     # продукта: «ВТБ-Вклад в рублях до 13,7% годовых».
-    if product.rate_min is None and headline != title:
+    if product.category in _RATE_CATEGORIES and product.rate_min is None and headline != title:
         values = rates_of(headline)
         if values:
             conditions.remember(product, conditions.scan(headline)
@@ -869,6 +871,17 @@ def product_from_page(data: dict[str, Any], *, bank: str, url: str,
                                    else "на странице продукта не указана")
     if body:
         product.terms["Контекст на странице"] = " · ".join(body[:8])[:300]
+    if product.category in coverage.CATEGORIES and product.category not in _RATE_CATEGORIES and product.category not in card_terms.CARD_CATEGORIES:
+        product.terms.pop("Ставка", None)
+        if body:
+            product.terms["Условия услуги на сайте"] = "\n".join(body)[:4000]
+        documents = []
+        for item in data.get("links") or []:
+            href = item[0] if isinstance(item, (tuple, list)) else str(item)
+            if re.search(r"\.(?:pdf|docx?|xlsx?)(?:$|\?)", href, re.I):
+                documents.append(href)
+        if documents:
+            product.terms["Документы и тарифы"] = "\n".join(dict.fromkeys(documents))
     base_rate_without_service(product, data.get("text") or "")
     # «Карта больше не выпускается», «приём заявок прекращён» — продукт есть
     # на сайте, но оформить его нельзя: в сравнение не идёт.
@@ -902,6 +915,10 @@ def product_from_page(data: dict[str, Any], *, bank: str, url: str,
     clause = find_clause("\n".join(body + rates_section(data)))
     if clause:
         product.terms.setdefault(market.REGION_KEY, f"на странице банка: «{clause}»")
+    from .. import securities
+    securities.remember(product, body)
+    from ..availability import remember_service_city
+    remember_service_city(product, data.get("text") or "")
     return product
 
 
@@ -959,21 +976,25 @@ class CrawlAdapter(BankAdapter):
                         "а если про ЛНР на сайте ничего нет — banks.%s.region_mode: federal",
                         self.title, self.code, self.code)
 
-        max_pages = int(self.settings.get("max_pages") or 80)
+        max_pages = int(self.settings.get("max_pages", 80) or 0)
         limit_s = float(self.settings.get("section_timeout_s") or 0)
 
-        seeds = [self._normalize(url) for url in self.seeds]
-        seed_set = set(seeds)
-        first = [self._normalize(url) for url in self.priority]
-        first_set = set(first)
+        resume_urls = self.settings.get("resume_urls") or []
+        seeds = [self._normalize(url) for url in (resume_urls or self.seeds)]
+        # Resume URLs are product pages, not showcase seeds.
+        seed_set = {self._normalize(url) for url in self.seeds}
+        first = [] if resume_urls else [self._normalize(url) for url in self.priority]
+        first_set = {self._normalize(url) for url in self.priority}
         queue: deque[str] = deque(seeds + [u for u in first if u not in seed_set])
-        seen: set[str] = set(queue)
+        seen: set[str] = set(queue) | {self._normalize(url)
+                                     for url in self.settings.get("skip_urls", [])}
 
         products: dict[str, Product] = {}
         showcase: dict[str, tuple[Any, str, str]] = {}
         failures: list[str] = []
         visited = 0
-        self._clear_missing()
+        if not resume_urls:
+            self._clear_missing()
         calc_blocked: dict[str, str] = {}      # программа → что сказал калькулятор
         calc_found: list[tuple[str, dict[str, Any]]] = []   # (адрес, результат калькулятора)
         sitemap_found: set[str] = set()         # страницы из карты сайта
@@ -1000,7 +1021,7 @@ class CrawlAdapter(BankAdapter):
                         seen.add(url)
                         queue.append(url)
                         sitemap_found.add(url)
-                while queue and visited < max_pages:
+                while queue and (max_pages == 0 or visited < max_pages):
                     url = self._next(queue, popularity)
                     visited += 1
                     log.info("%s: страница %s (в очереди %s) — %s",
@@ -1059,7 +1080,7 @@ class CrawlAdapter(BankAdapter):
                     self._save_page(visited, url, data, links)
                     office_url = office_url or office_link(data.get("links") or [],
                                                            self.base_url)
-                    path = urlsplit(url).path
+                    path = urlsplit(url).path.rstrip("/")
                     deeper = {l for l in links if urlsplit(l).path.startswith(path + "/")}
                     # Главный продукт — всегда страница продукта, даже если
                     # у него есть подстраницы: у Т-Банка «Кредит наличными»
@@ -1120,7 +1141,7 @@ class CrawlAdapter(BankAdapter):
             site_sections.update({
                 CRAWL_READ_KEY: str(visited),
                 CRAWL_SITEMAP_KEY: str(len(sitemap_found)),
-                CRAWL_UNREAD_KEY: " ".join(unread[:60]),
+                CRAWL_UNREAD_KEY: " ".join(unread),
                 CRAWL_CANDIDATES_KEY: " ".join(sorted(self.__dict__.get("_candidates", ()))[:150]),
                 CRAWL_FAILED_KEY: " ".join(f.split(":")[0] + ":" + f.split(":")[1]
                                            for f in failures if f.startswith("http"))[:3000],
@@ -1154,7 +1175,7 @@ class CrawlAdapter(BankAdapter):
                                 + ("; ".join(failures[:3]) or "проверьте витрины"))
         return self._result(products=merged, pages_visited=visited, coverage=site_sections,
                             region_applied=applied, region_method=method,
-                            partial=blocked or bool(queue))
+                            partial=blocked or bool(queue) or bool(failures))
 
     @staticmethod
     def _next(queue: deque[str], popularity: dict[str, int]) -> str:
@@ -1317,7 +1338,7 @@ class CrawlAdapter(BankAdapter):
 
         Только разделы этого банка, без служебных и SEO-страниц. Карты нет
         или не открылась — пусто, обход идёт по ссылкам, как раньше."""
-        if not self.settings.get("sitemap"):
+        if self.settings.get("resume_urls") or not self.settings.get("sitemap"):
             return []
         host = urlsplit(self.base_url).netloc
         todo, found, read = [self.base_url.rstrip("/") + "/sitemap.xml"], [], 0
@@ -1457,9 +1478,16 @@ class CrawlAdapter(BankAdapter):
 
     def _family(self, url: str) -> str:
         path = urlsplit(url).path
+        if re.search(r"/(?:precious[-_]?metals?|dragmetall\w*|metallichesk[\w-]*|monety|oms)(?:/|$)", path, re.I):
+            return "Инвестиции"
         for prefix, category in self.families:
             if path == prefix or path.startswith(prefix + "/"):
                 return category
+        category = coverage.classify(url)
+        if category in {"Инвестиции", "Страхование", "НПФ и ПДС",
+                        "Переводы и платежи", "Лояльность и кешбэк",
+                        "Сейфовые ячейки", "Валютные операции", "Премиальное обслуживание"}:
+            return category
         for pattern, category in self.family_words:
             if re.search(pattern, path, re.I):
                 return category

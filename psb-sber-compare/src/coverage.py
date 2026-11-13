@@ -2,8 +2,8 @@
 
 Аудит 07.10.2026 просил матрицу «банк × категория» по всему Розничному
 блоку: вклады, карты, кредиты, ипотека, но и инвестиции, страхование,
-НПФ, переводы, лояльность, ячейки, валюта. Ставки по последним
-сравнивать не договорились — достаточно факта «есть у банка» со ссылкой.
+НПФ, переводы, лояльность, ячейки, валюта. Условия каждого продукта
+и его региональная доступность проверяются отдельно.
 
 Факт берётся из ссылок самого сайта банка: меню и подвал любой страницы
 ведут во все разделы розницы. Ссылка на раздел — проверяемое
@@ -33,6 +33,7 @@ CATEGORIES = (
     "Лояльность и кешбэк",
     "Сейфовые ячейки",
     "Валютные операции",
+    "Премиальное обслуживание",
 )
 
 # Категорию задаёт раздел сайта — первый значимый сегмент адреса, а
@@ -40,8 +41,9 @@ CATEGORIES = (
 # — вклад, а не инвестиции; «/deposits/vklady-dolgosrochnye» — вклад, а
 # не ПДС; «/bank_cards/credit» — кредитная карта.
 _PREFIX = {"ru", "en", "person", "personal", "individual", "individuals",
-           "chastnym-licam", "fiz", "private", "retail"}
+           "chastnym-licam", "chastnym-litsam", "fiz", "private", "retail"}
 _SECTION: tuple[tuple[str, re.Pattern[str]], ...] = (
+    ("Премиальное обслуживание", re.compile(r"^(?:premium|premier|privilegia|private-banking|sberpremier|sber1|sberfirst)$", re.I)),
     ("Страхование", re.compile(r"^(?:strahov\w*|insurance|polis\w*)$", re.I)),
     ("Инвестиции", re.compile(r"^(?:invest\w*|broker\w*|iis|wealth|brokerage)$", re.I)),
     ("НПФ и ПДС", re.compile(r"^(?:pds|npf|pension[-_]?savings|pensionnye[-\w]*)$", re.I)),
@@ -89,6 +91,16 @@ def classify(url: str) -> str | None:
     if not segments:
         return None
     rest = segments[1:]
+    # Pension and insurance products may be nested under investments or
+    # premium banking (VTB's actual catalogue), not separate top-level menus.
+    if any(re.fullmatch(r"(?:pds(?:[-_][\w-]+)?|npf|ops|pensionnye[-\w]*)", s, re.I) for s in rest):
+        return "НПФ и ПДС"
+    if any(re.fullmatch(r"(?:insurance|strahovanie|strakhovanie|strahovye-produkty)", s, re.I) for s in rest):
+        return "Страхование"
+    if any(re.search(r"^(?:precious[-_]?metals?|dragmetall\w*|metallichesk[\w-]*|monety(?:-iz-dragotsennykh-metallov)?|slitki-iz-zolota|oms)$", s, re.I) for s in segments):
+        return "Инвестиции"
+    if any(re.search(r"^(?:programma[-_]loyalnosti|loyalty)$", s, re.I) for s in segments):
+        return "Лояльность и кешбэк"
     if any(_SAFE.search(s) for s in segments):
         return "Сейфовые ячейки"
     # «/person/person-deposit», «/person/obmen-valjuty»,
@@ -143,7 +155,7 @@ def collect(urls: Iterable[str], found: dict[str, str], *, base_url: str = "") -
 
 COMPARED, COLLECTED, LINK_ONLY, NOT_FOUND = "compared", "collected", "link", "none"
 STATUS_LABEL = {
-    COMPARED: "сравнивается",
+    COMPARED: "собрано со ставкой",
     COLLECTED: "собрано, без сравнения ставок",
     LINK_ONLY: "есть у банка (ссылка), не собирается",
     NOT_FOUND: "не найдено на сайте",
@@ -173,7 +185,7 @@ _RATED_TZ = {"Вклады", "Накопительные счета", "Кред�
 def tz_category(product: Any) -> str | None:
     """Категория ТЗ для продукта агента."""
     category = getattr(product, "category", "") or ""
-    tz = _PRODUCT_TO_TZ.get(category)
+    tz = _PRODUCT_TO_TZ.get(category, category if category in CATEGORIES else None)
     if tz == "Потребительские кредиты":
         title = (getattr(product, "title", "") or "").lower()
         if re.search(r"автокредит|на\s+авто|на\s+автомобил", title) and "залог" not in title:
@@ -187,6 +199,10 @@ class Cell:
     products: int = 0
     rated: int = 0
     url: str = ""
+    lnr: int = 0
+    lugansk: int = 0
+    unresolved: int = 0
+    regional_checked: bool = False
 
     @property
     def label(self) -> str:
@@ -194,10 +210,12 @@ class Cell:
 
 
 def matrix(banks: list[str], products: Iterable[Any],
-           links: dict[str, dict[str, str]]) -> dict[str, dict[str, Cell]]:
+           links: dict[str, dict[str, str]], *,
+           statuses: dict[int, Any] | None = None) -> dict[str, dict[str, Cell]]:
     """category → bank → Cell."""
     counts: dict[tuple[str, str], list[int]] = {}
     first_url: dict[tuple[str, str], str] = {}
+    regional: dict[tuple[str, str], list[int]] = {}
     for product in products:
         tz = tz_category(product)
         if tz is None:
@@ -205,6 +223,12 @@ def matrix(banks: list[str], products: Iterable[Any],
         key = (tz, product.bank)
         slot = counts.setdefault(key, [0, 0])
         slot[0] += 1
+        if statuses is not None:
+            status = statuses.get(id(product))
+            region_counts = regional.setdefault(key, [0, 0, 0])
+            region_counts[0] += int(status is not None and status.code == "lnr")
+            region_counts[1] += int(status is not None and status.city_confirmed)
+            region_counts[2] += int(status is None or status.code in {"unknown", "federal"})
         has_rate = product.rate_min is not None or product.rate_max is not None
         if has_rate and tz in _RATED_TZ:
             slot[1] += 1
@@ -224,6 +248,9 @@ def matrix(banks: list[str], products: Iterable[Any],
                 cell = Cell(LINK_ONLY, 0, 0, link)
             else:
                 cell = Cell(NOT_FOUND)
+            if statuses is not None:
+                cell.lnr, cell.lugansk, cell.unresolved = regional.get((tz, bank), [0, 0, 0])
+                cell.regional_checked = True
             row[bank] = cell
         out[tz] = row
     return out

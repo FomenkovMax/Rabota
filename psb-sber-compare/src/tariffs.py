@@ -16,6 +16,7 @@ from __future__ import annotations
 import io
 import logging
 import re
+from datetime import date
 from typing import Any
 
 log = logging.getLogger(__name__)
@@ -36,7 +37,32 @@ _NOT_RATE = re.compile(r"неустойк|штраф|пен[яи]\b|ключев
                        r"льготн\w+\s+период|беспроцентн", re.I)
 
 
-def tariff_links(links: list[Any], *, limit: int = 2) -> list[str]:
+def current_document_label(text: str, *, on: date | None = None) -> bool:
+    """Reject explicitly archived, future or expired editions, not mere dates.
+
+    A publication date alone does not establish validity. Undated documents
+    remain candidates; this filter does not certify that they are current.
+    """
+    if re.search(r"архив|утратил[аи]? силу|не действует", text, re.I):
+        return False
+    today = on or date.today()
+    pattern = r"(?:действ\w*\s+)?\b([сc]|по|до)\s+(\d{2})[.](\d{2})[.](\d{4})"
+    for match in re.finditer(pattern, text, re.I):
+        try:
+            boundary = date(int(match[4]), int(match[3]), int(match[2]))
+        except ValueError:
+            return False
+        word = match[1].lower()
+        if word in ("с", "c") and boundary > today:
+            return False
+        if word == "по" and boundary < today:
+            return False
+        if word == "до" and boundary <= today:
+            return False
+    return True
+
+
+def tariff_links(links: list[Any], *, limit: int = 2, on: date | None = None) -> list[str]:
     """PDF-тарифы среди ссылок страницы (пары «адрес, подпись»)."""
     out: list[str] = []
     for item in links:
@@ -48,6 +74,8 @@ def tariff_links(links: list[Any], *, limit: int = 2) -> list[str]:
         if not href.lower().split("?")[0].endswith(".pdf"):
             continue
         if _NOT_TARIFF.search(href) or _NOT_TARIFF.search(text):
+            continue
+        if not current_document_label(text, on=on):
             continue
         if _TARIFF.search(text) or _TARIFF.search(href):
             out.append(href)

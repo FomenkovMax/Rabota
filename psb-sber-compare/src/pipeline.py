@@ -104,8 +104,15 @@ def collect_bank(config: Config, code: str, *, save: bool = True) -> Any:
         _drop_seo(result)
         _mark_region(result)
         storage.save_products(run_id, result.products)
-        storage.save_coverage(run_id, adapter.title, getattr(result, "coverage", {}))
-        _keep_unread(storage, result, previous, run_id)
+        collected_coverage = getattr(result, "coverage", {})
+        if previous is not None and adapter.settings.get("resume_urls"):
+            from .banks.crawl_adapter import CRAWL_READ_KEY
+            old_coverage = storage.coverage_of_run(previous).get(adapter.title, {})
+            total_read = int(old_coverage.get(CRAWL_READ_KEY, 0)) + int(collected_coverage.get(CRAWL_READ_KEY, 0))
+            collected_coverage = {**old_coverage, **collected_coverage, CRAWL_READ_KEY: str(total_read)}
+        storage.save_coverage(run_id, adapter.title, collected_coverage)
+        _keep_unread(storage, result, previous, run_id,
+                     force=bool(adapter.settings.get("resume_urls")))
         # Остальные банки берём из прошлого сбора, иначе свод после
         # обновления одного банка показал бы только его.
         if previous is not None:
@@ -147,7 +154,8 @@ def collect_all(config: Config) -> dict[str, Any]:
 KEEP_UNREAD_DAYS = 14
 
 
-def _keep_unread(storage: Storage, result: Any, previous: int | None, run_id: int) -> None:
+def _keep_unread(storage: Storage, result: Any, previous: int | None, run_id: int,
+                 *, force: bool = False) -> None:
     """Обход оборвался — непрочитанные продукты банка берём из прошлого сбора.
 
     Переносится не всё подряд. Первый перенос 07.10.2026 вернул в отчёт
@@ -158,7 +166,7 @@ def _keep_unread(storage: Storage, result: Any, previous: int | None, run_id: in
     карточки на витрине и у страницы продукта разный), страницы, которые
     нынешние правила продуктом не считают, и всё старше двух недель.
     """
-    if previous is None or not getattr(result, "partial", False):
+    if previous is None or not (force or getattr(result, "partial", False)):
         return
     from datetime import datetime, timedelta
 
@@ -195,7 +203,7 @@ def _mark_region(result: Any) -> None:
     """Каждому продукту — способ привязки к ЛНР, с которым его собрали."""
     for product in result.products:
         if not getattr(product, "region_method", ""):
-            product.region_method = getattr(result, "region_method", "") or "selector"
+            product.region_method = getattr(result, "region_method", "") or "not_confirmed"
 
 
 # --- история --------------------------------------------------------------
@@ -370,8 +378,13 @@ def load_report_data(config: Config, *, competitor: str = "") -> dict[str, Any] 
         # сборов, а пересобирать ради этого все банки незачем.
         from .banks.seo import is_seo_page
 
+        from .banks.crawl_adapter import is_product_title
         all_products = [p for p in _rows_to_products(storage.products_of_run(run_id))
-                        if not is_seo_page(p.source_url)]
+                        if not is_seo_page(p.source_url) and is_product_title(p.title)]
+        for product in all_products:
+            category = coverage.classify(product.source_url)
+            if product.category in {"Инвестиции", "Премиальное обслуживание"} and category in {"Страхование", "НПФ и ПДС"}:
+                product.category = category
         mark_not_in_region(config, all_products)
         by_bank: dict[str, list[Any]] = {}
         for product in all_products:
@@ -433,11 +446,18 @@ def load_report_data(config: Config, *, competitor: str = "") -> dict[str, Any] 
         key_rate = key.value if key else None
 
         scope = [p for t in [home_title] + competitor_titles for p in by_bank.get(t, [])]
+        presence = bank_presence(config, competitor_codes + [HOME_BANK],
+                                 storage.coverage_of_run(run_id))
+        lnr_status = availability.statuses(scope, region_methods=region_methods,
+                                           presence=presence)
+        available_ids = {key for key, status in lnr_status.items()
+                         if status.code == availability.LNR}
+        regional_scope = [p for p in scope if id(p) in available_ids]
 
         # Витрина в блоке акций — только ставки, прошедшие проверки: иначе
         # «Платинум 5 %» (ставка льготного периода) выигрывал бы сегмент.
         def checked(products: list[Any]) -> list[Any]:
-            return [p for p in products if market.assess(
+            return [p for p in products if id(p) in available_ids and market.assess(
                 p, key_rate=key_rate, region_method=region_methods.get(p.bank, ""),
             ).confidence != market.LOW]
 
@@ -447,20 +467,16 @@ def load_report_data(config: Config, *, competitor: str = "") -> dict[str, Any] 
                                     sber_products=checked(sber_products))
         gaps = market.build_gaps(scope, home=home_title, key_rate=key_rate,
                                  region_methods=region_methods,
-                                 parity_pp=thresholds.parity)
+                                 parity_pp=thresholds.parity, available_ids=available_ids)
         quality_rows, manual = market.quality(scope, key_rate=key_rate,
                                               region_methods=region_methods)
-        special_rows = market.specials(scope, key_rate=key_rate,
+        special_rows = market.specials(regional_scope, key_rate=key_rate,
                                        region_methods=region_methods)
         coverage_matrix = coverage.matrix([home_title] + competitor_titles, scope,
-                                          storage.coverage_of_run(run_id))
-        calc_offers = charts.calculator_offers(scope, key_rate=key_rate,
+                                          storage.coverage_of_run(run_id), statuses=lnr_status)
+        calc_offers = charts.calculator_offers(regional_scope, key_rate=key_rate,
                                                region_methods=region_methods)
         # Главное по ТЗ — есть ли продукт в Луганске: статус и основание.
-        presence = bank_presence(config, competitor_codes + [HOME_BANK],
-                                 storage.coverage_of_run(run_id))
-        lnr_status = availability.statuses(scope, region_methods=region_methods,
-                                           presence=presence)
         lnr_rows = availability.matrix(scope, home=home_title,
                                        banks=[home_title] + competitor_titles,
                                        status=lnr_status)
@@ -554,6 +570,11 @@ def run(config: Config) -> dict[str, Any]:
         for code, result in collect_all(config).items():
             if not result.ok:
                 failures.append(result.summary)
+                if previous_ok is not None:
+                    rows = storage.products_of_run(previous_ok, bank=result.bank)
+                    storage.copy_products(run_id, [row["id"] for row in rows])
+                    old_coverage = storage.coverage_of_run(previous_ok).get(result.bank, {})
+                    storage.save_coverage(run_id, result.bank, old_coverage)
                 continue
             banks_ok.append(result.bank)
             _drop_seo(result)
@@ -577,6 +598,7 @@ def run(config: Config) -> dict[str, Any]:
         storage.save_changes(run_id, changes)
         storage.finish_run(run_id, psb=products_total, sber=0,
                            promos=promos_total,
+                           status="ok" if banks_ok else "failed",
                            note="; ".join(failures) if failures else "")
         storage.purge_older_than(int(config.get("storage", "history_days", default=365)))
     except Exception as exc:
