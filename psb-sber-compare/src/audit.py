@@ -47,7 +47,7 @@ ROOT = Path(__file__).resolve().parents[1]
 #: Веса критериев — как в промпте аудита.
 WEIGHTS = {
     "banks": ("Полнота охвата банков", 0.10),
-    "products": ("Полнота охвата продуктов", 0.20),
+    "products": ("Заполнение категорий и проверки пропусков", 0.20),
     "accuracy": ("Актуальность и точность цифр", 0.25),
     "comparison": ("Корректность сравнения", 0.20),
     "features": ("Функционал сравнения", 0.10),
@@ -270,9 +270,9 @@ def _cell_points(category: str, status: str, not_offered: bool) -> float | None:
     if category in _RATED_CATS:
         return {coverage.COMPARED: 1.0, coverage.COLLECTED: 0.6,
                 coverage.LINK_ONLY: 0.3, coverage.NOT_FOUND: 0.0}[status]
-    # Договорённость 07.10.2026: по инвестициям, страхованию, НПФ, переводам,
-    # лояльности, ячейкам и валюте достаточно «есть у банка» со ссылкой.
-    return 0.0 if status == coverage.NOT_FOUND else 1.0
+    # Для всего розничного блока требуется сбор условий, одной ссылки мало.
+    return {coverage.COMPARED: 1.0, coverage.COLLECTED: 1.0,
+            coverage.LINK_ONLY: 0.3, coverage.NOT_FOUND: 0.0}[status]
 
 
 def score_products(matrix: dict[str, dict[str, Any]], config: Any,
@@ -283,7 +283,8 @@ def score_products(matrix: dict[str, dict[str, Any]], config: Any,
         for bank, cell in cells.items():
             settings = config.bank_settings(codes.get(bank, "")) if codes.get(bank) else {}
             declared = set(settings.get("coverage_not_offered") or [])
-            value = _cell_points(category, cell.status, category in declared)
+            sources = settings.get("coverage_not_offered_sources") or {}
+            value = _cell_points(category, cell.status, category in declared and bool(sources.get(category)))
             rows.append({"category": category, "bank": bank, "status": cell.label,
                          "points": "не считается (нет у банка)" if value is None else value,
                          "url": cell.url})
@@ -313,13 +314,31 @@ def run_checks(config: Any, data: dict[str, Any], evidence: list[Evidence],
         checks.append(Check("banks", f"{bank}: продукты в последнем сборе",
                             bool(by_bank.get(bank)), f"{len(by_bank.get(bank, []))} продуктов"))
         checks.append(Check("banks", f"{bank}: подтверждено присутствие в ЛНР (источник)",
-                            bool(settings.get("presence_source")) or code == "sber",
+                            bool((data.get("presence") or {}).get(bank)),
                             settings.get("presence_source", "") or
                             ("базовый банк" if code == "sber" else "нет ссылки на источник")))
     methods = data.get("region_methods") or {}
     for bank, method in methods.items():
         checks.append(Check("banks", f"{bank}: условия привязаны к ЛНР",
-                            method != "not_confirmed", method))
+                            method == "selector", method))
+
+    references = {r.bank: r for r in data.get("references") or []}
+    statuses = data.get("lnr_status") or {}
+    for bank in banks:
+        crawl = (data.get("crawl") or {}).get(bank)
+        checks.append(Check("products", f"{bank}: очередь и ошибки обхода разобраны",
+                            bool(crawl and crawl.get("complete")),
+                            "нет сведений об обходе" if not crawl else
+                            f"не прочитано: {len(crawl.get('unread') or [])}; ошибок: {len(crawl.get('failed') or [])}"))
+        ref = references.get(bank)
+        checks.append(Check("products", f"{bank}: есть контрольный перечень без пропусков",
+                            bool(ref and not ref.missing),
+                            ref.share if ref else "контрольный перечень отсутствует"))
+        own = by_bank.get(bank, [])
+        city = sum(bool(statuses.get(id(p)) and (statuses[id(p)].city_confirmed or
+                       statuses[id(p)].code == "absent")) for p in own)
+        checks.append(Check("products", f"{bank}: доступность в Луганске проверена по продуктам",
+                            bool(own) and city == len(own), f"проверено {city} из {len(own)}"))
 
     # Корректность сравнения.
     gaps = data.get("gaps") or []
@@ -408,11 +427,13 @@ def run_checks(config: Any, data: dict[str, Any], evidence: list[Evidence],
     scores.append(Score("banks", *WEIGHTS["banks"], _ratio_score(by("banks")),
                         "10 × доля пройденных проверок по банкам"))
     product_score, coverage_rows = score_products(data.get("coverage") or {}, config, codes)
+    product_score = min(product_score, _ratio_score(by("products")))
     scores.append(Score("products", *WEIGHTS["products"], product_score,
                         "среднее по клеткам «банк × категория»: для категорий со ставками "
                         "сравнивается 1 / собрано 0,6 / только ссылка 0,3 / нет 0; для "
-                        "остальных — есть (ссылка или продукты) 1 / нет 0; клетки, где "
-                        "у банка такого продукта нет (coverage_not_offered), не считаются"))
+                        "остальных — продукты 1 / ссылка 0,3 / нет 0. Итог не выше доли "
+                        "пройденных проверок очереди, контрольного перечня и Луганска. "
+                        "Исключение категории требует отдельного источника отсутствия"))
     found = sum(1 for e in evidence if e.status == FOUND)
     missing = sum(1 for e in evidence if e.status == MISSING)
     unreachable = sum(1 for e in evidence if e.status == UNREACHABLE)
@@ -549,6 +570,8 @@ def run(config: Any, *, sample: int = 40, llm: bool = False,
         config, data, result.evidence, codes)
     result.total = round(sum(s.score * s.weight for s in result.scores), 2)
     result.notes = [
+        "Баллы аудита не являются процентом полноты каталога. Даже совпадение с контрольным "
+        "перечнем не доказывает, что сам перечень содержит все продукты банка.",
         "Цифры сверяются поиском значения в тексте страницы, без разборщика агента.",
         "Если число встречается на странице в другом месте, оно засчитается — "
         "смотрите колонку «Где найдено».",
