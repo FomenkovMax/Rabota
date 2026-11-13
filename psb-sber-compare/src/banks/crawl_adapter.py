@@ -917,6 +917,8 @@ def product_from_page(data: dict[str, Any], *, bank: str, url: str,
         product.terms.setdefault(market.REGION_KEY, f"на странице банка: «{clause}»")
     from .. import securities
     securities.remember(product, body)
+    from ..availability import remember_service_city
+    remember_service_city(product, data.get("text") or "")
     return product
 
 
@@ -1078,7 +1080,7 @@ class CrawlAdapter(BankAdapter):
                     self._save_page(visited, url, data, links)
                     office_url = office_url or office_link(data.get("links") or [],
                                                            self.base_url)
-                    path = urlsplit(url).path
+                    path = urlsplit(url).path.rstrip("/")
                     deeper = {l for l in links if urlsplit(l).path.startswith(path + "/")}
                     # Главный продукт — всегда страница продукта, даже если
                     # у него есть подстраницы: у Т-Банка «Кредит наличными»

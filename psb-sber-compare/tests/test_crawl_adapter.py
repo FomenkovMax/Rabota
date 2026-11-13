@@ -1104,3 +1104,26 @@ def test_tbank_insurance_and_payments_are_retail_not_loans():
 def test_lessons_and_error_pages_do_not_become_products():
     assert not crawl.is_product_title("Урок 5. Как рассчитать доходность по облигациям")
     assert not crawl.is_product_title("У нас проблема")
+def test_trailing_slash_catalogue_is_not_a_product(monkeypatch, tmp_path):
+    from src.banks.genbank import GenbankAdapter
+    root = "https://www.genbank.ru/"
+    catalogue = root + "chastnym-litsam/deposits/"
+    products = [catalogue + name + "/" for name in ("first", "second", "third")]
+    class Reader(FakeReader):
+        def read(self, url):
+            if url == root:
+                return {"h1": "Главная", "text": "Главная", "links": [[catalogue, "Вклады"]]}
+            if url == catalogue:
+                return {"h1": "Вклады и Счета", "text": "Вклады и Счета", "links": [[u, "Вклад"] for u in products]}
+            return {"h1": "Вклад " + url.split("/")[-2], "text": "Вклад\nСтавка 10%", "links": []}
+    calls = []
+    original = crawl.product_from_page
+    def record(data, **kwargs):
+        calls.append(kwargs["url"])
+        return original(data, **kwargs)
+    monkeypatch.setattr(crawl, "PageReader", Reader)
+    monkeypatch.setattr(crawl, "product_from_page", record)
+    GenbankAdapter(region=None, settings={"max_pages": 0, "tariff_pdf": False, "pages_dir": str(tmp_path)}).collect()
+    assert catalogue not in calls
+    assert set(calls) == set(products)
+

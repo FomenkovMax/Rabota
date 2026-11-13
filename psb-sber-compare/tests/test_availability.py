@@ -268,3 +268,19 @@ def test_service_percentage_is_not_ranked_as_loan_interest():
     status = {id(p): av.Status(av.LNR, "условия ЛНР") for p in items}
     rows = av.matrix(items, home="Сбер", banks=["Сбер", "ВТБ"], status=status)
     assert from_matrix(rows, Thresholds()) == []
+def test_safe_deposit_city_requires_service_specific_office_list():
+    from src import availability
+    from src.psb.parser import Product
+    p = Product(bank="Генбанк", title="Сейфовые ячейки", category="Сейфовые ячейки",
+                source_url="https://www.genbank.ru/chastnym-litsam/seyfovye-yacheyki/")
+    office = 'ДО «Луганск», адрес 291011, Луганская Народная Республика, г. Луганск, ул. Советская, д. 86А'
+    availability.remember_service_city(p, 'Отделения банка\n' + office)
+    assert availability.status_of(p, region_method="not_confirmed").code == availability.UNKNOWN
+    availability.remember_service_city(p, 'Перечень ВСП, в которых предоставляется услуга:\nДО «Москва»\nМобильный банк\n' + office)
+    assert availability.status_of(p, region_method="not_confirmed").code == availability.UNKNOWN
+    availability.remember_service_city(p, 'Перечень ВСП, в которых предоставляется услуга:\n' + office + '\nЗаявка на аренду сейфовой ячейки')
+    status = availability.status_of(p, region_method="not_confirmed")
+    assert status.code == availability.LNR and status.city_confirmed
+    p.terms[availability.SERVICE_SOURCE_KEY] = "https://www.genbank.ru/about/"
+    assert availability.status_of(p, region_method="not_confirmed").code == availability.UNKNOWN
+
