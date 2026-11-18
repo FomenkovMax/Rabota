@@ -24,6 +24,7 @@ SOURCES = {
     "site": "страница на сайте банка",
     "aggregator": "есть на агрегаторе, сбор на сайте банка не нашёл — проверить",
     "site-text": "упоминается на сайте банка, своей страницы сбор не нашёл",
+    "site-catalogue": "карточка в сохранённой витрине банка",
 }
 
 
@@ -33,6 +34,7 @@ class Check:
     total: int
     found: list[dict[str, Any]] = field(default_factory=list)
     missing: list[dict[str, Any]] = field(default_factory=list)
+    base_url: str = ""
 
     @property
     def share(self) -> str:
@@ -75,7 +77,7 @@ def check(reference: dict[str, Any], products: Iterable[Any]) -> Check | None:
     if not bank or not items:
         return None
     own = [p for p in products if getattr(p, "bank", "") == bank]
-    out = Check(bank=bank, total=len(items))
+    out = Check(bank=bank, total=len(items), base_url=reference.get("base_url", ""))
     for item in items:
         (out.found if _found(item, own) else out.missing).append(item)
     return out

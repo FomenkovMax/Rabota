@@ -1010,7 +1010,7 @@ def _reference_block(checks: list[Any]) -> str:
     for c in checks:
         rows = "".join(
             f'<div class="pmeta">❌ {e(m.get("name", ""))} — {e(m.get("category", ""))}'
-            f'{" · " + _linkify("https://www.sberbank.ru" + m["path"]) if m.get("path") and c.bank == "Сбер" else ""}'
+            f'{" · " + _linkify(c.base_url + m["path"]) if m.get("path") and c.base_url else ""}'
             f' <i>({e(SOURCES.get(m.get("source", ""), m.get("source", "")))})</i></div>'
             for m in c.missing)
         parts.append(f'<p><b>{brand.name(c.bank)}</b>: найдено {e(c.share)} продуктов эталона'

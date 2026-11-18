@@ -9,6 +9,7 @@
 # Как дополнять: новая строка в products. Продукт закрыт — удалить или
 # поставить active: false.
 bank: Сбер
+base_url: https://www.sberbank.ru
 products:
   - {name: "Пакеты услуг", category: "Банковские карты", path: "/ru/person/bank_cards/pack", source: site}
   - {name: "Пакет услуг Золотой", category: "Банковские карты", path: "/ru/person/bank_cards/pack/gold", source: site}
