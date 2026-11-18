@@ -34,7 +34,7 @@ from .seo import is_seo_page
 from .. import card_terms, conditions, coverage, market, securities
 from ..availability import (ROST_EXCHANGE_URL, ROST_INSURANCE_URL, ROST_LOYALTY_URL,
                             ROST_TRANSFERS_URL, SBER_ATM_FX_URL, SBER_PRIME_URL,
-                            SERVICE_CITY_KEY, VTB_PRIVILEGE_URL, find_clause,
+                            SERVICE_CITY_KEY, TBANK_MFC_CARD_URL, VTB_PRIVILEGE_URL, find_clause,
                             remember_auto_city, remember_service_city)
 
 log = logging.getLogger(__name__)
@@ -841,6 +841,14 @@ def product_from_page(data: dict[str, Any], *, bank: str, url: str,
             body = cash_terms
     headline = title
     title = product_name(title)
+    if bank == "Т-Банк" and url == TBANK_MFC_CARD_URL:
+        text = " ".join((data.get("text") or "").casefold().split())
+        if not (re.search(r"открытие сч[её]та [«“]?т[-‑–]банк", text)
+                and re.search(r"карта [«“]?т[-‑–]банк", text)):
+            return None
+        title = "Открытие счёта и получение карты Т-Банка через МФЦ"
+        body = ["Услуга для физических лиц. Оформляется лично через МФЦ.",
+                "Результат услуги — карта Т-Банка. Тариф в карточке услуги не указан."]
     if bank == "Сбер" and url == SBER_ATM_FX_URL and "валют" in title.casefold():
         title = "Обмен наличной валюты в банкомате Сбера"
     if bank == "Сбер" and url == SBER_PRIME_URL and "сберпрайм" in title.casefold():

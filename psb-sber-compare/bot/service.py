@@ -512,6 +512,11 @@ def full_snapshot_archive() -> Path | None:
     office_evidence = ROOT / "data" / "vtb-lugansk-broker-office.json"
     if office_evidence.is_file():
         files.append((office_evidence.parent, office_evidence))
+    from src.banks.genbank import CREDIT_CARD_DOCUMENT
+
+    genbank_evidence = ROOT / "data" / CREDIT_CARD_DOCUMENT
+    if genbank_evidence.is_file():
+        files.append((genbank_evidence.parent, genbank_evidence))
     if not files:
         return None
     archive = ROOT / "data" / "snapshot.zip"

@@ -5,6 +5,8 @@
 """
 
 import json
+import logging
+import re
 from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import urljoin, urlsplit
@@ -12,10 +14,13 @@ from urllib.parse import urljoin, urlsplit
 from ..psb.parser import Product
 
 from .. import coverage
+from ..availability import GENBANK_CREDIT_CARD_URL, GENBANK_CREDIT_CARD_TERMS
 from .base import registry
 from .crawl_adapter import CrawlAdapter, is_product_title
 
 ARCHIVE_CARD = "Источник условий: витрина"
+CREDIT_CARD_DOCUMENT = "genbank-card-terms.pdf"
+log = logging.getLogger(__name__)
 _CARD_CLASSES = {"b-product-row", "b-offer", "b-card-business"}
 _CATALOGUES = {
     "/chastnym-litsam/deposits/",
@@ -24,6 +29,34 @@ _CATALOGUES = {
     "/chastnym-litsam/mortgage/",
     "/chastnym-litsam/insurance/",
 }
+
+
+def credit_card_from_disclosure(path: Path) -> Product | None:
+    """Use published borrower criteria when the product page is blocked."""
+    if not path.is_file():
+        return None
+    from pypdf import PdfReader
+    from pypdf.errors import PdfReadError
+
+    try:
+        with path.open("rb") as file:
+            text = " ".join((PdfReader(file).pages[0].extract_text() or "").split())
+    except (OSError, IndexError, PdfReadError, ValueError) as exc:
+        log.warning("Не прочитаны условия кредитной карты Генбанка: %s", exc)
+        return None
+    if not re.search(r"КРЕДИТНАЯ ПРОГРАММА «Моя Кредитная Карта»", text, re.I):
+        return None
+    residency = re.search(r"Место фактического проживания:\s*([^.]*)", text, re.I)
+    if not residency or not re.search(r"Луганской народной республики", residency[1], re.I):
+        return None
+    return Product(
+        bank="Генбанк", title="Моя Кредитная Карта", category="Кредитные карты",
+        url_path=urlsplit(GENBANK_CREDIT_CARD_URL).path,
+        source_url=GENBANK_CREDIT_CARD_URL + "/",
+        terms={"Фактическое проживание": "В условиях программы указана ЛНР.",
+               "Источник условий проживания": GENBANK_CREDIT_CARD_TERMS,
+               "Условия карты": "Кредитный лимит предоставляется к банковской карте."},
+    )
 
 
 class _CatalogueCards(HTMLParser):
@@ -119,6 +152,7 @@ class GenbankAdapter(CrawlAdapter):
     verified = False
     base_url = "https://www.genbank.ru"
     seeds = (base_url + "/",)
+    priority = (GENBANK_CREDIT_CARD_URL + "/",)
     families = (("/", "Прочее"),)
     keep_slash = True
 
@@ -128,6 +162,8 @@ class GenbankAdapter(CrawlAdapter):
             return "Прочее"
         if path.startswith("/chastnym-litsam/discounts/"):
             return "Лояльность и кешбэк"
+        if path.rstrip("/") == urlsplit(GENBANK_CREDIT_CARD_URL).path:
+            return "Кредитные карты"
         if path.startswith(("/chastnym-litsam/raschetno-kassovoe-obsluzhivanie/",
                             "/chastnym-litsam/yuridicheskie-i-konsaltingovye-uslugi/",
                             "/chastnym-litsam/uslugi/", "/chastnym-litsam/tariff/",

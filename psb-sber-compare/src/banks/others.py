@@ -19,7 +19,8 @@ import re
 from urllib.parse import parse_qs, urlencode, urlsplit
 
 from ..availability import (ROST_INSURANCE_URL, ROST_LOYALTY_URL, ROST_TRANSFERS_URL,
-                            SBER_ATM_FX_URL, SBER_INSURER_URL, SBER_PRIME_URL, VTB_PRIVILEGE_URL)
+                            SBER_ATM_FX_URL, SBER_INSURER_URL, SBER_PRIME_URL,
+                            TBANK_MFC_CARD_URL, VTB_PRIVILEGE_URL)
 from .base import registry
 from .crawl_adapter import CrawlAdapter
 
@@ -310,6 +311,7 @@ class TbankAdapter(CrawlAdapter):
     # В контейнере TZ=MSK-3 Chromium сообщает Etc/Unknown.
     # Из-за этого скрипт витрины Т-Банка показывает страницу ошибки.
     browser_timezone = "Europe/Moscow"
+    families = (("/service/59", "Дебетовые карты"),)
     catalogue_pages = {
         "/invest/stocks": (12, {"orderType": "Desc", "sortType": "ByPopularity"}),
         "/invest/bonds": (30, {"country": "All", "orderType": "Desc",
@@ -339,6 +341,7 @@ class TbankAdapter(CrawlAdapter):
     # Главные продукты — по обходу 07.10.2026; иначе лимит уходит на
     # рекламные копии карты Black («для студентов», «именная»…).
     priority = (
+        TBANK_MFC_CARD_URL,
         "https://www.tbank.ru/cards/debit-cards/tinkoff-black/",
         "https://www.tbank.ru/cards/credit-cards/tinkoff-platinum/",
         "https://www.tbank.ru/loans/cash-loan/",

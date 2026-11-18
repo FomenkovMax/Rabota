@@ -395,6 +395,20 @@ def load_report_data(config: Config, *, competitor: str = "") -> dict[str, Any] 
         all_products = [p for p in _rows_to_products(storage.products_of_run(run_id))
                         if not is_seo_page(p.source_url) and is_product_title(p.title)
                         and not securities.excluded_product(p.source_url or "", p.terms)]
+        if "genbank" in config.enabled_banks():
+            from .banks.genbank import CREDIT_CARD_DOCUMENT, credit_card_from_disclosure
+
+            credit_card = credit_card_from_disclosure(storage.path.parent / CREDIT_CARD_DOCUMENT)
+            if credit_card:
+                existing_card = next(
+                    (p for p in all_products if p.bank == credit_card.bank
+                     and p.source_url.rstrip("/") == credit_card.source_url.rstrip("/")), None,
+                )
+                if existing_card is None:
+                    all_products.append(credit_card)
+                else:
+                    for label, value in credit_card.terms.items():
+                        existing_card.terms.setdefault(label, value)
         for product in all_products:
             category = coverage.classify(product.source_url)
             if product.category in {"Инвестиции", "Премиальное обслуживание"} and category in {"Страхование", "НПФ и ПДС"}:

@@ -46,6 +46,11 @@ SBER_INSURER_URL = "https://sberbankins.ru/products/kombo"
 SBER_ATM_FX_URL = "https://959.xn--p1ai/news/ekonomika/40231"
 SBER_PRIME_URL = "https://www.sberbank.ru/sberprime"
 PSB_PDS_URL = "https://www.psbank.ru/personal/pds/dolgosrochnyye-sbyeryezhyeniya"
+PSB_BROKER_URL = "https://www.psbank.ru/personal/wealth/markets"
+TBANK_MFC_CARD_URL = "https://mfclnr.ru/service/59"
+GENBANK_CREDIT_CARD_URL = "https://www.genbank.ru/chastnym-litsam/cards/moya-kreditnaya-karta"
+GENBANK_CREDIT_CARD_TERMS = ("https://www.genbank.ru/upload/iblock/e29/66c651yfaxpohscy6ic2cvludxc9pyzr/"
+                            "Prilog_1_Credit_Kart.pdf")
 VTB_LOYALTY_URL = "https://www.vtb.ru/personal/karty/programma-loyalnosti"
 VTB_PRIVILEGE_URL = "https://www.vtb.ru/privilegia"
 VTB_BROKER_URL = "https://www.vtb.ru/personal/investicii/brokerskoe-obsluzhivanie"
@@ -64,6 +69,16 @@ _CITY_PRODUCT_EVIDENCE = {
     ("ПСБ", "НПФ и ПДС", PSB_PDS_URL): (
         "ПСБ указывает заключение договора в любом офисе. Банк ведёт филиальную сеть в городе Луганск.",
         "https://www.psbank.ru/bank/branches",
+    ),
+    ("ПСБ", "Инвестиции", PSB_BROKER_URL): (
+        "ПСБ указывает открытие брокерского счёта в любом офисе; "
+        "у банка есть розничный офис в городе Луганск.",
+        PSB_BROKER_URL + "/faq",
+    ),
+    ("Т-Банк", "Дебетовые карты", TBANK_MFC_CARD_URL): (
+        "В городе Луганск доступно очное оформление счёта с получением карты Т-Банка через МФЦ. "
+        "Тариф карты и курьерская доставка требуют отдельного подтверждения.",
+        TBANK_MFC_CARD_URL,
     ),
     ("ВТБ", "Лояльность и кешбэк", VTB_LOYALTY_URL): (
         "По сообщению ВТБ от 11.11.2025, в офисе помогают подключить программу лояльности. "
@@ -270,6 +285,12 @@ def status_of(product: Any, *, region_method: str, presence: str = "") -> Status
     if city_evidence:
         reason, source = city_evidence
         return Status(LNR, f"есть подтверждение услуги в Луганске: {reason}", source)
+    if (getattr(product, "bank", "") == "Генбанк" and category == "Кредитные карты"
+            and canonical_url == GENBANK_CREDIT_CARD_URL
+            and terms.get("Источник условий проживания") == GENBANK_CREDIT_CARD_TERMS):
+        return Status(LNR, "условия программы допускают фактическое проживание в ЛНР, "
+                      "включая город Луганск. Место выдачи карты "
+                      "и действующие условия выдачи в офисе требуют проверки.", GENBANK_CREDIT_CARD_TERMS)
     if ((category == "Сейфовые ячейки" or (category == "Валютные операции" and url == ROST_EXCHANGE_URL))
             and terms.get(SERVICE_CITY_KEY)
             and url and terms.get(SERVICE_SOURCE_KEY) == url):

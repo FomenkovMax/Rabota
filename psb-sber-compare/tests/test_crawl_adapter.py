@@ -1220,6 +1220,7 @@ def test_lessons_and_error_pages_do_not_become_products():
     assert not crawl.is_product_title("У нас проблема")
 def test_trailing_slash_catalogue_is_not_a_product(monkeypatch, tmp_path):
     from src.banks.genbank import GenbankAdapter
+    monkeypatch.setattr(GenbankAdapter, "priority", ())
     root = "https://www.genbank.ru/"
     catalogue = root + "chastnym-litsam/deposits/"
     products = [catalogue + name + "/" for name in ("first", "second", "third")]

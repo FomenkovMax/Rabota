@@ -340,6 +340,21 @@ def test_lugansk_sources_apply_only_to_the_named_service():
     assert not av.status_of(vtb, region_method="federal").city_confirmed
 
 
+def test_tbank_mfc_evidence_does_not_imply_named_card_delivery():
+    from src import availability as av
+    from src.banks.crawl_adapter import product_from_page
+
+    product = product_from_page({
+        "h1": "Открытие счета «Т-Банк»",
+        "text": "Открытие счета «Т-Банк»\nРезультат предоставления услуги: карта «Т-БАНК».",
+    }, bank="Т-Банк", category="Дебетовые карты", url=av.TBANK_MFC_CARD_URL,
+        region="Луганск", collected_at="")
+    assert product is not None
+    assert av.status_of(product, region_method="not_confirmed").city_confirmed
+    product.source_url = "https://www.tbank.ru/cards/debit-cards/tinkoff-black"
+    assert not av.status_of(product, region_method="not_confirmed").city_confirmed
+
+
 def test_rostfinance_exchange_confirms_office_from_the_exchange_table():
     from src.banks.crawl_adapter import product_from_page
 
