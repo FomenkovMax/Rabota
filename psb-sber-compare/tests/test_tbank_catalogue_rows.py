@@ -98,3 +98,11 @@ def test_securities_report_labels_listing_rows_and_prefers_detail_pages(tmp_path
     assert "данные витрины" in html
     assert "RU0007661625" in html
     assert "Доступность покупки в Луганске не подтверждена" in html
+
+
+def test_allstate_ticker_is_an_issue_not_a_section():
+    from src import securities
+
+    root = "https://www.tbank.ru/invest/stocks/"
+    assert securities.issue_kind(root + "ALL") == "Акция"
+    assert not securities.issue_kind(root + "all")

@@ -17,10 +17,18 @@ ISIN = "ISIN"
 _CODE = re.compile(r"\b[A-Z]{2}[A-Z0-9]{9}[0-9]\b")
 
 
+def _excluded_issue_slug(url: str, slug: str) -> bool:
+    if slug not in {"all", "ALL"}:
+        return slug.lower() in {"offer", "offer_ofz", "all", "catalog"}
+    path = urlsplit(url)
+    # The Allstate Corporation uses ticker ALL on the official stock site.
+    return not (path.hostname == "www.tbank.ru" and path.path.rstrip("/") == "/invest/stocks/ALL")
+
+
 def issue_kind(url: str) -> str:
     path = urlsplit(url).path
     match = re.search(r"/(stocks|bonds)/([^/]+)/?$", path, re.I)
-    if not match or match[2].lower() in {"offer", "offer_ofz", "all", "catalog"}:
+    if not match or _excluded_issue_slug(url, match[2]):
         return ""
     return "Акция" if match[1].lower() == "stocks" else "Облигация"
 
@@ -45,7 +53,7 @@ def remember(product, body: list[str], *, page_title: str = "") -> None:
     if re.search(r"/(?:edu|digest|events|memos|news|blog|journal)(?:/|$)", path, re.I):
         return
     issue_path = re.search(r"/(?:stocks|bonds)/([^/]+)/?$", path, re.I)
-    if issue_path and issue_path.group(1).lower() in {"offer", "offer_ofz", "all", "catalog"}:
+    if issue_path and _excluded_issue_slug(product.source_url, issue_path.group(1)):
         return
     kind = issue_kind(product.source_url) or (
             "Облигация" if re.search(r"\bоблигаци", title, re.I)
@@ -151,7 +159,7 @@ def groups(products):
         issue_path = re.search(r"/(?:stocks|bonds)/([^/]+)/?$", path, re.I)
         if not valid_isin(code) and not issue_path:
             continue
-        if issue_path and issue_path.group(1).lower() in {"offer", "offer_ofz", "all", "catalog"}:
+        if issue_path and _excluded_issue_slug(product.source_url, issue_path.group(1)):
             continue
         key = code if valid_isin(code) else (product.bank, product.source_url, product.title)
         out.setdefault(key, []).append(product)
