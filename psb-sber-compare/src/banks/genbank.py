@@ -19,6 +19,7 @@ from .base import registry
 from .crawl_adapter import CrawlAdapter, is_product_title
 
 ARCHIVE_CARD = "Источник условий: витрина"
+CATALOGUE_ARCHIVE = "genbank-catalogue"
 CREDIT_CARD_DOCUMENT = "genbank-card-terms.pdf"
 log = logging.getLogger(__name__)
 _CARD_CLASSES = {"b-product-row", "b-offer", "b-card-business"}
@@ -142,6 +143,17 @@ def catalogue_archive_products(folder: Path, *, region: str) -> list[Product]:
             if url not in products or product.collected_at > products[url].collected_at:
                 products[url] = product
     return list(products.values())
+
+
+def saved_catalogue_products(data_dir: Path, *, region: str) -> list[Product]:
+    folder = data_dir / CATALOGUE_ARCHIVE
+    if not (folder / "manifest.json").is_file():
+        return []
+    try:
+        return catalogue_archive_products(folder, region=region)
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        log.warning("Не прочитан сохранённый каталог Генбанка: %s", exc)
+        return []
 
 
 @registry.register

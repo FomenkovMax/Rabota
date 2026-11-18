@@ -504,17 +504,19 @@ def full_snapshot_archive() -> Path | None:
     без повторных сборов."""
     import zipfile
 
+    from src.banks.genbank import CATALOGUE_ARCHIVE, CREDIT_CARD_DOCUMENT
+    from src.banks.others import TBANK_MFC_EVIDENCE
     from src.securities import outside_retail_scope
 
     sources = [ROOT / "data" / "pages-all", ROOT / "data" / "pages-missing"]
+    catalogue = ROOT / "data" / CATALOGUE_ARCHIVE
+    if (catalogue / "manifest.json").is_file():
+        sources.append(catalogue)
     files = [(src, f) for src in sources if src.exists()
              for f in sorted(src.rglob("*")) if f.is_file()]
     office_evidence = ROOT / "data" / "vtb-lugansk-broker-office.json"
     if office_evidence.is_file():
         files.append((office_evidence.parent, office_evidence))
-    from src.banks.genbank import CREDIT_CARD_DOCUMENT
-    from src.banks.others import TBANK_MFC_EVIDENCE
-
     genbank_evidence = ROOT / "data" / CREDIT_CARD_DOCUMENT
     if genbank_evidence.is_file():
         files.append((genbank_evidence.parent, genbank_evidence))

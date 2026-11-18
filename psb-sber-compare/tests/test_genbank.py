@@ -3,7 +3,8 @@ import json
 import pytest
 
 from src.availability import status_of
-from src.banks.genbank import ARCHIVE_CARD, GenbankAdapter, catalogue_archive_products
+from src.banks.genbank import (ARCHIVE_CARD, CATALOGUE_ARCHIVE, GenbankAdapter,
+                               saved_catalogue_products)
 
 
 @pytest.mark.parametrize("path,category", [
@@ -26,11 +27,13 @@ def test_official_genbank_navigation(path, category):
 
 
 def test_official_catalogue_cards_keep_original_source_and_partial_terms(tmp_path):
+    archive = tmp_path / CATALOGUE_ARCHIVE
+    archive.mkdir()
     source = "https://www.genbank.ru/chastnym-litsam/deposits/"
-    (tmp_path / "manifest.json").write_text(json.dumps([{
+    (archive / "manifest.json").write_text(json.dumps([{
         "url": source, "html": "catalogue.html", "saved_at": "2026-11-13T16:59:03",
     }]), encoding="utf-8")
-    (tmp_path / "catalogue.html").write_text("""
+    (archive / "catalogue.html").write_text("""
         <div class="b-product-row">
             <a href="/chastnym-litsam/deposits/klassicheskiy-plus/">
                 <h2>Классический ПЛЮС</h2><div>до 13,6%</div>
@@ -48,7 +51,7 @@ def test_official_catalogue_cards_keep_original_source_and_partial_terms(tmp_pat
         </div>
     """, encoding="utf-8")
 
-    first, second = catalogue_archive_products(tmp_path, region="Луганск")
+    first, second = saved_catalogue_products(tmp_path, region="Луганск")
     assert first.source_url == source + "klassicheskiy-plus/"
     assert first.terms[ARCHIVE_CARD] == source
     assert first.collected_at == "2026-11-13T16:59:03"

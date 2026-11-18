@@ -405,7 +405,11 @@ def load_report_data(config: Config, *, competitor: str = "") -> dict[str, Any] 
                 if mfc_card is not None:
                     all_products.append(mfc_card)
         if "genbank" in config.enabled_banks():
-            from .banks.genbank import CREDIT_CARD_DOCUMENT, credit_card_from_disclosure
+            from .banks.genbank import (CREDIT_CARD_DOCUMENT, credit_card_from_disclosure,
+                                        saved_catalogue_products)
+
+            if not any(p.bank == "Генбанк" for p in all_products):
+                all_products.extend(saved_catalogue_products(storage.path.parent, region=region))
 
             credit_card = credit_card_from_disclosure(storage.path.parent / CREDIT_CARD_DOCUMENT)
             if credit_card:
