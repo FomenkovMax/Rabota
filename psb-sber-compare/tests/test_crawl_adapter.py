@@ -602,6 +602,10 @@ def test_new_bank_without_known_sections_is_crawled_by_url_words(monkeypatch):
 def test_not_found_page_is_not_a_product():
     page = {"h1": "Классический Рост", "text": "404\nТАКОЙ СТРАНИЦЫ НЕТ :(\nЛУЧШИЕ ПРЕДЛОЖЕНИЯ"}
     assert crawl.is_not_found(page)
+    assert crawl.is_not_found({
+        "status": 200, "h1": "У нас проблема — мы уже решаем ее",
+        "title": "Купить акции компаний онлайн",
+    })
     assert not crawl.is_not_found({"h1": "Вклад", "text": "Ставка до 14%"})
 
 

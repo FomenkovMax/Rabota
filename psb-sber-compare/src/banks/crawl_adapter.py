@@ -182,6 +182,8 @@ def is_not_found(data: dict[str, Any]) -> bool:
     """Страница ошибки вместо продукта: 404 в оформлении сайта или 502 прокси."""
     head = (data.get("text") or "")[:3000]
     h1, title = (data.get("h1") or "").strip(), (data.get("title") or "").strip()
+    if re.match(r"^у нас проблема\b", h1, re.I):
+        return True
     return any(_SERVER_ERROR.search(t) or _NOT_FOUND.search(t) for t in (h1, title)) \
         or bool(_NOT_FOUND.search(head))
 
@@ -1065,9 +1067,10 @@ class CrawlAdapter(BankAdapter):
                         # РостФинанс на неверный адрес отдаёт «Такой страницы нет» с
                         # блоком «Лучшие предложения» — из него получался
                         # продукт «Классический Рост» на каждой странице.
-                        failures.append(f"{url}: страница 404")
-                        log.warning("%s: страницы нет (404) — %s", self.title,
-                                    urlsplit(url).path)
+                        status = data.get("status") or 0
+                        reason = f"HTTP {status}" if status >= 400 else "сайт показал страницу ошибки"
+                        failures.append(f"{url}: {reason}")
+                        log.warning("%s: %s — %s", self.title, reason, urlsplit(url).path)
                         continue
                     if data is None:
                         blocked = True
