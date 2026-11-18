@@ -42,3 +42,26 @@ def test_snapshot_includes_the_public_catalogue_rows(tmp_path, monkeypatch):
 
     with ZipFile(service.full_snapshot_archive()) as archive:
         assert archive.namelist() == ["tbank-inventory/catalogue-rows/stocks.json"]
+
+
+def test_catalogue_read_resumes_after_last_saved_page(tmp_path):
+    from src.banks.tbank_catalogue_rows import read_rows
+
+    root = "https://www.tbank.ru/invest/stocks/"
+    page_two = root + "?start=12&end=24"
+    output = tmp_path / "stocks.json"
+    output.write_text(json.dumps({
+        "source": root, "expected_pages": 2, "pages": {root: {"rows": {"SBER": {}}}},
+    }), encoding="utf-8")
+    seen = []
+
+    class Reader:
+        def read(self, url):
+            seen.append(url)
+            return {"links": [], "text": "Акции"}
+
+    result = read_rows(Reader(), TbankAdapter(region=None), "stocks",
+                       {"source": root, "pages": {root: [], page_two: []}}, output)
+    assert seen == [page_two]
+    assert root in result["pages"]
+    assert page_two in result["errors"]
