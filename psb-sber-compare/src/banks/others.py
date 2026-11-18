@@ -294,6 +294,9 @@ class TbankAdapter(CrawlAdapter):
     verified = True
 
     base_url = "https://www.tbank.ru"
+    # В контейнере TZ=MSK-3 Chromium сообщает Etc/Unknown.
+    # Из-за этого скрипт витрины Т-Банка показывает страницу ошибки.
+    browser_timezone = "Europe/Moscow"
     catalogue_pages = {
         "/invest/stocks": (12, {"orderType": "Desc", "sortType": "ByPopularity"}),
         "/invest/bonds": (30, {"country": "All", "orderType": "Desc",

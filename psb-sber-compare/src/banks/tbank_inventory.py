@@ -8,7 +8,7 @@ import json
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
-from .browser import BrowserSettings, PageFailed, PageReader, PageTooSlow
+from .browser import PageFailed, PageReader, PageTooSlow
 from .crawl_adapter import is_blocked, is_not_found
 from .others import TbankAdapter
 from ..pipeline import Config
@@ -76,9 +76,8 @@ def main() -> None:
     args.output.mkdir(parents=True, exist_ok=True)
     config = Config.load().bank_settings("tbank")
     adapter = TbankAdapter(region=None, settings=config)
-    settings = BrowserSettings.from_config(config.get("browser"))
+    settings = adapter.browser_settings()
     settings.expand = False
-    settings.pause_s = float(config.get("pause_s") or settings.pause_s)
     with PageReader(settings) as reader:
         for path in adapter.catalogue_pages:
             root = adapter.base_url + path + "/"

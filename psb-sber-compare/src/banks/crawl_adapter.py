@@ -959,16 +959,22 @@ class CrawlAdapter(BankAdapter):
     protection: str = ""
     wait_for: str = ""
     sets_region: bool = False
+    browser_timezone: str | None = None
+
+    def browser_settings(self) -> BrowserSettings:
+        settings = BrowserSettings.from_config(self.settings.get("browser"))
+        settings.timezone_id = settings.timezone_id or self.browser_timezone
+        # Своя пауза между страницами для банка, чья защита не любит частых
+        # запросов, — поверх общей настройки браузера.
+        if self.settings.get("pause_s"):
+            settings.pause_s = float(self.settings["pause_s"])
+        return settings
 
     def collect(self) -> CollectResult:
         if not self.seeds or not (self.families or self.family_words):
             return self._failed("не заданы витрины и разделы для обхода")
 
-        settings = BrowserSettings.from_config(self.settings.get("browser"))
-        # Своя пауза между страницами для банка, чья защита не любит частых
-        # запросов, — поверх общей настройки браузера.
-        if self.settings.get("pause_s"):
-            settings.pause_s = float(self.settings["pause_s"])
+        settings = self.browser_settings()
         # Калькуляторы: регион ЛНР, все цели из списка — на страницах, адрес
         # которых подходит под calculator_paths (иначе на каждой витрине
         # агент искал бы калькулятор впустую).

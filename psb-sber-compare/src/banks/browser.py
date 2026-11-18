@@ -150,6 +150,7 @@ class BrowserSettings:
     pause_s: float = 2.0
     #: Прокси вида http://host:port, если он нужен.
     proxy: str = ""
+    timezone_id: str | None = None
     #: Игнорировать ошибки сертификата. По умолчанию выключено.
     #: Включать только если российский корень не установлен в систему —
     #: и понимать, что это ослабляет проверку подлинности сайта.
@@ -176,6 +177,7 @@ class BrowserSettings:
             settle_ms=int(data.get("settle_ms", 5_000)),
             pause_s=float(data.get("pause_s", 2.0)),
             proxy=str(data.get("proxy", "") or ""),
+            timezone_id=data.get("timezone_id") or None,
             ignore_https_errors=bool(data.get("ignore_https_errors", False)),
             expand=bool(data.get("expand", True)),
             calculator_region=str(data.get("calculator_region", "") or ""),
@@ -228,6 +230,7 @@ class BrowserSession:
 
         self._context = self._browser.new_context(
             locale="ru-RU",
+            timezone_id=self.settings.timezone_id,
             user_agent=USER_AGENT,
             viewport={"width": 1440, "height": 900},
             ignore_https_errors=self.settings.ignore_https_errors,
