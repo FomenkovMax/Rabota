@@ -801,9 +801,10 @@ def _catalog_rate(product: Any) -> tuple[str, bool]:
     return "не найдена", False
 
 
-def _securities_block(catalog: dict[str, list[Any]]) -> str:
+def _securities_block(catalog: dict[str, list[Any]], catalogue_rows: list[Any] | None = None) -> str:
     from . import securities
-    groups = securities.groups(p for items in catalog.values() for p in items)
+    records = [p for items in catalog.values() for p in items]
+    groups = securities.groups(records + (catalogue_rows or []))
     if not groups:
         return '<p class="empty">Отдельные акции и облигации ещё не извлечены из страниц банков.</p>'
     rows = []
@@ -816,10 +817,13 @@ def _securities_block(catalog: dict[str, list[Any]]) -> str:
             details = " · ".join(str(terms[k]) for k in (
                 "Тикер", "Валюта бумаги", "Номинал", "Дата погашения", "Купон",
                 "Квалификация инвестора") if terms.get(k))
+            listing = terms.get(securities.CATALOGUE_SOURCE)
+            listing_link = (f'<a href="{e(listing)}" target="_blank" rel="noopener">данные витрины</a> · '
+                            if listing else "")
             sources.append(
                 f'<div><a href="{e(product.source_url)}" target="_blank" rel="noopener">'
                 f'{e(product.bank)}: {e(product.title)}</a>'
-                f'<div class="pmeta">Собрано: {e(product.collected_at)} · {e(details)}</div></div>')
+                f'<div class="pmeta">{listing_link}Собрано: {e(product.collected_at)} · {e(details)}</div></div>')
         rows.append(f'<tr><td>{e(first.terms.get(securities.KIND))}<br>{e(isin)}</td>'
                     f'<td>{"".join(sources)}</td><td>Доступность покупки в Луганске '
                     'не подтверждена</td></tr>')
@@ -1184,6 +1188,7 @@ def render_report(
     presence: dict[str, str] | None = None,
     crawl: dict[str, dict[str, Any]] | None = None,
     references: list[Any] | None = None,
+    catalogue_securities: list[Any] | None = None,
 ) -> str:
     total_promos = promo_active_total
     delta_chart = _delta_chart(comparisons)
@@ -1291,7 +1296,7 @@ def render_report(
   контрольной цифрой. Без однозначного ISIN страницы остаются отдельными.
   Купон и историческая доходность не являются ставкой вклада. Наличие бумаги
   на сайте не подтверждает возможность её покупки через банк в Луганске.</p>
-  {_securities_block(catalog or {})}
+  {_securities_block(catalog or {}, catalogue_securities)}
 </section>
 
 <section class="card">

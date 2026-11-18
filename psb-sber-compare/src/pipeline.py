@@ -14,7 +14,7 @@ import yaml
 from .banks import registry
 from .banks.base import region_binding
 from .banks.from_file import FileAdapter
-from . import availability, charts, coverage, keyrate, market
+from . import availability, charts, coverage, keyrate, market, securities
 from .changes import detect_changes, format_digest
 from .compare import Thresholds, from_matrix, summarize
 from .promos import EXPIRED, classify_all, compare_segments
@@ -525,6 +525,9 @@ def load_report_data(config: Config, *, competitor: str = "") -> dict[str, Any] 
             calculator=calc_offers, lnr_rows=lnr_rows, lnr_total=lnr_total,
             lnr_status=lnr_status, presence=presence, crawl=crawl,
             references=references,
+            catalogue_securities=securities.catalogue_products(
+                storage.path.parent / "tbank-inventory" / "catalogue-rows", scope
+            ),
         )
 
         return {

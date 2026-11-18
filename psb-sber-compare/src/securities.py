@@ -1,9 +1,17 @@
 """Identify security issues without confusing yields with bank interest rates."""
 from __future__ import annotations
 
+import json
+import logging
 import re
+from pathlib import Path
 from urllib.parse import urlsplit
 
+from .psb.parser import Product
+
+log = logging.getLogger(__name__)
+
+CATALOGUE_SOURCE = "Источник ценной бумаги: витрина"
 KIND = "Вид ценной бумаги"
 ISIN = "ISIN"
 _CODE = re.compile(r"\b[A-Z]{2}[A-Z0-9]{9}[0-9]\b")
@@ -80,6 +88,53 @@ def remember(product, body: list[str], *, page_title: str = "") -> None:
                     quote += ": " + body[index + 1]
                 product.terms[key] = quote[:300]
                 break
+
+
+def catalogue_products(directory: Path, existing) -> list[Product]:
+    """Use labelled listing data only where the detail page is absent."""
+    seen = {p.source_url.rstrip("/") for p in existing if p.source_url}
+    products = []
+    for kind in ("stocks", "bonds"):
+        path = directory / (kind + ".json")
+        if not path.is_file():
+            continue
+        try:
+            source = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as error:
+            log.warning("Не прочитан каталог бумаг %s: %s", path, error)
+            continue
+        root = f"https://www.tbank.ru/invest/{kind}/"
+        if not isinstance(source, dict) or source.get("source") != root:
+            continue
+        for page, snapshot in source.get("pages", {}).items():
+            page_url = urlsplit(page)
+            if not page.startswith(root) or page_url.path != urlsplit(root).path:
+                continue
+            for url, row in snapshot.get("rows", {}).items():
+                canonical = url.rstrip("/")
+                if canonical in seen or not url.startswith(root) or not issue_kind(url):
+                    continue
+                symbol = row.get("symbol", {})
+                title = symbol.get("showName")
+                if not title:
+                    continue
+                terms = {KIND: issue_kind(url), CATALOGUE_SOURCE: page}
+                code = str(symbol.get("isin") or "")
+                if valid_isin(code):
+                    terms[ISIN] = code
+                fields = {"Тикер": symbol.get("ticker"), "Валюта бумаги": symbol.get("currency"),
+                          "Размер лота": symbol.get("lotSize")}
+                details = row.get("fields", {})
+                fields.update({"Номинал": details.get("faceValue"), "Купон": details.get("couponValue"),
+                               "Дата погашения": details.get("matDate")})
+                terms.update({label: str(value) for label, value in fields.items() if value not in (None, "")})
+                products.append(Product(
+                    bank="Т-Банк", title=title, category="Инвестиции", source_url=url,
+                    url_path=urlsplit(url).path, terms=terms,
+                    collected_at=snapshot.get("read_at") or source.get("updated_at", ""),
+                ))
+                seen.add(canonical)
+    return products
 
 
 def groups(products):

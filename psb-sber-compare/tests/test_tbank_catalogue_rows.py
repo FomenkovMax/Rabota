@@ -65,3 +65,36 @@ def test_catalogue_read_resumes_after_last_saved_page(tmp_path):
     assert seen == [page_two]
     assert root in result["pages"]
     assert page_two in result["errors"]
+
+
+def test_public_catalogue_request_changes_only_pagination():
+    from src.banks.tbank_public_catalogue import _page_body
+
+    root = "https://www.tbank.ru/invest/stocks/"
+    template = {"start": 0, "end": 12, "sortType": "ByPopularity", "isPrivate": False}
+    result = _page_body(template, root, root + "?start=12&end=24&sortType=other")
+    assert result == {**template, "start": 12, "end": 24}
+    assert template["start"] == 0
+
+
+def test_securities_report_labels_listing_rows_and_prefers_detail_pages(tmp_path):
+    from src import securities
+    from src.psb.parser import Product
+    from src.report import _securities_block
+
+    root = "https://www.tbank.ru/invest/stocks/"
+    existing = Product(bank="Т-Банк", title="Карточка Сбера", source_url=root + "SBER/",
+                       terms={securities.KIND: "Акция", securities.ISIN: "RU0009029540"})
+    (tmp_path / "stocks.json").write_text(json.dumps({
+        "source": root, "pages": {root: {"rows": {
+            root + "SBER": {"symbol": {"showName": "Дубль из витрины"}},
+            root + "GAZP": {"symbol": {"showName": "Газпром", "isin": "RU0007661625", "ticker": "GAZP"}},
+        }}},
+    }), encoding="utf-8")
+    listing = securities.catalogue_products(tmp_path, [existing])
+    assert [item.title for item in listing] == ["Газпром"]
+    html = _securities_block({"Т-Банк": [existing]}, listing)
+    assert "Дубль из витрины" not in html
+    assert "данные витрины" in html
+    assert "RU0007661625" in html
+    assert "Доступность покупки в Луганске не подтверждена" in html
