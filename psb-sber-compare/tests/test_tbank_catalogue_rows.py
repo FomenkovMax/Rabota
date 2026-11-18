@@ -28,3 +28,17 @@ def test_catalogue_rows_use_public_visible_issue_links_and_validate_isin():
     assert rows[root + "SBER"]["fields"] == {"faceValue": 1}
     assert "isin" not in rows[root + "GAZP"]["symbol"]
     assert "sessionId" not in str(rows)
+
+
+def test_snapshot_includes_the_public_catalogue_rows(tmp_path, monkeypatch):
+    from zipfile import ZipFile
+    from bot import service
+
+    monkeypatch.setattr(service, "ROOT", tmp_path)
+    rows = tmp_path / "data" / "tbank-inventory" / "catalogue-rows"
+    rows.mkdir(parents=True)
+    (rows / "stocks.json").write_text("{}", encoding="utf-8")
+    (rows / "bonds.tmp").write_text("{}", encoding="utf-8")
+
+    with ZipFile(service.full_snapshot_archive()) as archive:
+        assert archive.namelist() == ["tbank-inventory/catalogue-rows/stocks.json"]

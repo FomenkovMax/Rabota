@@ -510,6 +510,9 @@ def full_snapshot_archive() -> Path | None:
     inventory = ROOT / "data" / "tbank-inventory"
     files.extend((inventory, inventory / name) for name in ("stocks.json", "bonds.json", "audit.json")
                  if (inventory / name).is_file())
+    catalogue = inventory / "catalogue-rows"
+    files.extend((inventory, catalogue / name) for name in ("stocks.json", "bonds.json")
+                 if (catalogue / name).is_file())
     if not files:
         return None
     archive = ROOT / "data" / "snapshot.zip"
