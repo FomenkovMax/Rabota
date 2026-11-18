@@ -176,6 +176,7 @@ class VtbAdapter(CrawlAdapter):
 
     base_url = "https://www.vtb.ru"
     seeds = (
+        "https://www.vtb.ru/personal/avtokredity/",
         "https://www.vtb.ru/personal/vklady-i-scheta/",
         "https://www.vtb.ru/personal/kredit/",
         "https://www.vtb.ru/personal/ipoteka/",
@@ -187,6 +188,9 @@ class VtbAdapter(CrawlAdapter):
     # страниц уходил на них, а до ипотеки и карт обход не доходил.
     priority = (
         "https://www.vtb.ru/personal/vklady-i-scheta/seyfovye-yacheyki/",
+        "https://www.vtb.ru/personal/avtokredity/bez-podtverzhdeniya-dohoda/",
+        "https://www.vtb.ru/personal/avtokredity/avto-v-avtosalone/",
+        "https://www.vtb.ru/personal/avtokredity/dengi-na-avto/",
         "https://www.vtb.ru/personal/ipoteka/new-regions/",
         "https://www.vtb.ru/personal/kredit/nalichnymi/",
         "https://www.vtb.ru/personal/kredit/refinansirovanie/",
@@ -211,6 +215,8 @@ class VtbAdapter(CrawlAdapter):
         ("/personal/vklady-i-scheta/nakopitelnyi-schet", "Накопительные счета"),
         ("/personal/vklady-i-scheta", "Вклады"),
         ("/personal/ipoteka", "Ипотека"),
+        ("/personal/avtokredity/services", "Прочее"),
+        ("/personal/avtokredity", "Кредиты"),
         ("/personal/kredit", "Кредиты"),
         ("/personal/karty/kreditnye", "Кредитные карты"),
         ("/personal/karty/debetovye", "Дебетовые карты"),
@@ -221,7 +227,7 @@ class VtbAdapter(CrawlAdapter):
         r"(calc|kalkul|faq|question|vopros|help|pomosh|nalog|tax|document|dokument|"
         r"tarif|archive|arhiv|news|blog|promo|akci|action|business|biz|/legal|"
         r"[/_-]na[_-]\d|rublej|/(moskva|sankt-peterburg|novosibirsk|ekaterinburg|kazan)\b|"
-        r"/bez-|/dlya-|/onlajn-zayavka|/form\b|/anketa|"
+        r"(?<!/avtokredity)/bez-|/dlya-|/onlajn-zayavka|/form\b|/anketa|"
         # Подборки, города и служебное в разделе вкладов ВТБ (обход 07.10.2026).
         r"/vklad-\d|/vklady-(?!i-scheta)|/so-snyatiem|/sberezhenija$|/nakopitelnyy-chet-|"
         r"/kurs-|asv|/informacija|"

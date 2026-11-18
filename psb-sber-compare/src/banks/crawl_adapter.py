@@ -32,7 +32,7 @@ from .browser import (BrowserSettings, BrowserUnavailable, PageFailed,
 from .generic_site import caption_rules_out, category_for, extract_products, rates_of
 from .seo import is_seo_page
 from .. import card_terms, conditions, coverage, market, securities
-from ..availability import SERVICE_CITY_KEY, find_clause, remember_service_city
+from ..availability import SERVICE_CITY_KEY, find_clause, remember_auto_city, remember_service_city
 
 log = logging.getLogger(__name__)
 
@@ -833,6 +833,7 @@ def product_from_page(data: dict[str, Any], *, bank: str, url: str,
         source_url=url, collected_at=collected_at,
     )
     remember_service_city(product, data.get("text") or "")
+    remember_auto_city(product, data.get("text") or "")
     if (title.casefold() in {c.casefold() for c in coverage.CATEGORIES}
             and SERVICE_CITY_KEY not in product.terms):
         return None

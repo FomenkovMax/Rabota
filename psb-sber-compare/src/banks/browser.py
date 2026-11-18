@@ -385,8 +385,11 @@ class BrowserSession:
                 # «Условия и требования» только после клика показывает
                 # аккордеон «Процентные ставки» — его жмём следующим раундом.
                 clicked = 0
+                labels = _EXPAND_LABELS
+                if re.match(r"https://www\.vtb\.ru/personal/avtokredity/", page.url):
+                    labels += r"|Города"
                 for _ in range(3):
-                    step = int(page.evaluate(_EXPAND_JS, _EXPAND_LABELS) or 0)
+                    step = int(page.evaluate(_EXPAND_JS, labels) or 0)
                     if not step:
                         break
                     clicked += step

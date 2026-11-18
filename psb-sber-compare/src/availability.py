@@ -20,12 +20,49 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from typing import Any, Iterable
+from urllib.parse import urlsplit
 
 from . import card_terms, conditions, market
 
 LNR, FEDERAL, ABSENT, UNKNOWN = "lnr", "federal", "absent", "unknown"
 SERVICE_CITY_KEY = "Услуга в офисе Луганска: цитата"
 SERVICE_SOURCE_KEY = "Услуга в офисе Луганска: источник"
+AUTO_CITY_KEY = "Регистрация для автокредита: цитата"
+AUTO_SOURCE_KEY = "Регистрация для автокредита: источник"
+_VTB_AUTO_ELIGIBILITY = re.compile(
+    r"Вы\s+можете\s+получить\s+кредит\s+на\s+автомобиль,\s+если\s+вы\s+имеете\s+"
+    r"постоянную\s+или\s+временную\s+регистрацию\s+в\s+следующих\s+городах[^.]*\.",
+    re.I,
+)
+
+
+def _vtb_auto_product(product: Any) -> bool:
+    url = urlsplit(product.source_url)
+    return (product.bank == "ВТБ" and product.category == "Кредиты"
+            and url.hostname == "www.vtb.ru"
+            and url.path.startswith("/personal/avtokredity/")
+            and not url.path.startswith("/personal/avtokredity/services/"))
+
+
+def remember_auto_city(product: Any, text: str) -> None:
+    """Extract the city only from the car loan's registration requirements."""
+    if not _vtb_auto_product(product):
+        return
+    match = _VTB_AUTO_ELIGIBILITY.search(text)
+    if not match:
+        return
+    for line in text[match.end():].splitlines():
+        city = line.strip().lstrip("• ").strip()
+        if not city:
+            continue
+        # Registration cities are standalone rows. Stop at the next heading,
+        # sentence, link label with punctuation, or phone number.
+        if not re.fullmatch(r"[А-ЯЁ][А-Яа-яЁё-]+(?:\s+(?:[А-ЯЁ][А-Яа-яЁё-]+|на|над|под)){0,3}", city):
+            break
+        if city == "Луганск":
+            product.terms[AUTO_CITY_KEY] = " ".join(match[0].split()) + " Список городов: Луганск."
+            product.terms[AUTO_SOURCE_KEY] = product.source_url
+            break
 
 
 def remember_service_city(product: Any, text: str) -> None:
@@ -87,6 +124,7 @@ class Status:
         return (self.code == LNR
                 and ("калькулятор на сайте банка:" in self.reason
                      or "на сайте банка выбран город" in self.reason
+                     or "регистрация в Луганске подходит для автокредита:" in self.reason
                      or "услуга предоставляется в офисе Луганска:" in self.reason)
                 and bool(re.search(r"\bЛуганск\b", self.reason, re.I)))
 
@@ -118,6 +156,8 @@ def status_of(product: Any, *, region_method: str, presence: str = "") -> Status
     if (getattr(product, "category", "") == "Сейфовые ячейки" and terms.get(SERVICE_CITY_KEY)
             and url and terms.get(SERVICE_SOURCE_KEY) == url):
         return Status(LNR, f"услуга предоставляется в офисе Луганска: {terms[SERVICE_CITY_KEY]}", url)
+    if terms.get(AUTO_CITY_KEY) and url and terms.get(AUTO_SOURCE_KEY) == url and _vtb_auto_product(product):
+        return Status(LNR, f"регистрация в Луганске подходит для автокредита: {terms[AUTO_CITY_KEY]}", url)
     calc = str(terms.get("Калькулятор на сайте") or "")
     # «Есть в ЛНР» — только если калькулятор для ЛНР показал хоть одну ставку:
     # строка из одних «недоступно» и «не показал расчёт» этого не доказывает.

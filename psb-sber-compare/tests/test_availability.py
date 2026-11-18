@@ -284,3 +284,20 @@ def test_safe_deposit_city_requires_service_specific_office_list():
     p.terms[availability.SERVICE_SOURCE_KEY] = "https://www.genbank.ru/about/"
     assert availability.status_of(p, region_method="not_confirmed").code == availability.UNKNOWN
 
+
+def test_vtb_auto_loan_requires_lugansk_in_registration_list():
+    from src.banks.crawl_adapter import product_from_page
+
+    url = "https://www.vtb.ru/personal/avtokredity/bez-podtverzhdeniya-dohoda"
+    eligibility = ("Вы можете получить кредит на автомобиль, если вы имеете "
+                   "постоянную или временную регистрацию в следующих городах.")
+    kwargs = dict(bank="ВТБ", url=url, category="Кредиты", region="", collected_at="")
+    title = "Автокредит без подтверждения дохода"
+    text = title + "\n" + eligibility + "\nКаменск-Шахтинский\nЛуганск\nМосква"
+    product = product_from_page({"h1": title, "text": text}, **kwargs)
+    assert av.status_of(product, region_method="federal").city_confirmed
+
+    text = title + "\n" + eligibility + "\nМосква\nАдреса офисов.\nЛуганск"
+    product = product_from_page({"h1": title, "text": text}, **kwargs)
+    assert not av.status_of(product, region_method="federal").city_confirmed
+
