@@ -1262,3 +1262,22 @@ def test_pension_forecast_stays_in_service_description():
 
     assert product.rate_min is None
     assert "15%" in product.terms["Условия услуги на сайте"]
+
+
+def test_vtb_loyalty_programme_is_not_a_card_or_interest_rate():
+    from src.banks.others import VtbAdapter
+
+    url = "https://www.vtb.ru/personal/karty/programma-loyalnosti"
+    category = VtbAdapter(region=None)._family(url)
+    assert category == "Лояльность и кешбэк"
+
+    title = "Кешбэк до 3 000 рублей ежемесячно"
+    product = crawl.product_from_page(
+        {"h1": title, "text": title + "\nДо 15%\nКешбэк за покупки"},
+        bank="ВТБ", url=url, category=category, region="", collected_at="",
+    )
+
+    assert product.category == category
+    assert product.rate_min is None
+    assert product.title == "Мультибонус"
+    assert "Кешбэк за покупки" in product.terms["Условия услуги на сайте"]

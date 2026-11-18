@@ -102,6 +102,23 @@ def audit_inventory(directory: Path, database: Path, adapter: TbankAdapter) -> d
             "in_snapshot": len(catalogue & collected),
             "missing_issue_urls": sorted(catalogue - collected),
         }
+        rows_file = directory / "catalogue-rows" / path.name
+        if rows_file.is_file():
+            fields = json.loads(rows_file.read_text(encoding="utf-8"))
+            field_urls = {
+                adapter._normalize(url)
+                for page in fields["pages"].values()
+                for url in page["rows"]
+            }
+            audit["catalogues"][kind]["catalogue_fields"] = {
+                "pages_read": len(fields["pages"]),
+                "expected_pages": fields["expected_pages"],
+                "page_failures": fields["errors"],
+                "matched_issues": len(catalogue & field_urls),
+                "new_issue_urls": sorted(field_urls - catalogue),
+                "missing_issue_urls": sorted(catalogue - field_urls),
+                "missing_detail_and_fields": sorted(catalogue - (field_urls | collected)),
+            }
     return audit
 
 

@@ -141,4 +141,14 @@ def test_tbank_inventory_compares_issue_urls_using_latest_snapshot(tmp_path):
     checked = audit_inventory(tmp_path, storage.path, adapter)["catalogues"]
     assert checked["stocks"]["in_snapshot"] == 1
     assert checked["stocks"]["missing_issue_urls"] == [root + "SBER"]
+    catalogue_fields = tmp_path / "catalogue-rows"
+    catalogue_fields.mkdir()
+    (catalogue_fields / "stocks.json").write_text(json.dumps({
+        "pages": {root: {"rows": {root + "SBER": {}}}},
+        "errors": {}, "expected_pages": 2,
+    }), encoding="utf-8")
+    checked = audit_inventory(tmp_path, storage.path, adapter)["catalogues"]
+    assert checked["stocks"]["missing_issue_urls"] == [root + "SBER"]
+    assert checked["stocks"]["catalogue_fields"]["matched_issues"] == 1
+    assert checked["stocks"]["catalogue_fields"]["missing_detail_and_fields"] == []
     assert checked["bonds"]["unread"]

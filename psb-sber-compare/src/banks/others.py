@@ -198,6 +198,7 @@ class VtbAdapter(CrawlAdapter):
     # страниц уходил на них, а до ипотеки и карт обход не доходил.
     priority = (
         "https://www.vtb.ru/personal/platezhi-i-perevody/obmen-valjuty/",
+        "https://www.vtb.ru/personal/karty/programma-loyalnosti/",
         "https://www.vtb.ru/personal/vklady-i-scheta/seyfovye-yacheyki/",
         "https://www.vtb.ru/personal/avtokredity/bez-podtverzhdeniya-dohoda/",
         "https://www.vtb.ru/personal/avtokredity/avto-v-avtosalone/",
@@ -229,6 +230,7 @@ class VtbAdapter(CrawlAdapter):
         ("/personal/avtokredity/services", "Прочее"),
         ("/personal/avtokredity", "Кредиты"),
         ("/personal/kredit", "Кредиты"),
+        ("/personal/karty/programma-loyalnosti", "Лояльность и кешбэк"),
         ("/personal/karty/kreditnye", "Кредитные карты"),
         ("/personal/karty/debetovye", "Дебетовые карты"),
         ("/personal/karty", "Банковские карты"),

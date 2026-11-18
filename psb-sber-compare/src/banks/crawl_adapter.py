@@ -661,7 +661,8 @@ def _read_rates(product: Product, body: list[str]) -> None:
     окне сказано про особые условия, ищем дальше такую же строку таблицы
     (с той же подписью «Ставка») без особых условий. Не нашли — берём первую.
     """
-    if product.category in {"НПФ и ПДС", "Премиальное обслуживание", "Валютные операции"}:
+    if product.category in {"НПФ и ПДС", "Премиальное обслуживание", "Валютные операции",
+                            "Лояльность и кешбэк"}:
         return
     fallback: tuple[list[float], str, int, tuple] | None = None
     block_apr: list[float] = []          # ПСК текущего блока таблицы
@@ -829,6 +830,9 @@ def product_from_page(data: dict[str, Any], *, bank: str, url: str,
         title = "Выгодный обмен"
     if bank == "РостФинанс" and url == "https://www.rostfinance.ru/safe/" and title.casefold() == "сейфовые ячейки":
         title = "Аренда сейфовой ячейки"
+    if (bank == "ВТБ" and category == "Лояльность и кешбэк"
+            and url.rstrip("/") == "https://www.vtb.ru/personal/karty/programma-loyalnosti"):
+        title = "Мультибонус"
     if urlsplit(url).hostname == "www.tbank.ru" and securities.issue_kind(url):
         title = re.sub(r"^(?:О компании|Про облигацию)\s+", "", title, flags=re.I)
     if not is_product_title(title):
