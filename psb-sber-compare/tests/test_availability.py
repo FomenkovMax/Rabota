@@ -333,3 +333,18 @@ def test_rostfinance_exchange_confirms_office_from_the_exchange_table():
     product = product_from_page(page, **kwargs)
     assert av.status_of(product, region_method="selector").city_confirmed
 
+
+
+def test_rostfinance_safe_offer_does_not_inherit_region_of_the_header():
+    from src.banks.crawl_adapter import product_from_page
+
+    url = "https://www.rostfinance.ru/safe/"
+    product = product_from_page(
+        {"h1": "Сейфовые ячейки",
+         "text": "Контакты\nЛуганск\nПомощь\nСейфовые ячейки\nСрок аренды от 1 дня до года"},
+        bank="РостФинанс", url=url, category="Сейфовые ячейки", region="Луганск", collected_at="",
+    )
+    assert product.title == "Аренда сейфовой ячейки"
+    assert "Город выбран на сайте банка" not in product.terms
+    status = av.status_of(product, region_method="selector")
+    assert status.code == av.UNKNOWN and status.source == url

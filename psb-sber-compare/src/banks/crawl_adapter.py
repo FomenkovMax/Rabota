@@ -827,6 +827,8 @@ def product_from_page(data: dict[str, Any], *, bank: str, url: str,
     title = product_name(title)
     if url == ROST_EXCHANGE_URL and title == "ВЫГОДНЫЙ ОБМЕН":
         title = "Выгодный обмен"
+    if bank == "РостФинанс" and url == "https://www.rostfinance.ru/safe/" and title.casefold() == "сейфовые ячейки":
+        title = "Аренда сейфовой ячейки"
     if urlsplit(url).hostname == "www.tbank.ru" and securities.issue_kind(url):
         title = re.sub(r"^(?:О компании|Про облигацию)\s+", "", title, flags=re.I)
     if not is_product_title(title):
@@ -837,7 +839,7 @@ def product_from_page(data: dict[str, Any], *, bank: str, url: str,
         category=category_for(title, category), region=region,
         source_url=url, collected_at=collected_at,
     )
-    if (bank == "РостФинанс" and category != "Валютные операции"
+    if (bank == "РостФинанс" and category not in {"Валютные операции", "Сейфовые ячейки"}
             and urlsplit(url).hostname in {"rostfinance.ru", "www.rostfinance.ru"}):
         header = [line.strip() for line in (data.get("text") or "").splitlines()[:20] if line.strip()]
         if any(header[i:i + 3] == ["Контакты", "Луганск", "Помощь"] for i in range(len(header) - 2)):

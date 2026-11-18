@@ -179,6 +179,8 @@ def status_of(product: Any, *, region_method: str, presence: str = "") -> Status
             and terms.get(SERVICE_CITY_KEY)
             and url and terms.get(SERVICE_SOURCE_KEY) == url):
         return Status(LNR, f"услуга предоставляется в офисе Луганска: {terms[SERVICE_CITY_KEY]}", url)
+    if category == "Сейфовые ячейки":
+        return Status(UNKNOWN, "аренда ячеек в конкретном офисе Луганска не подтверждена", url)
     if terms.get(AUTO_CITY_KEY) and url and terms.get(AUTO_SOURCE_KEY) == url and _vtb_auto_product(product):
         return Status(LNR, f"регистрация в Луганске подходит для автокредита: {terms[AUTO_CITY_KEY]}", url)
     form_url, _ = CMR_CARD_FORMS.get(url, ("", ""))
