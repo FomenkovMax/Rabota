@@ -491,6 +491,7 @@ CRAWL_READ_KEY = "Обход: прочитано страниц"
 CRAWL_SITEMAP_KEY = "Обход: страниц в карте сайта"
 CRAWL_UNREAD_KEY = "Обход: не прочитаны"
 CRAWL_FAILED_KEY = "Обход: ошибки чтения"
+CRAWL_ERROR_KEY = "Обход: ошибка запуска"
 CRAWL_CANDIDATES_KEY = "Обход: страницы вне разделов"
 # Не розница: бизнес, корпоративное, новости, помощь — в кандидаты не идут.
 _NOT_RETAIL = re.compile(

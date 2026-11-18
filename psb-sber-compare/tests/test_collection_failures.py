@@ -35,6 +35,9 @@ def test_failed_bank_keeps_previous_products_and_all_failed_run_is_not_success(t
         assert len(storage.products_of_run(result["run_id"], bank="Сбер")) == 1
         assert storage.last_successful_run_id() == (old if all_failed else result["run_id"])
         assert result["failures"]
+        crawl = pipeline.crawl_completeness(storage.coverage_of_run(result["run_id"]))
+        assert crawl["Сбер"]["error"] == failed.summary
+        assert not crawl["Сбер"]["complete"]
     finally:
         storage.close()
 

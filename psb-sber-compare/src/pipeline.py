@@ -106,8 +106,9 @@ def collect_bank(config: Config, code: str, *, save: bool = True) -> Any:
         storage.save_products(run_id, result.products)
         collected_coverage = getattr(result, "coverage", {})
         if previous is not None and adapter.settings.get("resume_urls"):
-            from .banks.crawl_adapter import CRAWL_READ_KEY
+            from .banks.crawl_adapter import CRAWL_ERROR_KEY, CRAWL_READ_KEY
             old_coverage = storage.coverage_of_run(previous).get(adapter.title, {})
+            old_coverage.pop(CRAWL_ERROR_KEY, None)
             total_read = int(old_coverage.get(CRAWL_READ_KEY, 0)) + int(collected_coverage.get(CRAWL_READ_KEY, 0))
             collected_coverage = {**old_coverage, **collected_coverage, CRAWL_READ_KEY: str(total_read)}
         storage.save_coverage(run_id, adapter.title, collected_coverage)
@@ -257,11 +258,12 @@ def crawl_completeness(links: dict[str, dict[str, str]]) -> dict[str, dict[str, 
 
     Ответ на вопрос «собраны ли все данные с сайта»: не прочитанные
     продуктовые страницы (лимит, защита сайта, ошибки) перечислены поимённо."""
-    from .banks.crawl_adapter import (CRAWL_CANDIDATES_KEY, CRAWL_FAILED_KEY, CRAWL_READ_KEY,
+    from .banks.crawl_adapter import (CRAWL_CANDIDATES_KEY, CRAWL_ERROR_KEY, CRAWL_FAILED_KEY, CRAWL_READ_KEY,
                                       CRAWL_SITEMAP_KEY, CRAWL_UNREAD_KEY)
     out: dict[str, dict[str, Any]] = {}
     for bank, own in links.items():
-        if CRAWL_READ_KEY not in own:
+        error = own.get(CRAWL_ERROR_KEY, "")
+        if CRAWL_READ_KEY not in own and not error:
             continue
         unread = [u for u in (own.get(CRAWL_UNREAD_KEY) or "").split() if u]
         failed = [u for u in (own.get(CRAWL_FAILED_KEY) or "").split() if u.startswith("http")]
@@ -270,7 +272,8 @@ def crawl_completeness(links: dict[str, dict[str, str]]) -> dict[str, dict[str, 
                      "unread": unread, "failed": failed,
                      "candidates": [u for u in (own.get(CRAWL_CANDIDATES_KEY) or "").split() if u],
                      "new_candidates": [],
-                     "complete": not unread and not failed}
+                     "error": error,
+                     "complete": not unread and not failed and not error}
     return out
 
 
@@ -557,6 +560,8 @@ def load_report_data(config: Config, *, competitor: str = "") -> dict[str, Any] 
 
 def run(config: Config) -> dict[str, Any]:
     """Сбор по всем банкам плюс отчёт."""
+    from .banks.crawl_adapter import CRAWL_ERROR_KEY
+
     storage = Storage(config.path("storage", "db_path", default="data/psb_sber.db"))
     previous_ok = storage.last_successful_run_id()
     run_id = storage.start_run(config.get("region_label", default=""))
@@ -570,11 +575,14 @@ def run(config: Config) -> dict[str, Any]:
         for code, result in collect_all(config).items():
             if not result.ok:
                 failures.append(result.summary)
+                old_coverage = {}
                 if previous_ok is not None:
                     rows = storage.products_of_run(previous_ok, bank=result.bank)
                     storage.copy_products(run_id, [row["id"] for row in rows])
                     old_coverage = storage.coverage_of_run(previous_ok).get(result.bank, {})
-                    storage.save_coverage(run_id, result.bank, old_coverage)
+                storage.save_coverage(run_id, result.bank, {
+                    **old_coverage, CRAWL_ERROR_KEY: result.summary,
+                })
                 continue
             banks_ok.append(result.bank)
             _drop_seo(result)

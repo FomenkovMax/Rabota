@@ -984,12 +984,15 @@ def _crawl_block(crawl: dict[str, dict[str, Any]]) -> str:
     rows = []
     for bank, c in crawl.items():
         left = c["unread"] + c["failed"]
-        state = "✅ полный" if c["complete"] else f"⚠️ не прочитано {len(left)}"
+        if c.get("error"):
+            state = f'⚠️ {e(c["error"])}'
+        else:
+            state = "Очередь обработана" if c["complete"] else f"⚠️ не прочитано {len(left)}"
         pages = "".join(f'<div class="pmeta">{_linkify(u)}</div>' for u in left[:15])
         more = (f'<div class="pmeta">… и ещё {len(left) - 15}</div>' if len(left) > 15 else "")
         rows.append(f'<tr><td class="pname">{brand.name(bank)}</td><td class="num">{c["read"]}</td>'
                     f'<td class="num">{c["sitemap"] or "—"}</td><td>{state}{pages}{more}</td></tr>')
-    return ('<h3 style="margin:4px 0 10px;font-size:15px">Полнота обхода сайтов</h3>'
+    return ('<h3 style="margin:4px 0 10px;font-size:15px">Ход обхода сайтов</h3>'
             '<p class="hint">Прочитано — страниц розницы за сбор; карта сайта — сколько '
             'страниц розницы банк сам перечислил в sitemap.xml. Не прочитанные продукты '
             'перечислены: их цифры взяты из прошлого сбора с его датой (до 14 дней).</p>'
