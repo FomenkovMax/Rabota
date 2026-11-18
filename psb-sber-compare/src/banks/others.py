@@ -64,6 +64,7 @@ class SberAdapter(CrawlAdapter):
     # Сбер пускает около 30 страниц за сеанс, поэтому они идут первыми.
     priority = (
         "https://www.sberbank.ru/ru/person/additional/rent_of_safes",
+        "https://npfsberbanka.ru/pds",
         "https://www.sberbank.ru/ru/person/new_sb1",
         "https://www.sberbank.ru/ru/person/sb_premier_new",
         "https://www.sberbank.ru/ru/person/bank_cards/debit/sberkarta",
