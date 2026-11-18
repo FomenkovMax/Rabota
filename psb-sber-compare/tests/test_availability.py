@@ -303,3 +303,17 @@ def test_vtb_auto_loan_requires_lugansk_in_registration_list():
     product = product_from_page({"h1": title, "text": text}, **kwargs)
     assert not av.status_of(product, region_method="federal").city_confirmed
 
+
+def test_rostfinance_city_evidence_comes_from_selected_header():
+    from src.banks.crawl_adapter import product_from_page
+
+    title = "Классический Рост"
+    kwargs = dict(bank="РостФинанс", url="https://www.rostfinance.ru/deposits/klassicheskiy-rost/",
+                  category="Вклады", region="", collected_at="")
+    page = {"h1": title, "text": "Контакты\n Луганск\nПомощь\n" + title}
+    product = product_from_page(page, **kwargs)
+    assert av.status_of(product, region_method="selector").city_confirmed
+    page["text"] = "Контакты\nМосква\nПомощь\n" + title + "\nОфис в Луганске"
+    product = product_from_page(page, **kwargs)
+    assert not av.status_of(product, region_method="selector").city_confirmed
+

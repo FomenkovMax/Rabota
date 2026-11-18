@@ -832,6 +832,11 @@ def product_from_page(data: dict[str, Any], *, bank: str, url: str,
         category=category_for(title, category), region=region,
         source_url=url, collected_at=collected_at,
     )
+    if bank == "РостФинанс" and urlsplit(url).hostname in {"rostfinance.ru", "www.rostfinance.ru"}:
+        header = [line.strip() for line in (data.get("text") or "").splitlines()[:20] if line.strip()]
+        if any(header[i:i + 3] == ["Контакты", "Луганск", "Помощь"] for i in range(len(header) - 2)):
+            product.terms["Город выбран на сайте банка"] = "Луганск"
+            product.terms["Подтверждение выбора города"] = "город в шапке ответа сайта банка"
     remember_service_city(product, data.get("text") or "")
     remember_auto_city(product, data.get("text") or "")
     if (title.casefold() in {c.casefold() for c in coverage.CATEGORIES}
