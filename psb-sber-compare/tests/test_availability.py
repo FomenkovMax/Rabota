@@ -355,6 +355,17 @@ def test_tbank_mfc_evidence_does_not_imply_named_card_delivery():
     assert not av.status_of(product, region_method="not_confirmed").city_confirmed
 
 
+def test_saved_tbank_mfc_evidence_retains_its_verification_date():
+    from src.availability import TBANK_MFC_CARD_URL, status_of
+    from src.banks.others import tbank_mfc_card_from_evidence
+
+    product = tbank_mfc_card_from_evidence()
+    assert product is not None
+    assert product.source_url == TBANK_MFC_CARD_URL
+    assert product.collected_at == "2026-11-18"
+    assert status_of(product, region_method="not_confirmed").city_confirmed
+
+
 def test_rostfinance_exchange_confirms_office_from_the_exchange_table():
     from src.banks.crawl_adapter import product_from_page
 

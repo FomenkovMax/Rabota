@@ -16,13 +16,36 @@
 from __future__ import annotations
 
 import re
+from pathlib import Path
 from urllib.parse import parse_qs, urlencode, urlsplit
 
 from ..availability import (ROST_INSURANCE_URL, ROST_LOYALTY_URL, ROST_TRANSFERS_URL,
                             SBER_ATM_FX_URL, SBER_INSURER_URL, SBER_PRIME_URL,
                             TBANK_MFC_CARD_URL, VTB_PRIVILEGE_URL)
+from ..psb.parser import Product
 from .base import registry
-from .crawl_adapter import CrawlAdapter
+from .crawl_adapter import CrawlAdapter, product_from_page
+
+TBANK_MFC_EVIDENCE = Path("config") / "evidence" / "tbank-mfc-59.txt"
+
+
+def tbank_mfc_card_from_evidence() -> Product | None:
+    """Use the dated public service excerpt when the MFC page cannot be collected."""
+    source_file = Path(__file__).resolve().parents[2] / TBANK_MFC_EVIDENCE
+    if not source_file.is_file():
+        return None
+    lines = source_file.read_text(encoding="utf-8").splitlines()
+    if len(lines) < 4 or lines[0] != f"URL: {TBANK_MFC_CARD_URL}":
+        return None
+    _, checked, title, *body = lines
+    product = product_from_page(
+        {"h1": title, "text": "\n".join([title, *body])},
+        bank="Т-Банк", url=TBANK_MFC_CARD_URL, category="Дебетовые карты",
+        region="Луганск", collected_at=checked.removeprefix("Проверено: "),
+    )
+    if product is not None:
+        product.terms["Источник условий"] = f"Сохранённый фрагмент карточки услуги МФЦ. {checked}"
+    return product
 
 
 @registry.register

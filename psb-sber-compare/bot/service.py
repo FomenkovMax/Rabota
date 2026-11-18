@@ -513,10 +513,14 @@ def full_snapshot_archive() -> Path | None:
     if office_evidence.is_file():
         files.append((office_evidence.parent, office_evidence))
     from src.banks.genbank import CREDIT_CARD_DOCUMENT
+    from src.banks.others import TBANK_MFC_EVIDENCE
 
     genbank_evidence = ROOT / "data" / CREDIT_CARD_DOCUMENT
     if genbank_evidence.is_file():
         files.append((genbank_evidence.parent, genbank_evidence))
+    mfc_evidence = ROOT / TBANK_MFC_EVIDENCE
+    if mfc_evidence.is_file():
+        files.append((mfc_evidence.parent, mfc_evidence))
     if not files:
         return None
     archive = ROOT / "data" / "snapshot.zip"

@@ -395,6 +395,15 @@ def load_report_data(config: Config, *, competitor: str = "") -> dict[str, Any] 
         all_products = [p for p in _rows_to_products(storage.products_of_run(run_id))
                         if not is_seo_page(p.source_url) and is_product_title(p.title)
                         and not securities.excluded_product(p.source_url or "", p.terms)]
+        if "tbank" in config.enabled_banks():
+            from .availability import TBANK_MFC_CARD_URL
+            from .banks.others import tbank_mfc_card_from_evidence
+
+            if not any(p.bank == "Т-Банк" and p.source_url.rstrip("/") == TBANK_MFC_CARD_URL
+                       for p in all_products):
+                mfc_card = tbank_mfc_card_from_evidence()
+                if mfc_card is not None:
+                    all_products.append(mfc_card)
         if "genbank" in config.enabled_banks():
             from .banks.genbank import CREDIT_CARD_DOCUMENT, credit_card_from_disclosure
 
