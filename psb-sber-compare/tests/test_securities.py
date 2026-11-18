@@ -70,3 +70,29 @@ def test_legacy_lesson_metadata_does_not_enter_registry():
     p = instrument(title="Рынок акций", url="https://bank.example/investments/stocks")
     p.terms[securities.KIND] = "Акция"
     assert securities.groups([p]) == []
+
+
+def test_partial_collection_keeps_distinct_issues_with_same_name(tmp_path):
+    from datetime import datetime
+
+    from src.banks.base import CollectResult
+    from src.pipeline import _keep_unread
+    from src.storage import Storage
+
+    older = instrument("Т-Банк", "Облигации эмитента", "https://www.tbank.ru/invest/bonds/old")
+    newer = instrument("Т-Банк", older.title, "https://www.tbank.ru/invest/bonds/new")
+    older.url_path, newer.url_path = "/invest/bonds/old", "/invest/bonds/new"
+    older.collected_at = datetime.now().isoformat()
+    storage = Storage(tmp_path / "snapshots.db")
+    try:
+        before = storage.start_run("ЛНР")
+        after = storage.start_run("ЛНР")
+        storage.save_products(before, [older])
+        storage.save_products(after, [newer])
+        result = CollectResult(bank="Т-Банк", products=[newer], partial=True)
+        _keep_unread(storage, result, before, after)
+        assert {row["source_url"] for row in storage.products_of_run(after)} == {
+            older.source_url, newer.source_url,
+        }
+    finally:
+        storage.close()

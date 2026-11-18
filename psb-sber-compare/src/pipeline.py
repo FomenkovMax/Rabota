@@ -170,17 +170,27 @@ def _keep_unread(storage: Storage, result: Any, previous: int | None, run_id: in
     if previous is None or not (force or getattr(result, "partial", False)):
         return
     from datetime import datetime, timedelta
+    from json import loads
 
+    from . import securities
     from .banks.crawl_adapter import is_product_title, normalize_title
     from .banks.seo import is_seo_page
 
     fresh_keys = {product_key(p) for p in result.products}
-    fresh_titles = {normalize_title(p.title) for p in result.products}
+    fresh_titles = {
+        normalize_title(p.title) for p in result.products
+        if not securities.issue_kind(p.source_url or "") and not p.terms.get(securities.KIND)
+    }
     cutoff = (datetime.now() - timedelta(days=KEEP_UNREAD_DAYS)).isoformat()
     keep = []
     for row in storage.products_of_run(previous, result.bank):
-        if row["product_key"] in fresh_keys or normalize_title(row["title"]) in fresh_titles:
+        if row["product_key"] in fresh_keys:
             continue
+        if normalize_title(row["title"]) in fresh_titles:
+            old_issue = (securities.issue_kind(row["source_url"] or "")
+                         or loads(row["terms_json"] or "{}").get(securities.KIND))
+            if not old_issue:
+                continue
         if is_seo_page(row["source_url"] or ""):
             continue
         if not is_product_title(row["title"]) or (row["collected_at"] or "") < cutoff:
