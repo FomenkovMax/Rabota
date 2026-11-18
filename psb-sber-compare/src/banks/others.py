@@ -57,6 +57,7 @@ class SberAdapter(CrawlAdapter):
     # Главные продукты для сравнения — их адреса видны в обходе 06.10.2026.
     # Сбер пускает около 30 страниц за сеанс, поэтому они идут первыми.
     priority = (
+        "https://www.sberbank.ru/ru/person/additional/rent_of_safes",
         "https://www.sberbank.ru/ru/person/bank_cards/debit/sberkarta",
         "https://www.sberbank.ru/ru/person/bank_cards/credit_cards/credit_sberkarta",
         "https://www.sberbank.ru/ru/person/credits/home/family",
@@ -185,6 +186,7 @@ class VtbAdapter(CrawlAdapter):
     # ссылается на десятки подборок и городов, и без этого списка лимит
     # страниц уходил на них, а до ипотеки и карт обход не доходил.
     priority = (
+        "https://www.vtb.ru/personal/vklady-i-scheta/seyfovye-yacheyki/",
         "https://www.vtb.ru/personal/ipoteka/new-regions/",
         "https://www.vtb.ru/personal/kredit/nalichnymi/",
         "https://www.vtb.ru/personal/kredit/refinansirovanie/",
@@ -205,6 +207,7 @@ class VtbAdapter(CrawlAdapter):
         "https://www.vtb.ru/personal/karty/debetovye/detskaya/",
     )
     families = (
+        ("/personal/vklady-i-scheta/seyfovye-yacheyki", "Сейфовые ячейки"),
         ("/personal/vklady-i-scheta/nakopitelnyi-schet", "Накопительные счета"),
         ("/personal/vklady-i-scheta", "Вклады"),
         ("/personal/ipoteka", "Ипотека"),

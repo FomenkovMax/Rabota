@@ -1033,6 +1033,9 @@ class CrawlAdapter(BankAdapter):
                         data = reader.read(url)
                         if is_blocked(data):
                             data = self._after_block(reader, url)
+                        if data is not None and not is_not_found(data) and not (
+                                data.get("text") or "").strip():
+                            raise PageFailed(f"видимый текст не загрузился: {url}")
                     except (PageTooSlow, PageFailed) as exc:
                         log.warning("%s: страница не прочиталась — %s",
                                     self.title, str(exc)[:160])

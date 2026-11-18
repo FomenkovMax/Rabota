@@ -63,7 +63,7 @@ _SECTION: tuple[tuple[str, re.Pattern[str]], ...] = (
         r"^(?:deposits?|vklad\w*|vklady[-\w]*|saving|savings|savingsaccount|contributions)$",
         re.I)),
 )
-_SAFE = re.compile(r"seif|sejf|seyf|yachejk|yacheyk", re.I)
+_SAFE = re.compile(r"seif|sejf|seyf|yachejk|yacheyk|rent[_-]of[_-]safes|^safes$", re.I)
 _CREDIT = re.compile(r"credit|kredit", re.I)
 _HOME = re.compile(r"^(?:home\w*|homenew|ipotek\w*|mortgage\w*)$", re.I)
 _AUTO = re.compile(r"auto|avto|carloan", re.I)
@@ -103,6 +103,8 @@ def classify(url: str) -> str | None:
         return "Лояльность и кешбэк"
     if any(_SAFE.search(s) for s in segments):
         return "Сейфовые ячейки"
+    if parts.hostname in {"psbank.ru", "www.psbank.ru"} and segments[0] == "rates":
+        return "Валютные операции"
     # «/person/person-deposit», «/person/obmen-valjuty»,
     # «/person/payments-and-transfers» (ЦМР): раздел — первое слово сегмента.
     top = re.sub(r"^(?:person|personal)[-_]", "", segments[0], flags=re.I)

@@ -139,6 +139,15 @@ def test_security_page_is_kept_when_it_links_to_multiple_tabs(monkeypatch):
     ]
 
 
+def test_empty_snapshot_is_reported_as_unread(monkeypatch):
+    url = BASE + "/ru/person/contributions/deposits/vklad"
+    monkeypatch.setitem(PAGES, url, {"title": "Открыть СберВклад в СберБанке онлайн", "text": ""})
+    monkeypatch.setattr(crawl, "PageReader", FakeReader)
+    result = SberAdapter(region=None, settings={"resume_urls": [url], "max_pages": 1}).collect()
+    assert not result.ok
+    assert "видимый текст не загрузился" in result.error
+
+
 class OnlyCredits(SberAdapter):
     seeds = (f"{BASE}/ru/person/credits/money", f"{BASE}/ru/person/contributions")
 
