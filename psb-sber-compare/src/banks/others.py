@@ -18,6 +18,7 @@ from __future__ import annotations
 import re
 from urllib.parse import parse_qs, urlencode, urlsplit
 
+from ..availability import ROST_INSURANCE_URL, ROST_LOYALTY_URL, ROST_TRANSFERS_URL, SBER_INSURER_URL
 from .base import registry
 from .crawl_adapter import CrawlAdapter
 
@@ -65,6 +66,7 @@ class SberAdapter(CrawlAdapter):
     priority = (
         "https://www.sberbank.ru/ru/person/additional/rent_of_safes",
         "https://npfsberbanka.ru/pds",
+        SBER_INSURER_URL,
         "https://www.sberbank.ru/ru/person/new_sb1",
         "https://www.sberbank.ru/ru/person/sb_premier_new",
         "https://www.sberbank.ru/ru/person/bank_cards/debit/sberkarta",
@@ -100,6 +102,7 @@ class SberAdapter(CrawlAdapter):
         ("/ru/person/bank_cards/credit", "Кредитные карты"),
         ("/ru/person/bank_cards/debit", "Дебетовые карты"),
         ("/ru/person/bank_cards", "Банковские карты"),
+        ("/products/kombo", "Страхование"),
         ("/ru/person/new_sb1", "Премиальное обслуживание"),
         ("/ru/person/sb_premier_new", "Премиальное обслуживание"),
         ("/ru/sberblizhe", "Специальные предложения"),
@@ -368,12 +371,7 @@ class TbankAdapter(CrawlAdapter):
 
 @registry.register
 class RostfinanceAdapter(CrawlAdapter):
-    """РостФинанс — сайт https://www.rostfinance.ru/ (дал заказчик 07.10.2026).
-
-    Структуру сайта мы ещё не видели: обход начинается с главной, раздел
-    определяется по словам в адресе. После первой проверки
-    (check-bank rostfinance) сюда лягут точные витрины.
-    """
+    """Розничные витрины и отдельные услуги РостФинанса."""
 
     code = "rostfinance"
     title = "РостФинанс"
@@ -390,6 +388,12 @@ class RostfinanceAdapter(CrawlAdapter):
         "https://www.rostfinance.ru/credit/",
         "https://www.rostfinance.ru/mortgage/",
         "https://www.rostfinance.ru/cards/",
+    )
+    priority = (ROST_TRANSFERS_URL, ROST_INSURANCE_URL, ROST_LOYALTY_URL)
+    families = (
+        ("/money-transfers", "Переводы и платежи"),
+        ("/offers/insurance-and-services", "Страхование"),
+        (urlsplit(ROST_LOYALTY_URL).path.rstrip("/"), "Лояльность и кешбэк"),
     )
     family_words = RETAIL_WORDS
     skip = NOT_RETAIL

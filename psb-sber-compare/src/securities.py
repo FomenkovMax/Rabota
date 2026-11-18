@@ -13,6 +13,7 @@ log = logging.getLogger(__name__)
 
 CATALOGUE_SOURCE = "Источник ценной бумаги: витрина"
 DETAIL_SOURCE = "Источник ценной бумаги: данные карточки"
+DOCUMENT_SCOPE = "Назначение списка ценных бумаг"
 KIND = "Вид ценной бумаги"
 ISIN = "ISIN"
 _CODE = re.compile(r"\b[A-Z]{2}[A-Z0-9]{9}[0-9]\b")
@@ -189,10 +190,12 @@ def groups(products):
         if re.search(r"/(?:edu|digest|events|memos|news|blog|journal)(?:/|$)", path, re.I):
             continue
         issue_path = re.search(r"/(?:stocks|bonds)/([^/]+)/?$", path, re.I)
-        if not valid_isin(code) and not issue_path:
+        document_ticker = terms.get("Тикер") if terms.get(DOCUMENT_SCOPE) else ""
+        if not valid_isin(code) and not issue_path and not document_ticker:
             continue
         if issue_path and _excluded_issue_slug(product.source_url, issue_path.group(1)):
             continue
-        key = code if valid_isin(code) else (product.bank, product.source_url, product.title)
+        key = code if valid_isin(code) else (product.bank, product.source_url,
+                                             document_ticker or product.title)
         out.setdefault(key, []).append(product)
     return list(out.values())

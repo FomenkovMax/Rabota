@@ -103,7 +103,7 @@ def test_coverage_separates_bank_catalogue_from_city_availability():
         id(products[2]): availability.Status(availability.FEDERAL, "общие условия"),
     }
     cell = coverage.matrix(["Банк"], products, {}, statuses=status)["Страхование"]["Банк"]
-    assert (cell.products, cell.lnr, cell.lugansk, cell.unresolved) == (3, 2, 1, 1)
+    assert (cell.products, cell.lnr, cell.lugansk, cell.unresolved) == (3, 2, 0, 1)
 
 
 def test_nested_vtb_insurance_and_pds_keep_their_retail_categories():

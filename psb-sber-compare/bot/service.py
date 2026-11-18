@@ -515,6 +515,13 @@ def full_snapshot_archive() -> Path | None:
     office_evidence = ROOT / "data" / "vtb-lugansk-broker-office.json"
     if office_evidence.is_file():
         files.append((office_evidence.parent, office_evidence))
+    from src.psb.liquid_securities import FILE_NAME
+    from src.banks.vtb_securities import PLACEMENTS_NAME, PORTFOLIO_NAME
+
+    for filename in (FILE_NAME, PORTFOLIO_NAME, PLACEMENTS_NAME):
+        document = ROOT / "data" / filename
+        if document.is_file():
+            files.append((document.parent, document))
     catalogue = inventory / "catalogue-rows"
     files.extend((inventory, catalogue / name) for name in ("stocks.json", "bonds.json")
                  if (catalogue / name).is_file())

@@ -257,7 +257,8 @@ def test_city_evidence_requires_exact_city_and_product_calculation():
 
 def test_selected_city_is_preserved_as_product_evidence():
     product = _p("ПСБ", "Вклад", terms={"Город выбран на сайте банка": "Луганск"})
-    assert av.status_of(product, region_method="selector").city_confirmed
+    selected = av.status_of(product, region_method="selector")
+    assert selected.city_selected and not selected.city_confirmed
     assert not av.status_of(product, region_method="federal", presence="офис").city_confirmed
 
 
@@ -312,7 +313,8 @@ def test_rostfinance_city_evidence_comes_from_selected_header():
                   category="Вклады", region="", collected_at="")
     page = {"h1": title, "text": "Контакты\n Луганск\nПомощь\n" + title}
     product = product_from_page(page, **kwargs)
-    assert av.status_of(product, region_method="selector").city_confirmed
+    selected = av.status_of(product, region_method="selector")
+    assert selected.city_selected and not selected.city_confirmed
     page["text"] = "Контакты\nМосква\nПомощь\n" + title + "\nОфис в Луганске"
     product = product_from_page(page, **kwargs)
     assert not av.status_of(product, region_method="selector").city_confirmed

@@ -32,7 +32,8 @@ from .browser import (BrowserSettings, BrowserUnavailable, PageFailed,
 from .generic_site import caption_rules_out, category_for, extract_products, rates_of
 from .seo import is_seo_page
 from .. import card_terms, conditions, coverage, market, securities
-from ..availability import (ROST_EXCHANGE_URL, SERVICE_CITY_KEY, find_clause,
+from ..availability import (ROST_EXCHANGE_URL, ROST_INSURANCE_URL, ROST_LOYALTY_URL,
+                            ROST_TRANSFERS_URL, SERVICE_CITY_KEY, find_clause,
                             remember_auto_city, remember_service_city)
 
 log = logging.getLogger(__name__)
@@ -251,7 +252,7 @@ def _menu_item(line: str) -> bool:
     return len(line) <= 32 and not re.search(r"\d", line)
 
 
-def describe_page(data: dict[str, Any]) -> tuple[str, list[str]]:
+def describe_page(data: dict[str, Any], *, skip_breadcrumb: bool = False) -> tuple[str, list[str]]:
     """Название продукта и строки его описания — от заголовка до чужих карточек.
 
     Текст страницы начинается с меню сайта, поэтому описание отсчитывается
@@ -270,6 +271,11 @@ def describe_page(data: dict[str, Any]) -> tuple[str, list[str]]:
     for index, line in enumerate(lines):
         if normalize_title(line) == first:
             start = index
+            if skip_breadcrumb:
+                for i in range(index + 1, min(index + 5, len(lines))):
+                    if normalize_title(lines[i]) == first:
+                        start = i
+                        break
             break
     if start < 0 and not data.get("h1"):
         # Без H1 название берётся из заголовка окна, а он длиннее строки на
@@ -823,13 +829,28 @@ def rates_section(data: dict[str, Any]) -> list[str]:
 def product_from_page(data: dict[str, Any], *, bank: str, url: str,
                       category: str, region: str, collected_at: str) -> Product | None:
     """Продукт со страницы продукта. None — если это не страница продукта."""
-    title, body = describe_page(data)
+    rost_service = url in {ROST_TRANSFERS_URL, ROST_INSURANCE_URL, ROST_LOYALTY_URL}
+    main_text = data.get("main_text") if rost_service else ""
+    page = {**data, "text": main_text} if main_text else data
+    title, body = describe_page(page, skip_breadcrumb=rost_service)
+    if url == ROST_TRANSFERS_URL and main_text:
+        sentences = re.split(r"(?<=[.!?])\s+", " ".join(main_text.split()))
+        cash_terms = [s for s in sentences if re.search(r"наличных переводов|без открытия сч[её]та", s, re.I)]
+        if cash_terms:
+            body = cash_terms
     headline = title
     title = product_name(title)
     if url == ROST_EXCHANGE_URL and title == "ВЫГОДНЫЙ ОБМЕН":
         title = "Выгодный обмен"
     if bank == "РостФинанс" and url == "https://www.rostfinance.ru/safe/" and title.casefold() == "сейфовые ячейки":
         title = "Аренда сейфовой ячейки"
+    if bank == "РостФинанс":
+        if url == ROST_TRANSFERS_URL and title.casefold() == "денежные переводы":
+            title = "Наличные переводы без открытия счёта"
+        if url == ROST_INSURANCE_URL and title.casefold() == "страхование жизни и здоровья":
+            title = "Страхование жизни и здоровья от партнёров"
+        if url == ROST_LOYALTY_URL and re.search(r"бонус\w* для всех", title, re.I):
+            title = "Программа лояльности «Бонусы для всех»"
     if (bank == "ВТБ" and category == "Лояльность и кешбэк"
             and url.rstrip("/") == "https://www.vtb.ru/personal/karty/programma-loyalnosti"):
         title = "Мультибонус"

@@ -37,8 +37,39 @@ CMR_CARD_FORMS = {
     "https://cmrbank.ru/person/card/comfort-card/": ("https://cmrbank.ru/person-request-for-comfort/", "Комфорт"),
 }
 ROST_EXCHANGE_URL = "https://www.rostfinance.ru/currency/"
+ROST_TRANSFERS_URL = "https://www.rostfinance.ru/money-transfers/"
+ROST_INSURANCE_URL = "https://www.rostfinance.ru/offers/insurance-and-services/strakhovanie-zhizni-i-zdorovya/"
+ROST_LOYALTY_URL = "https://www.rostfinance.ru/news/bolshe-vozmozhnostey-poluchat-bonusy-s-bonusami-dlya-vsekh/"
+SBER_PDS_URL = "https://npfsberbanka.ru/pds"
+SBER_INSURANCE_URL = "https://www.sberbank.ru/ru/person/bank_insure/insuranceprogram/strahovoi-polis-zashita-na-lyuboi-sluchai"
+SBER_INSURER_URL = "https://sberbankins.ru/products/kombo"
 VTB_BROKER_URL = "https://www.vtb.ru/personal/investicii/brokerskoe-obsluzhivanie"
 VTB_BROKER_OFFICES = "https://www.vtb.ru/media-files/vtb.ru/sitepages/personal/investicii/documents/Broker_points.xlsx"
+_SBER_CITY_RELEASE = "https://lug-info.ru/news/chislo-klientov-luganskogo-otdelenija-sbera-prevysilo-odin-million/"
+_CITY_PRODUCT_EVIDENCE = {
+    ("Сбер", "НПФ и ПДС", SBER_PDS_URL): (
+        "Луганск, ул. Советская, 59А. Об оформлении договора ПДС сообщено 11.06.2026.",
+        _SBER_CITY_RELEASE,
+    ),
+    ("Сбер", "Страхование", SBER_INSURANCE_URL): (
+        "Луганск, ул. Советская, 59А. Об оформлении полиса «Защита на любой случай» сообщено 11.06.2026.",
+        _SBER_CITY_RELEASE,
+    ),
+    ("РостФинанс", "Переводы и платежи", ROST_TRANSFERS_URL.rstrip("/")): (
+        "Луганск указан банком среди городов выдачи наличных переводов без открытия счёта.",
+        "https://www.rostfinance.ru/upload/iblock/61d/t6dxvjewjwwipe5xw1gpp1hjjlinizto/"
+        "Справочная информация по осуществлению переводов денежных средств по поручению "
+        "физических лиц без открытия банковског.pdf",
+    ),
+    ("РостФинанс", "Страхование", ROST_INSURANCE_URL.rstrip("/")): (
+        "Банк указывает оформление в любом отделении. В реестре банка есть действующий "
+        "розничный офис: Луганск, ул. Демехина, 27А.",
+        "https://www.rostfinance.ru/about/structure/",
+    ),
+}
+_CITY_PRODUCT_EVIDENCE[("Сбер", "Страхование", SBER_INSURER_URL)] = (
+    _CITY_PRODUCT_EVIDENCE["Сбер", "Страхование", SBER_INSURANCE_URL]
+)
 
 
 def _vtb_broker_product(product: Any) -> bool:
@@ -164,14 +195,18 @@ class Status:
 
     @property
     def city_confirmed(self) -> bool:
-        """Калькулятор продукта дал результат для города Луганска."""
+        """Есть основание по конкретной услуге или её условиям в городе."""
         return (self.code == LNR
                 and ("калькулятор на сайте банка:" in self.reason
-                     or "на сайте банка выбран город" in self.reason
                      or "регистрация в Луганске подходит для автокредита:" in self.reason
                      or "для получения карты можно выбрать Луганск:" in self.reason
+                     or "есть подтверждение услуги в Луганске:" in self.reason
                      or "услуга предоставляется в офисе Луганска:" in self.reason)
                 and bool(re.search(r"\bЛуганск\b", self.reason, re.I)))
+
+    @property
+    def city_selected(self) -> bool:
+        return self.code == LNR and self.reason.startswith("на сайте банка выбран город Луганск;")
 
     @property
     def label(self) -> str:
@@ -199,6 +234,12 @@ def status_of(product: Any, *, region_method: str, presence: str = "") -> Status
         return Status(UNKNOWN, str(terms.get("Доступность торгов в Луганске") or
                       "доступность торгов этим выпуском через банк в Луганске не подтверждена"), url)
     category = getattr(product, "category", "")
+    product_url = urlsplit(url)
+    canonical_url = f"{product_url.scheme}://{product_url.netloc}{product_url.path.rstrip('/')}"
+    city_evidence = _CITY_PRODUCT_EVIDENCE.get((getattr(product, "bank", ""), category, canonical_url))
+    if city_evidence:
+        reason, source = city_evidence
+        return Status(LNR, f"есть подтверждение услуги в Луганске: {reason}", source)
     if ((category == "Сейфовые ячейки" or (category == "Валютные операции" and url == ROST_EXCHANGE_URL))
             and terms.get(SERVICE_CITY_KEY)
             and url and terms.get(SERVICE_SOURCE_KEY) == url):
@@ -224,7 +265,7 @@ def status_of(product: Any, *, region_method: str, presence: str = "") -> Status
             and re.search(r"\d\s?%", calc)):
         return Status(LNR, f"калькулятор на сайте банка: {calc}", url)
     if region_method == "selector" and terms.get("Город выбран на сайте банка") == "Луганск":
-        return Status(LNR, "на сайте банка выбран город Луганск; условия получены для этого города", url)
+        return Status(LNR, "на сайте банка выбран город Луганск; нужен источник по оформлению этого продукта", url)
     if region_method == "selector":
         return Status(LNR, "условия получены на сайте банка с выбранным регионом ЛНР", url)
     if region_method == "local":

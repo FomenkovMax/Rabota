@@ -526,6 +526,18 @@ def load_report_data(config: Config, *, competitor: str = "") -> dict[str, Any] 
         catalogue_securities = securities.catalogue_products(
             fields_dir / "catalogue-rows", [*scope, *supplemental_details]
         )
+        if "ПСБ" in competitor_titles:
+            from .psb import liquid_securities
+
+            catalogue_securities.extend(liquid_securities.load(
+                storage.path.parent / liquid_securities.FILE_NAME
+            ))
+        if "ВТБ" in competitor_titles:
+            from .banks import vtb_securities
+
+            catalogue_securities.extend(vtb_securities.load(
+                storage.path.parent, [*scope, *detailed_securities, *catalogue_securities]
+            ))
         html = render_report(
             comparisons=comparisons, counts=counts, changes=changes,
             promo_segments=segments, expired_promos=[],

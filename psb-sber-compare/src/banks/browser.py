@@ -121,8 +121,10 @@ _SNAPSHOT_JS = """() => ({
 # document.title у банков обычно с хвостом вроде «— оформить онлайн».
 _INSPECT_JS = """() => {
     const h1 = document.querySelector('h1');
+    const main = location.hostname === 'www.rostfinance.ru' ? document.querySelector('main') : null;
     return {
         text: document.body ? document.body.innerText : '',
+        main_text: main ? main.innerText : '',
         h1: h1 ? h1.innerText.trim() : '',
         title: document.title || '',
         links: Array.from(document.querySelectorAll('a[href]')).map(a => [
