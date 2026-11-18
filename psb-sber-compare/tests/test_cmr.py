@@ -4,6 +4,24 @@ from __future__ import annotations
 
 from src.banks import cmr
 
+
+def test_plus_card_pickup_proof_requires_enabled_lugansk_option():
+    from src import availability
+    from src.psb.parser import Product
+
+    page = """<title>ЦМРБанк > Заказать карту (Плюс)</title>
+    <label>Офис получения карты</label><select>
+    <option value="office">г. Луганск, ул. Демехина 23б</option>
+    </select>"""
+    office = cmr.plus_card_pickup_office(page)
+    assert office == "г. Луганск, ул. Демехина 23б"
+    assert not cmr.plus_card_pickup_office(page.replace('value="office"', 'disabled value="office"'))
+    product = Product(bank="ЦМР", source_url=cmr.PLUS_CARD, terms={
+        availability.CARD_PICKUP_CITY_KEY: office,
+        availability.CARD_PICKUP_SOURCE_KEY: cmr.PLUS_ORDER,
+    })
+    assert availability.status_of(product, region_method="local").city_confirmed
+
 DEPOSIT_PAGE = """<div>{{ deposit.name }}</div><script>
 var app = {deposites: {"21":{"id":"21","name":"Вклад \\"Доход на максимум\\"","type":"deposit",
 "is_active":"1","max_sum":500000,"annotation":"Вклад с максимальной доходностью",

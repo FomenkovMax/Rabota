@@ -29,6 +29,8 @@ SERVICE_CITY_KEY = "Услуга в офисе Луганска: цитата"
 SERVICE_SOURCE_KEY = "Услуга в офисе Луганска: источник"
 AUTO_CITY_KEY = "Регистрация для автокредита: цитата"
 AUTO_SOURCE_KEY = "Регистрация для автокредита: источник"
+CARD_PICKUP_CITY_KEY = "Офис получения карты: Луганск"
+CARD_PICKUP_SOURCE_KEY = "Офис получения карты: источник"
 _VTB_AUTO_ELIGIBILITY = re.compile(
     r"Вы\s+можете\s+получить\s+кредит\s+на\s+автомобиль,\s+если\s+вы\s+имеете\s+"
     r"постоянную\s+или\s+временную\s+регистрацию\s+в\s+следующих\s+городах[^.]*\.",
@@ -127,6 +129,7 @@ class Status:
                 and ("калькулятор на сайте банка:" in self.reason
                      or "на сайте банка выбран город" in self.reason
                      or "регистрация в Луганске подходит для автокредита:" in self.reason
+                     or "для получения карты можно выбрать Луганск:" in self.reason
                      or "услуга предоставляется в офисе Луганска:" in self.reason)
                 and bool(re.search(r"\bЛуганск\b", self.reason, re.I)))
 
@@ -160,6 +163,12 @@ def status_of(product: Any, *, region_method: str, presence: str = "") -> Status
         return Status(LNR, f"услуга предоставляется в офисе Луганска: {terms[SERVICE_CITY_KEY]}", url)
     if terms.get(AUTO_CITY_KEY) and url and terms.get(AUTO_SOURCE_KEY) == url and _vtb_auto_product(product):
         return Status(LNR, f"регистрация в Луганске подходит для автокредита: {terms[AUTO_CITY_KEY]}", url)
+    if (getattr(product, "bank", "") == "ЦМР"
+            and url == "https://cmrbank.ru/person/card/plus-card/"
+            and terms.get(CARD_PICKUP_CITY_KEY)
+            and terms.get(CARD_PICKUP_SOURCE_KEY) == "https://cmrbank.ru/person-request-for-card/"):
+        return Status(LNR, f"для получения карты можно выбрать Луганск: {terms[CARD_PICKUP_CITY_KEY]}",
+                      terms[CARD_PICKUP_SOURCE_KEY])
     calc = str(terms.get("Калькулятор на сайте") or "")
     # «Есть в ЛНР» — только если калькулятор для ЛНР показал хоть одну ставку:
     # строка из одних «недоступно» и «не показал расчёт» этого не доказывает.

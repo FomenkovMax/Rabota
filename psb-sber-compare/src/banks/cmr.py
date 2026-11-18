@@ -25,6 +25,7 @@ from urllib.parse import urljoin, urlsplit
 import requests
 
 from .. import conditions, coverage
+from ..availability import CARD_PICKUP_CITY_KEY, CARD_PICKUP_SOURCE_KEY
 from ..psb.parser import Product
 from .base import BankAdapter, CollectResult, region_binding, registry
 
@@ -34,6 +35,8 @@ BASE = "https://cmrbank.ru"
 DEPOSITS = f"{BASE}/person/person-deposit/"
 LOANS = f"{BASE}/person/person-loans/"
 CARDS = f"{BASE}/person/card/"
+PLUS_CARD = f"{CARDS}plus-card/"
+PLUS_ORDER = f"{BASE}/person-request-for-card/"
 
 #: Страницы внутри разделов, которые не продукты.
 _SKIP = re.compile(r"restructuring|card-documents|mir-pay|deposit-calc|deposit-account", re.I)
@@ -67,6 +70,22 @@ def page_lines(page: str) -> list[str]:
     text = html.unescape(re.sub(r"<[^>]+>", " ", text))
     lines = (re.sub(r"\s+", " ", line).strip() for line in text.split("\n"))
     return [line for line in lines if line]
+
+
+def plus_card_pickup_office(page: str) -> str:
+    """Read a selectable Lugansk branch from the card's own pickup field."""
+    if not re.search(r"<title>[^<]*Заказать карту \(Плюс\)[^<]*</title>", page, re.I):
+        return ""
+    select = re.search(r"Офис\s+получения\s+карты.{0,500}?<select\b[^>]*>(.*?)</select>",
+                       page, re.I | re.S)
+    if not select:
+        return ""
+    for attrs, option in re.findall(r"<option\b([^>]*)>([^<]*)</option>", select[1], re.I):
+        office = " ".join(html.unescape(option).split())
+        if (not re.search(r"(?:^|\s)disabled(?:\s|=|$)", attrs, re.I)
+                and re.match(r"г\.\s*Луганск\s*,\s*ул\.", office, re.I)):
+            return office
+    return ""
 
 
 def _quotes(name: str) -> str:
@@ -374,13 +393,25 @@ class CmrAdapter(BankAdapter):
             for url in section_links(index, prefix):
                 time.sleep(pause)
                 try:
-                    product = parse(self._get(session, url), url, region=region, now=now)
+                    page = self._get(session, url)
+                    product = parse(page, url, region=region, now=now)
                     visited += 1
                 except Exception as exc:            # noqa: BLE001
                     failures.append(f"{url}: {exc}")
                     log.warning("ЦМР: %s не прочиталась — %s", url, exc)
                     continue
                 if product:
+                    if url == PLUS_CARD and PLUS_ORDER in {urljoin(url, href) for href in _HREF.findall(page)}:
+                        try:
+                            time.sleep(pause)
+                            office = plus_card_pickup_office(self._get(session, PLUS_ORDER))
+                            visited += 1
+                            if office:
+                                product.terms[CARD_PICKUP_CITY_KEY] = office
+                                product.terms[CARD_PICKUP_SOURCE_KEY] = PLUS_ORDER
+                        except RuntimeError as exc:
+                            failures.append(f"{PLUS_ORDER}: {exc}")
+                            log.warning("ЦМР: не прочитался список офисов получения карты")
                     products.append(product)
                     log.info("ЦМР: %s — %s", product.title, product.rate_raw or "ставка не указана")
 

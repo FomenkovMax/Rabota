@@ -56,6 +56,8 @@
 
 По ВТБ проверены страницы программ [без подтверждения дохода](https://www.vtb.ru/personal/avtokredity/bez-podtverzhdeniya-dohoda/), [в автосалоне](https://www.vtb.ru/personal/avtokredity/avto-v-avtosalone/), [наличными](https://www.vtb.ru/personal/avtokredity/dengi-na-avto/) и [без залога](https://www.vtb.ru/personal/avtokredity/bez-zaloga/). Признак относится к регистрации заёмщика. Для каждой карточки сохраняется ссылка на программу.
 
+Дополнительная проверка ЦМР: [форма карты ЦМР.Плюс](https://cmrbank.ru/person-request-for-card/) показывает ул. Демехина, 23б в списке офисов получения. Подтверждение относится только к этой карте.
+
 ## Контрольный список бумаг Т-Банка
 
 18.11.2026 в открытых витринах последними были страницы 195 для [акций](https://www.tbank.ru/invest/stocks/) и 51 для [облигаций](https://www.tbank.ru/invest/bonds/). Переход на вторую страницу обеих витрин менял список выпусков. Размер страницы не равен фактическому числу строк на последней странице.
