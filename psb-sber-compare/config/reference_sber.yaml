@@ -120,8 +120,8 @@ products:
   - {name: "СберВклад", category: "Вклады", path: "/ru/person/contributions/deposits/vklad", match: 'сбервклад$', source: site}
   - {name: "Зарплатный максимум", category: "Вклады", match: 'зарплатн\w*\s+максимум', source: aggregator}
   - {name: "Образовательный кредит (без господдержки)", category: "Кредиты", match: 'образовательн(?!.*господдерж)', source: aggregator}
-  - {name: "СберПервый (пакет премиального обслуживания)", category: "Специальные предложения", match: '^(?:пакет\w*\s+(?:услуг\s+)?)?«?сберпервый»?$', source: site-text}
-  - {name: "СберПремьер (пакет премиального обслуживания)", category: "Специальные предложения", match: 'сберпремьер', source: site-text}
+  - {name: "СберПервый (пакет премиального обслуживания)", category: "Премиальное обслуживание", path: "/ru/person/new_sb1", match: '^(?:пакет\w*\s+(?:услуг\s+)?)?«?сберпервый»?$', source: site}
+  - {name: "СберПремьер (пакет премиального обслуживания)", category: "Премиальное обслуживание", path: "/ru/person/sb_premier_new", match: 'сберпремьер', source: site}
   - {name: "Sber Private Banking", category: "Специальные предложения", match: 'private\s+banking', source: site-text}
   - {name: "СберПрайм (подписка)", category: "Специальные предложения", match: 'сберпрайм(?!\s+старт\s+зарплатн)', source: site-text}
   - {name: "СберБлиже (подписка)", category: "Специальные предложения", path: "/ru/sberblizhe", match: 'сберближе', source: site}

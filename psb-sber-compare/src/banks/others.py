@@ -38,6 +38,10 @@ class SberAdapter(CrawlAdapter):
         old = self.base_url + "/ru/person/contributions/deposits/sbervklad_a"
         if url == old:
             return self.base_url + "/ru/person/contributions/deposits/vklad"
+        for prefix in ("/retail/ru/person/bank_insure", "/retail/ru/person/bank_inshure",
+                       "/ru/person/bank_inshure"):
+            if url.startswith(self.base_url + prefix + "/"):
+                return self.base_url + "/ru/person/bank_insure" + url.removeprefix(self.base_url + prefix)
         return url
     title = "Сбер"
     strategy = "браузер: обход витрин и страниц продуктов"
@@ -53,11 +57,14 @@ class SberAdapter(CrawlAdapter):
         "https://www.sberbank.ru/ru/person/credits/homenew",
         "https://www.sberbank.ru/ru/person/bank_cards/credit_cards",
         "https://www.sberbank.ru/ru/person/bank_cards/debit",
+        "https://www.sberbank.ru/ru/person/bank_insure/insuranceprogram",
     )
     # Главные продукты для сравнения — их адреса видны в обходе 06.10.2026.
     # Сбер пускает около 30 страниц за сеанс, поэтому они идут первыми.
     priority = (
         "https://www.sberbank.ru/ru/person/additional/rent_of_safes",
+        "https://www.sberbank.ru/ru/person/new_sb1",
+        "https://www.sberbank.ru/ru/person/sb_premier_new",
         "https://www.sberbank.ru/ru/person/bank_cards/debit/sberkarta",
         "https://www.sberbank.ru/ru/person/bank_cards/credit_cards/credit_sberkarta",
         "https://www.sberbank.ru/ru/person/credits/home/family",
@@ -91,6 +98,8 @@ class SberAdapter(CrawlAdapter):
         ("/ru/person/bank_cards/credit", "Кредитные карты"),
         ("/ru/person/bank_cards/debit", "Дебетовые карты"),
         ("/ru/person/bank_cards", "Банковские карты"),
+        ("/ru/person/new_sb1", "Премиальное обслуживание"),
+        ("/ru/person/sb_premier_new", "Премиальное обслуживание"),
         ("/ru/sberblizhe", "Специальные предложения"),
     )
     # Служебное внутри розничных разделов: из меню Сбера это «Полезное» —

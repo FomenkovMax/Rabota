@@ -24,6 +24,8 @@ from src.storage import Storage
     ("https://www.sberbank.ru/ru/person/credits/home/family", "Ипотека"),
     ("https://www.sberbank.ru/ru/person/investments", "Инвестиции"),
     ("https://www.sberbank.ru/ru/person/additional/rent_of_safes", "Сейфовые ячейки"),
+    ("https://www.sberbank.ru/retail/ru/person/bank_inshure/insuranceprogram/injury", "Страхование"),
+    ("https://www.sberbank.ru/ru/person/new_sb1", "Премиальное обслуживание"),
     ("https://www.sberbank.ru/ru/person/contributions/deposits/vklady-dolgosrochnye", "Вклады"),
     ("https://www.tbank.ru/loans/auto-loan", "Автокредиты"),
     ("https://www.tbank.ru/insurance/mortgage", "Страхование"),
