@@ -33,7 +33,8 @@ from .generic_site import caption_rules_out, category_for, extract_products, rat
 from .seo import is_seo_page
 from .. import card_terms, conditions, coverage, market, securities
 from ..availability import (ROST_EXCHANGE_URL, ROST_INSURANCE_URL, ROST_LOYALTY_URL,
-                            ROST_TRANSFERS_URL, SERVICE_CITY_KEY, find_clause,
+                            ROST_TRANSFERS_URL, SBER_ATM_FX_URL, SBER_PRIME_URL,
+                            SERVICE_CITY_KEY, VTB_PRIVILEGE_URL, find_clause,
                             remember_auto_city, remember_service_city)
 
 log = logging.getLogger(__name__)
@@ -840,6 +841,12 @@ def product_from_page(data: dict[str, Any], *, bank: str, url: str,
             body = cash_terms
     headline = title
     title = product_name(title)
+    if bank == "Сбер" and url == SBER_ATM_FX_URL and "валют" in title.casefold():
+        title = "Обмен наличной валюты в банкомате Сбера"
+    if bank == "Сбер" and url == SBER_PRIME_URL and "сберпрайм" in title.casefold():
+        title = "Подписка СберПрайм"
+    if bank == "ВТБ" and url.rstrip("/") == VTB_PRIVILEGE_URL and "привилеги" in title.casefold():
+        title = "Пакет услуг «Привилегия»"
     if url == ROST_EXCHANGE_URL and title == "ВЫГОДНЫЙ ОБМЕН":
         title = "Выгодный обмен"
     if bank == "РостФинанс" and url == "https://www.rostfinance.ru/safe/" and title.casefold() == "сейфовые ячейки":

@@ -22,7 +22,7 @@ from dataclasses import dataclass
 from typing import Any, Iterable
 from urllib.parse import urlsplit
 
-from . import card_terms, conditions, market
+from . import card_terms, conditions, coverage, market
 
 LNR, FEDERAL, ABSENT, UNKNOWN = "lnr", "federal", "absent", "unknown"
 SERVICE_CITY_KEY = "Услуга в офисе Луганска: цитата"
@@ -43,10 +43,38 @@ ROST_LOYALTY_URL = "https://www.rostfinance.ru/news/bolshe-vozmozhnostey-polucha
 SBER_PDS_URL = "https://npfsberbanka.ru/pds"
 SBER_INSURANCE_URL = "https://www.sberbank.ru/ru/person/bank_insure/insuranceprogram/strahovoi-polis-zashita-na-lyuboi-sluchai"
 SBER_INSURER_URL = "https://sberbankins.ru/products/kombo"
+SBER_ATM_FX_URL = "https://959.xn--p1ai/news/ekonomika/40231"
+SBER_PRIME_URL = "https://www.sberbank.ru/sberprime"
+PSB_PDS_URL = "https://www.psbank.ru/personal/pds/dolgosrochnyye-sbyeryezhyeniya"
+VTB_LOYALTY_URL = "https://www.vtb.ru/personal/karty/programma-loyalnosti"
+VTB_PRIVILEGE_URL = "https://www.vtb.ru/privilegia"
 VTB_BROKER_URL = "https://www.vtb.ru/personal/investicii/brokerskoe-obsluzhivanie"
 VTB_BROKER_OFFICES = "https://www.vtb.ru/media-files/vtb.ru/sitepages/personal/investicii/documents/Broker_points.xlsx"
 _SBER_CITY_RELEASE = "https://lug-info.ru/news/chislo-klientov-luganskogo-otdelenija-sbera-prevysilo-odin-million/"
+_VTB_CITY_RELEASE = "https://lug-info.ru/news/novyj-ofis-vtb-otkrylsja-v-luganske/"
 _CITY_PRODUCT_EVIDENCE = {
+    ("Сбер", "Валютные операции", SBER_ATM_FX_URL): (
+        "Луганск, ул. Оборонная, 26, ТЦ «Аврора». Сбер сообщил об обмене наличных через банкомат 12.10.2026.",
+        SBER_ATM_FX_URL,
+    ),
+    ("Сбер", "Лояльность и кешбэк", SBER_PRIME_URL): (
+        "Сбер указывает подключение подписки в офисах новых регионов, в том числе в городе Луганск.",
+        "https://www.sberbank.ru/ru/oib/regions",
+    ),
+    ("ПСБ", "НПФ и ПДС", PSB_PDS_URL): (
+        "ПСБ указывает заключение договора в любом офисе. Банк ведёт филиальную сеть в городе Луганск.",
+        "https://www.psbank.ru/bank/branches",
+    ),
+    ("ВТБ", "Лояльность и кешбэк", VTB_LOYALTY_URL): (
+        "По сообщению ВТБ от 11.11.2025, в офисе помогают подключить программу лояльности. "
+        "Луганск, ул. 2-я Краснознаменная, 1Г.",
+        _VTB_CITY_RELEASE,
+    ),
+    ("ВТБ", "Премиальное обслуживание", VTB_PRIVILEGE_URL): (
+        "По сообщению ВТБ от 11.11.2025, в офисе обслуживают клиентов «Привилегии». "
+        "Луганск, ул. 2-я Краснознаменная, 1Г.",
+        _VTB_CITY_RELEASE,
+    ),
     ("Сбер", "НПФ и ПДС", SBER_PDS_URL): (
         "Луганск, ул. Советская, 59А. Об оформлении договора ПДС сообщено 11.06.2026.",
         _SBER_CITY_RELEASE,
@@ -236,7 +264,9 @@ def status_of(product: Any, *, region_method: str, presence: str = "") -> Status
     category = getattr(product, "category", "")
     product_url = urlsplit(url)
     canonical_url = f"{product_url.scheme}://{product_url.netloc}{product_url.path.rstrip('/')}"
-    city_evidence = _CITY_PRODUCT_EVIDENCE.get((getattr(product, "bank", ""), category, canonical_url))
+    city_evidence = _CITY_PRODUCT_EVIDENCE.get(
+        (getattr(product, "bank", ""), coverage.tz_category(product), canonical_url)
+    )
     if city_evidence:
         reason, source = city_evidence
         return Status(LNR, f"есть подтверждение услуги в Луганске: {reason}", source)

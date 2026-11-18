@@ -18,7 +18,8 @@ from __future__ import annotations
 import re
 from urllib.parse import parse_qs, urlencode, urlsplit
 
-from ..availability import ROST_INSURANCE_URL, ROST_LOYALTY_URL, ROST_TRANSFERS_URL, SBER_INSURER_URL
+from ..availability import (ROST_INSURANCE_URL, ROST_LOYALTY_URL, ROST_TRANSFERS_URL,
+                            SBER_ATM_FX_URL, SBER_INSURER_URL, SBER_PRIME_URL, VTB_PRIVILEGE_URL)
 from .base import registry
 from .crawl_adapter import CrawlAdapter
 
@@ -67,6 +68,8 @@ class SberAdapter(CrawlAdapter):
         "https://www.sberbank.ru/ru/person/additional/rent_of_safes",
         "https://npfsberbanka.ru/pds",
         SBER_INSURER_URL,
+        SBER_ATM_FX_URL,
+        SBER_PRIME_URL,
         "https://www.sberbank.ru/ru/person/new_sb1",
         "https://www.sberbank.ru/ru/person/sb_premier_new",
         "https://www.sberbank.ru/ru/person/bank_cards/debit/sberkarta",
@@ -103,6 +106,8 @@ class SberAdapter(CrawlAdapter):
         ("/ru/person/bank_cards/debit", "Дебетовые карты"),
         ("/ru/person/bank_cards", "Банковские карты"),
         ("/products/kombo", "Страхование"),
+        (urlsplit(SBER_ATM_FX_URL).path, "Валютные операции"),
+        ("/sberprime", "Лояльность и кешбэк"),
         ("/ru/person/new_sb1", "Премиальное обслуживание"),
         ("/ru/person/sb_premier_new", "Премиальное обслуживание"),
         ("/ru/sberblizhe", "Специальные предложения"),
@@ -203,6 +208,7 @@ class VtbAdapter(CrawlAdapter):
     priority = (
         "https://www.vtb.ru/personal/platezhi-i-perevody/obmen-valjuty/",
         "https://www.vtb.ru/personal/karty/programma-loyalnosti/",
+        VTB_PRIVILEGE_URL,
         "https://www.vtb.ru/personal/vklady-i-scheta/seyfovye-yacheyki/",
         "https://www.vtb.ru/personal/avtokredity/bez-podtverzhdeniya-dohoda/",
         "https://www.vtb.ru/personal/avtokredity/avto-v-avtosalone/",

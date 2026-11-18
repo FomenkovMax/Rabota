@@ -809,8 +809,14 @@ def _securities_block(catalog: dict[str, list[Any]], catalogue_rows: list[Any] |
     from . import securities
     records = [p for items in catalog.values() for p in items]
     groups = securities.groups(records + (catalogue_rows or []))
+    brokers = [bank for bank in ("Сбер", "ПСБ", "ВТБ") if bank in catalog]
+    completeness_note = (
+        '<p class="hint">Полный брокерский список требует сверки: '
+        f'{e(", ".join(brokers))}. В таблице показаны выпуски из прочитанных источников.</p>'
+        if brokers else ""
+    )
     if not groups:
-        return '<p class="empty">Отдельные акции и облигации ещё не извлечены из страниц банков.</p>'
+        return completeness_note + '<p class="empty">Отдельные акции и облигации ещё не извлечены из страниц банков.</p>'
     rows = []
     for group in groups:
         first = group[0]
@@ -842,7 +848,7 @@ def _securities_block(catalog: dict[str, list[Any]], catalogue_rows: list[Any] |
         rows.append(f'<tr><td>{e(first.terms.get(securities.KIND))}<br>{e(isin)}</td>'
                     f'<td>{"".join(sources)}</td><td>Доступность покупки в Луганске '
                     'не подтверждена</td></tr>')
-    return ('<details><summary>Найдено выпусков и несопоставленных страниц: '
+    return (completeness_note + '<details><summary>Найдено выпусков и несопоставленных страниц: '
             f'{len(groups)}</summary><div class="scroll"><table><thead><tr>'
             '<th>Вид / ISIN</th><th>Источники и условия выпуска</th><th>Луганск</th>'
             '</tr></thead><tbody>' + "".join(rows) + '</tbody></table></div></details>')

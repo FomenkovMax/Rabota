@@ -320,6 +320,26 @@ def test_rostfinance_city_evidence_comes_from_selected_header():
     assert not av.status_of(product, region_method="selector").city_confirmed
 
 
+def test_lugansk_sources_apply_only_to_the_named_service():
+    from src import availability as av
+    from src.psb.parser import Product
+
+    pds = Product(bank="ПСБ", title="Программа долгосрочных сбережений",
+                  category="Долгосрочные сбережения", source_url=av.PSB_PDS_URL)
+    assert av.status_of(pds, region_method="selector").city_confirmed
+    atm = Product(bank="Сбер", title="Наличный обмен", category="Валютные операции",
+                  source_url=av.SBER_ATM_FX_URL)
+    status = av.status_of(atm, region_method="federal")
+    assert status.city_confirmed and "Оборонная, 26" in status.reason
+    atm.source_url = "https://www.sberbank.ru/ru/quotes/currencies"
+    assert not av.status_of(atm, region_method="federal").city_confirmed
+    vtb = Product(bank="ВТБ", title="Привилегия", category="Премиальное обслуживание",
+                  source_url=av.VTB_PRIVILEGE_URL + "/")
+    assert av.status_of(vtb, region_method="federal").city_confirmed
+    vtb.source_url += "premialnye-produkty/vtb-vklad-r"
+    assert not av.status_of(vtb, region_method="federal").city_confirmed
+
+
 def test_rostfinance_exchange_confirms_office_from_the_exchange_table():
     from src.banks.crawl_adapter import product_from_page
 
