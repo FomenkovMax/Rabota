@@ -173,6 +173,21 @@ def test_tbank_catalogue_collects_security_from_the_next_page(monkeypatch):
     assert [product.source_url for product in result.products] == [issue]
 
 
+def test_resume_only_does_not_follow_related_issue_links(monkeypatch):
+    from src.banks.others import TbankAdapter
+
+    root = "https://www.tbank.ru/invest/stocks/"
+    issue = root + "GAZP"
+    monkeypatch.setitem(PAGES, issue, {"h1": "О компании Газпром", "text": "О компании Газпром",
+                                     "links": [[root + "SBER", "Сбербанк"]]})
+    reader = FakeReader(None)
+    monkeypatch.setattr(crawl, "PageReader", lambda *args, **kwargs: reader)
+    adapter = TbankAdapter(region=None, settings={"resume_urls": [issue], "resume_only": True})
+    result = adapter.collect()
+    assert reader.read_urls == [issue]
+    assert [product.source_url for product in result.products] == [issue]
+
+
 def test_empty_snapshot_is_reported_as_unread(monkeypatch):
     url = BASE + "/ru/person/contributions/deposits/vklad"
     monkeypatch.setitem(PAGES, url, {"title": "Открыть СберВклад в СберБанке онлайн", "text": ""})

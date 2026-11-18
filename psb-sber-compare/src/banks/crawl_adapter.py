@@ -1002,6 +1002,7 @@ class CrawlAdapter(BankAdapter):
         limit_s = float(self.settings.get("section_timeout_s") or 0)
 
         resume_urls = self.settings.get("resume_urls") or []
+        resume_only = bool(resume_urls and self.settings.get("resume_only"))
         seeds = [self._normalize(url) for url in (resume_urls or self.seeds)]
         # Resume URLs are product pages, not showcase seeds.
         seed_set = {self._normalize(url) for url in self.seeds}
@@ -1152,14 +1153,14 @@ class CrawlAdapter(BankAdapter):
                         if data.get("calculator"):
                             calc_found.append((url, data["calculator"]))
 
-                    for link in links:
+                    for link in (() if resume_only else links):
                         popularity[link] = popularity.get(link, 0) + 1
                         if link not in seen:
                             seen.add(link)
                             queue.append(link)
                 # Присутствие в ЛНР: есть ли Луганск на странице офисов банка.
                 # Одна страница сверх лимита — и только если сайт не закрылся.
-                if office_url and not blocked:
+                if office_url and not blocked and not resume_only:
                     site_sections.update(self._presence(reader, office_url, visited + 1))
             self._save_summary(visited, queue, failures)
             # Полнота обхода — в охват: сколько страниц прочитано и какие
