@@ -31,6 +31,11 @@ AUTO_CITY_KEY = "Регистрация для автокредита: цита�
 AUTO_SOURCE_KEY = "Регистрация для автокредита: источник"
 CARD_PICKUP_CITY_KEY = "Офис получения карты: Луганск"
 CARD_PICKUP_SOURCE_KEY = "Офис получения карты: источник"
+CMR_CARD_FORMS = {
+    "https://cmrbank.ru/person/card/plus-card/": ("https://cmrbank.ru/person-request-for-card/", "Плюс"),
+    "https://cmrbank.ru/person/card/drive-card/": ("https://cmrbank.ru/person-request-for-drive/", "Драйв"),
+    "https://cmrbank.ru/person/card/comfort-card/": ("https://cmrbank.ru/person-request-for-comfort/", "Комфорт"),
+}
 ROST_EXCHANGE_URL = "https://www.rostfinance.ru/currency/"
 _VTB_AUTO_ELIGIBILITY = re.compile(
     r"Вы\s+можете\s+получить\s+кредит\s+на\s+автомобиль,\s+если\s+вы\s+имеете\s+"
@@ -176,10 +181,10 @@ def status_of(product: Any, *, region_method: str, presence: str = "") -> Status
         return Status(LNR, f"услуга предоставляется в офисе Луганска: {terms[SERVICE_CITY_KEY]}", url)
     if terms.get(AUTO_CITY_KEY) and url and terms.get(AUTO_SOURCE_KEY) == url and _vtb_auto_product(product):
         return Status(LNR, f"регистрация в Луганске подходит для автокредита: {terms[AUTO_CITY_KEY]}", url)
-    if (getattr(product, "bank", "") == "ЦМР"
-            and url == "https://cmrbank.ru/person/card/plus-card/"
+    form_url, _ = CMR_CARD_FORMS.get(url, ("", ""))
+    if (getattr(product, "bank", "") == "ЦМР" and form_url
             and terms.get(CARD_PICKUP_CITY_KEY)
-            and terms.get(CARD_PICKUP_SOURCE_KEY) == "https://cmrbank.ru/person-request-for-card/"):
+            and terms.get(CARD_PICKUP_SOURCE_KEY) == form_url):
         return Status(LNR, f"для получения карты можно выбрать Луганск: {terms[CARD_PICKUP_CITY_KEY]}",
                       terms[CARD_PICKUP_SOURCE_KEY])
     calc = str(terms.get("Калькулятор на сайте") or "")

@@ -25,7 +25,7 @@ from urllib.parse import urljoin, urlsplit
 import requests
 
 from .. import conditions, coverage
-from ..availability import CARD_PICKUP_CITY_KEY, CARD_PICKUP_SOURCE_KEY
+from ..availability import CARD_PICKUP_CITY_KEY, CARD_PICKUP_SOURCE_KEY, CMR_CARD_FORMS
 from ..psb.parser import Product
 from .base import BankAdapter, CollectResult, region_binding, registry
 
@@ -35,8 +35,6 @@ BASE = "https://cmrbank.ru"
 DEPOSITS = f"{BASE}/person/person-deposit/"
 LOANS = f"{BASE}/person/person-loans/"
 CARDS = f"{BASE}/person/card/"
-PLUS_CARD = f"{CARDS}plus-card/"
-PLUS_ORDER = f"{BASE}/person-request-for-card/"
 
 #: Страницы внутри разделов, которые не продукты.
 _SKIP = re.compile(r"restructuring|card-documents|mir-pay|deposit-calc|deposit-account", re.I)
@@ -72,9 +70,9 @@ def page_lines(page: str) -> list[str]:
     return [line for line in lines if line]
 
 
-def plus_card_pickup_office(page: str) -> str:
+def card_pickup_office(page: str, card_name: str) -> str:
     """Read a selectable Lugansk branch from the card's own pickup field."""
-    if not re.search(r"<title>[^<]*Заказать карту \(Плюс\)[^<]*</title>", page, re.I):
+    if not re.search(rf"<title>[^<]*Заказать карту \({re.escape(card_name)}\)[^<]*</title>", page, re.I):
         return ""
     select = re.search(r"Офис\s+получения\s+карты.{0,500}?<select\b[^>]*>(.*?)</select>",
                        page, re.I | re.S)
@@ -401,16 +399,17 @@ class CmrAdapter(BankAdapter):
                     log.warning("ЦМР: %s не прочиталась — %s", url, exc)
                     continue
                 if product:
-                    if url == PLUS_CARD and PLUS_ORDER in {urljoin(url, href) for href in _HREF.findall(page)}:
+                    form_url, name = CMR_CARD_FORMS.get(url, ("", ""))
+                    if form_url and form_url in {urljoin(url, href) for href in _HREF.findall(page)}:
                         try:
                             time.sleep(pause)
-                            office = plus_card_pickup_office(self._get(session, PLUS_ORDER))
+                            office = card_pickup_office(self._get(session, form_url), name)
                             visited += 1
                             if office:
                                 product.terms[CARD_PICKUP_CITY_KEY] = office
-                                product.terms[CARD_PICKUP_SOURCE_KEY] = PLUS_ORDER
+                                product.terms[CARD_PICKUP_SOURCE_KEY] = form_url
                         except RuntimeError as exc:
-                            failures.append(f"{PLUS_ORDER}: {exc}")
+                            failures.append(f"{form_url}: {exc}")
                             log.warning("ЦМР: не прочитался список офисов получения карты")
                     products.append(product)
                     log.info("ЦМР: %s — %s", product.title, product.rate_raw or "ставка не указана")

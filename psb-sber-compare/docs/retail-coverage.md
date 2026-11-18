@@ -56,7 +56,7 @@
 
 По ВТБ проверены страницы программ [без подтверждения дохода](https://www.vtb.ru/personal/avtokredity/bez-podtverzhdeniya-dohoda/), [в автосалоне](https://www.vtb.ru/personal/avtokredity/avto-v-avtosalone/), [наличными](https://www.vtb.ru/personal/avtokredity/dengi-na-avto/) и [без залога](https://www.vtb.ru/personal/avtokredity/bez-zaloga/). Признак относится к регистрации заёмщика. Для каждой карточки сохраняется ссылка на программу.
 
-Дополнительная проверка ЦМР: [форма карты ЦМР.Плюс](https://cmrbank.ru/person-request-for-card/) показывает ул. Демехина, 23б в списке офисов получения. Подтверждение относится только к этой карте.
+Дополнительная проверка ЦМР: формы [ЦМР.Плюс](https://cmrbank.ru/person-request-for-card/), [ЦМР.Драйв](https://cmrbank.ru/person-request-for-drive/) и [ЦМР.Комфорт](https://cmrbank.ru/person-request-for-comfort/) показывают ул. Демехина, 23б в списке офисов получения. Для ЦМР.Стандарт этой проверки пока нет.
 
 Для [наличного обмена РостФинанса](https://www.rostfinance.ru/currency/) в таблице покупки и продажи валюты указаны Луганск и офис на ул. Демехина, 27А. Это основание для услуги обмена в этом офисе. Котировки меняются, поэтому с записью сохраняется дата снимка.
 
