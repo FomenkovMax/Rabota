@@ -32,6 +32,8 @@ from src.storage import Storage
     ("https://www.sberbank.ru/ru/person/contributions/deposits/vklady-dolgosrochnye", "Вклады"),
     ("https://www.tbank.ru/loans/auto-loan", "Автокредиты"),
     ("https://www.tbank.ru/insurance/mortgage", "Страхование"),
+    ("https://www.tbank.ru/pension/", "НПФ и ПДС"),
+    ("https://www.tbank.ru/tinkoff-premium/", "Премиальное обслуживание"),
     ("https://www.tbank.ru/payments/card-to-card", "Переводы и платежи"),
     ("https://www.psbank.ru/personal/pds/dolgosrochnyye-sbyeryezhyeniya", "НПФ и ПДС"),
     ("https://www.psbank.ru/personal/creditcards/100_plus", "Кредитные карты"),

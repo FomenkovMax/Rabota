@@ -661,6 +661,8 @@ def _read_rates(product: Product, body: list[str]) -> None:
     окне сказано про особые условия, ищем дальше такую же строку таблицы
     (с той же подписью «Ставка») без особых условий. Не нашли — берём первую.
     """
+    if product.category in {"НПФ и ПДС", "Премиальное обслуживание", "Валютные операции"}:
+        return
     fallback: tuple[list[float], str, int, tuple] | None = None
     block_apr: list[float] = []          # ПСК текущего блока таблицы
     ceiling = _MAX_RATE.get(product.category)

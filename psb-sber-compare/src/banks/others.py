@@ -335,6 +335,8 @@ class TbankAdapter(CrawlAdapter):
         "https://www.tbank.ru/savings/deposit/",
         "https://www.tbank.ru/savings/saving-account/",
         "https://www.tbank.ru/cards/debit-cards/tinkoff-black/pension/",
+        "https://www.tbank.ru/pension/",
+        "https://www.tbank.ru/tinkoff-premium/",
     )
     seeds = (
         "https://www.tbank.ru/",

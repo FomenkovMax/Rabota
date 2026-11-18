@@ -1250,3 +1250,15 @@ def test_tbank_community_is_not_a_security_catalogue():
     for path in ("/invest/stocks/SBER", "/invest/bonds/SU29021RMFS1"):
         assert adapter._links(["https://www.tbank.ru" + path])
 
+
+
+def test_pension_forecast_stays_in_service_description():
+    title = "Программа долгосрочных сбережений"
+    product = crawl.product_from_page(
+        {"h1": title, "text": title + "\nДо 15% годовых\nПрогноз дохода"},
+        bank="Т-Банк", url="https://www.tbank.ru/pension",
+        category="НПФ и ПДС", region="", collected_at="",
+    )
+
+    assert product.rate_min is None
+    assert "15%" in product.terms["Условия услуги на сайте"]

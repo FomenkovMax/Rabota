@@ -108,6 +108,11 @@ def classify(url: str) -> str | None:
     if (parts.hostname in {"vtb.ru", "www.vtb.ru"}
             and segments[:2] == ["platezhi-i-perevody", "obmen-valjuty"]):
         return "Валютные операции"
+    if parts.hostname in {"tbank.ru", "www.tbank.ru"}:
+        if segments == ["pension"]:
+            return "НПФ и ПДС"
+        if segments == ["tinkoff-premium"]:
+            return "Премиальное обслуживание"
     # «/person/person-deposit», «/person/obmen-valjuty»,
     # «/person/payments-and-transfers» (ЦМР): раздел — первое слово сегмента.
     top = re.sub(r"^(?:person|personal)[-_]", "", segments[0], flags=re.I)
