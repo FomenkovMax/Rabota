@@ -507,6 +507,9 @@ def full_snapshot_archive() -> Path | None:
     sources = [ROOT / "data" / "pages-all", ROOT / "data" / "pages-missing"]
     files = [(src, f) for src in sources if src.exists()
              for f in sorted(src.rglob("*")) if f.is_file()]
+    inventory = ROOT / "data" / "tbank-inventory"
+    files.extend((inventory, inventory / name) for name in ("stocks.json", "bonds.json", "audit.json")
+                 if (inventory / name).is_file())
     if not files:
         return None
     archive = ROOT / "data" / "snapshot.zip"
