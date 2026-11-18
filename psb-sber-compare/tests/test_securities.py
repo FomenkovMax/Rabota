@@ -117,3 +117,28 @@ def test_tbank_inventory_reports_missing_pages(tmp_path):
     assert result["missing_offsets"] == [12]
     assert result["unique_issues"] == 2
     assert output.is_file()
+
+
+def test_tbank_inventory_compares_issue_urls_using_latest_snapshot(tmp_path):
+    import json
+
+    from src.banks.others import TbankAdapter
+    from src.banks.tbank_inventory import audit_inventory
+    from src.storage import Storage
+
+    adapter = TbankAdapter(region=None, settings={})
+    root = adapter.base_url + "/invest/stocks/"
+    saved = instrument("Т-Банк", "Газпром", root + "GAZP")
+    storage = Storage(tmp_path / "banks.db")
+    run_id = storage.start_run("ЛНР")
+    storage.save_products(run_id, [saved])
+    storage.finish_run(run_id, psb=0, sber=0, promos=0)
+    storage.close()
+    state = {"pages": {root: [saved.source_url + "/", root + "SBER/"]},
+             "expected_pages": 1, "missing_offsets": [], "failures": {}}
+    (tmp_path / "stocks.json").write_text(json.dumps(state), encoding="utf-8")
+
+    checked = audit_inventory(tmp_path, storage.path, adapter)["catalogues"]
+    assert checked["stocks"]["in_snapshot"] == 1
+    assert checked["stocks"]["missing_issue_urls"] == [root + "SBER"]
+    assert checked["bonds"]["unread"]

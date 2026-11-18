@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import argparse
+from contextlib import closing
 from datetime import datetime
 import json
 from pathlib import Path
+import sqlite3
 from urllib.parse import parse_qs, urlsplit
 
 from .browser import PageFailed, PageReader, PageTooSlow
@@ -69,13 +71,53 @@ def collect_catalogue(reader: PageReader, adapter: TbankAdapter, root: str,
     return state
 
 
+def audit_inventory(directory: Path, database: Path, adapter: TbankAdapter) -> dict:
+    """Compare issue URLs with the latest successful snapshot without writing to SQLite."""
+    with closing(sqlite3.connect(database.resolve().as_uri() + "?mode=ro", uri=True)) as db:
+        run_id = db.execute("SELECT max(id) FROM runs WHERE status='ok'").fetchone()[0]
+        if run_id is None:
+            raise ValueError("В базе нет завершённого сбора")
+        rows = db.execute(
+            "SELECT source_url FROM products WHERE run_id=? AND bank=? AND category=?",
+            (run_id, adapter.title, "Инвестиции"),
+        )
+        collected = {adapter._normalize(url) for (url,) in rows if url and issue_kind(url)}
+
+    audit: dict = {"run_id": run_id, "catalogues": {}}
+    for kind in ("stocks", "bonds"):
+        path = directory / (kind + ".json")
+        if not path.is_file():
+            audit["catalogues"][kind] = {"unread": True}
+            continue
+        state = json.loads(path.read_text(encoding="utf-8"))
+        issue_urls = [adapter._normalize(url) for page in state["pages"].values() for url in page]
+        catalogue = set(issue_urls)
+        audit["catalogues"][kind] = {
+            "pages_read": len(state["pages"]),
+            "expected_pages": state["expected_pages"],
+            "missing_offsets": state["missing_offsets"],
+            "page_failures": state["failures"],
+            "repeat_rows": len(issue_urls) - len(catalogue),
+            "catalogue_issues": len(catalogue),
+            "in_snapshot": len(catalogue & collected),
+            "missing_issue_urls": sorted(catalogue - collected),
+        }
+    return audit
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("output", type=Path)
+    parser.add_argument("--database", type=Path, help="compare a saved inventory against this database")
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
     config = Config.load().bank_settings("tbank")
     adapter = TbankAdapter(region=None, settings=config)
+    if args.database:
+        audit = audit_inventory(args.output, args.database, adapter)
+        (args.output / "audit.json").write_text(json.dumps(audit, ensure_ascii=False, indent=2),
+                                              encoding="utf-8")
+        return
     settings = adapter.browser_settings()
     settings.expand = False
     with PageReader(settings) as reader:
