@@ -461,6 +461,16 @@ def load_report_data(config: Config, *, competitor: str = "") -> dict[str, Any] 
         scope = [p for t in [home_title] + competitor_titles for p in by_bank.get(t, [])]
         presence = bank_presence(config, competitor_codes + [HOME_BANK],
                                  storage.coverage_of_run(run_id))
+        office_evidence = storage.path.parent / "vtb-lugansk-broker-office.json"
+        if office_evidence.is_file():
+            import json
+
+            try:
+                verified_offices = json.loads(office_evidence.read_text(encoding="utf-8"))
+                for product in by_bank.get("ВТБ", []):
+                    availability.remember_vtb_broker_offices(product, verified_offices)
+            except (OSError, TypeError, ValueError):
+                log.warning("Не прочитан список инвестиционных офисов ВТБ: %s", office_evidence)
         lnr_status = availability.statuses(scope, region_methods=region_methods,
                                            presence=presence)
         available_ids = {key for key, status in lnr_status.items()
@@ -507,6 +517,15 @@ def load_report_data(config: Config, *, competitor: str = "") -> dict[str, Any] 
                                                   [p for ps in by_bank.values() for p in ps])
                                   for code in [HOME_BANK] + competitor_codes) if c]
 
+        fields_dir = storage.path.parent / "tbank-inventory"
+        detailed_securities = securities.detailed_public_products(fields_dir / "details.jsonl")
+        detailed_urls = {p.source_url.rstrip("/") for p in scope if p.source_url}
+        supplemental_details = [
+            p for p in detailed_securities if p.source_url.rstrip("/") not in detailed_urls
+        ]
+        catalogue_securities = securities.catalogue_products(
+            fields_dir / "catalogue-rows", [*scope, *supplemental_details]
+        )
         html = render_report(
             comparisons=comparisons, counts=counts, changes=changes,
             promo_segments=segments, expired_promos=[],
@@ -525,9 +544,7 @@ def load_report_data(config: Config, *, competitor: str = "") -> dict[str, Any] 
             calculator=calc_offers, lnr_rows=lnr_rows, lnr_total=lnr_total,
             lnr_status=lnr_status, presence=presence, crawl=crawl,
             references=references,
-            catalogue_securities=securities.catalogue_products(
-                storage.path.parent / "tbank-inventory" / "catalogue-rows", scope
-            ),
+            catalogue_securities=supplemental_details + catalogue_securities,
         )
 
         return {

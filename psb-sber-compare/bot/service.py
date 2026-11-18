@@ -510,6 +510,11 @@ def full_snapshot_archive() -> Path | None:
     inventory = ROOT / "data" / "tbank-inventory"
     files.extend((inventory, inventory / name) for name in ("stocks.json", "bonds.json", "audit.json")
                  if (inventory / name).is_file())
+    files.extend((inventory, inventory / name) for name in ("details.jsonl", "detail-failures.jsonl")
+                 if (inventory / name).is_file())
+    office_evidence = ROOT / "data" / "vtb-lugansk-broker-office.json"
+    if office_evidence.is_file():
+        files.append((office_evidence.parent, office_evidence))
     catalogue = inventory / "catalogue-rows"
     files.extend((inventory, catalogue / name) for name in ("stocks.json", "bonds.json")
                  if (catalogue / name).is_file())

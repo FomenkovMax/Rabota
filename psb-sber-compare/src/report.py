@@ -820,6 +820,8 @@ def _securities_block(catalog: dict[str, list[Any]], catalogue_rows: list[Any] |
             listing = terms.get(securities.CATALOGUE_SOURCE)
             listing_link = (f'<a href="{e(listing)}" target="_blank" rel="noopener">данные витрины</a> · '
                             if listing else "")
+            if terms.get(securities.DETAIL_SOURCE):
+                listing_link = '<span>данные карточки</span> · '
             sources.append(
                 f'<div><a href="{e(product.source_url)}" target="_blank" rel="noopener">'
                 f'{e(product.bank)}: {e(product.title)}</a>'

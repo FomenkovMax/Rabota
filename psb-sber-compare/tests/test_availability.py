@@ -348,3 +348,21 @@ def test_rostfinance_safe_offer_does_not_inherit_region_of_the_header():
     assert "Город выбран на сайте банка" not in product.terms
     status = av.status_of(product, region_method="selector")
     assert status.code == av.UNKNOWN and status.source == url
+
+
+def test_vtb_brokerage_office_registry_only_confirms_brokerage():
+    from src.psb.parser import Product
+
+    evidence = {"source": av.VTB_BROKER_OFFICES, "rows": [
+        {"sheet": "Действующие", "values": ["Луганск", "г. Луганск, ул. Фрунзе, 4А"]},
+        {"sheet": "Архив", "values": ["Луганск", "г. Луганск, ул. Тестовая, 1"]},
+    ]}
+    product = Product(bank="ВТБ", category="Инвестиции", source_url=av.VTB_BROKER_URL + "/")
+    av.remember_vtb_broker_offices(product, evidence)
+    status = av.status_of(product, region_method="federal")
+    assert status.city_confirmed and status.source == av.VTB_BROKER_OFFICES
+    assert "Фрунзе" in status.reason and "Тестовая" not in status.reason
+
+    other = Product(bank="ВТБ", category="Инвестиции", source_url=av.VTB_BROKER_URL + "/fund")
+    av.remember_vtb_broker_offices(other, evidence)
+    assert not av.status_of(other, region_method="federal").city_confirmed

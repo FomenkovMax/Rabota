@@ -37,6 +37,30 @@ CMR_CARD_FORMS = {
     "https://cmrbank.ru/person/card/comfort-card/": ("https://cmrbank.ru/person-request-for-comfort/", "Комфорт"),
 }
 ROST_EXCHANGE_URL = "https://www.rostfinance.ru/currency/"
+VTB_BROKER_URL = "https://www.vtb.ru/personal/investicii/brokerskoe-obsluzhivanie"
+VTB_BROKER_OFFICES = "https://www.vtb.ru/media-files/vtb.ru/sitepages/personal/investicii/documents/Broker_points.xlsx"
+
+
+def _vtb_broker_product(product: Any) -> bool:
+    return (getattr(product, "bank", "") == "ВТБ"
+            and getattr(product, "category", "") == "Инвестиции"
+            and (getattr(product, "source_url", "") or "").rstrip("/") == VTB_BROKER_URL
+            and not product.terms.get("Вид ценной бумаги"))
+
+
+def remember_vtb_broker_offices(product: Any, evidence: dict) -> None:
+    if not _vtb_broker_product(product) or not isinstance(evidence, dict) or evidence.get("source") != VTB_BROKER_OFFICES:
+        return
+    addresses = []
+    for row in evidence.get("rows", []):
+        values = row.get("values") or []
+        if row.get("sheet") == "Действующие" and len(values) >= 2 and values[0] == "Луганск":
+            if re.search(r"г\.\s*Луганск\b", values[1], re.I):
+                addresses.append(values[1])
+    if addresses:
+        product.terms[SERVICE_CITY_KEY] = " / ".join(dict.fromkeys(addresses))
+        product.terms[SERVICE_SOURCE_KEY] = VTB_BROKER_OFFICES
+        product.terms["Дата сверки списка офисов"] = evidence.get("read_at", "")
 _VTB_AUTO_ELIGIBILITY = re.compile(
     r"Вы\s+можете\s+получить\s+кредит\s+на\s+автомобиль,\s+если\s+вы\s+имеете\s+"
     r"постоянную\s+или\s+временную\s+регистрацию\s+в\s+следующих\s+городах[^.]*\.",
@@ -179,6 +203,10 @@ def status_of(product: Any, *, region_method: str, presence: str = "") -> Status
             and terms.get(SERVICE_CITY_KEY)
             and url and terms.get(SERVICE_SOURCE_KEY) == url):
         return Status(LNR, f"услуга предоставляется в офисе Луганска: {terms[SERVICE_CITY_KEY]}", url)
+    if (_vtb_broker_product(product) and terms.get(SERVICE_CITY_KEY)
+            and terms.get(SERVICE_SOURCE_KEY) == VTB_BROKER_OFFICES):
+        return Status(LNR, f"услуга предоставляется в офисе Луганска: {terms[SERVICE_CITY_KEY]}",
+                      VTB_BROKER_OFFICES)
     if category == "Сейфовые ячейки":
         return Status(UNKNOWN, "аренда ячеек в конкретном офисе Луганска не подтверждена", url)
     if terms.get(AUTO_CITY_KEY) and url and terms.get(AUTO_SOURCE_KEY) == url and _vtb_auto_product(product):

@@ -106,3 +106,25 @@ def test_allstate_ticker_is_an_issue_not_a_section():
     root = "https://www.tbank.ru/invest/stocks/"
     assert securities.issue_kind(root + "ALL") == "Акция"
     assert not securities.issue_kind(root + "all")
+
+
+def test_public_detailed_response_is_reported_as_a_card_without_city_confirmation(tmp_path):
+    from src import availability, securities
+    from src.banks.tbank_detail_fields import instrument_fields
+    from src.report import _securities_block
+
+    url = "https://www.tbank.ru/invest/bonds/SU26233RMFS5"
+    result = instrument_fields({"status": "Ok", "payload": {
+        "symbol": {"ticker": "SU26233RMFS5", "showName": "ОФЗ 26233", "isin": "RU000A101F94"},
+        "couponValue": 30, "price": 985,
+    }}, "SU26233RMFS5")
+    assert result["fields"] == {"couponValue": 30}
+    output = tmp_path / "details.jsonl"
+    output.write_text(json.dumps({
+        **result, "url": url, "read_at": "2026-11-18T11:21:00+00:00",
+    }) + "\n", encoding="utf-8")
+    products = securities.detailed_public_products(output)
+    assert len(products) == 1
+    assert products[0].terms[securities.ISIN] == "RU000A101F94"
+    assert not availability.status_of(products[0], region_method="selector").city_confirmed
+    assert "данные карточки" in _securities_block({}, products)

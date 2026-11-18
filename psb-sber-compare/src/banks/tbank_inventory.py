@@ -14,7 +14,7 @@ from .browser import PageFailed, PageReader, PageTooSlow
 from .crawl_adapter import is_blocked, is_not_found
 from .others import TbankAdapter
 from ..pipeline import Config
-from ..securities import issue_kind
+from ..securities import detailed_public_products, issue_kind
 
 
 def _offset(url: str) -> int:
@@ -83,6 +83,8 @@ def audit_inventory(directory: Path, database: Path, adapter: TbankAdapter) -> d
         )
         collected = {adapter._normalize(url) for (url,) in rows if url and issue_kind(url)}
 
+    detailed = {adapter._normalize(p.source_url)
+                for p in detailed_public_products(directory / "details.jsonl")}
     audit: dict = {"run_id": run_id, "catalogues": {}}
     for kind in ("stocks", "bonds"):
         path = directory / (kind + ".json")
@@ -102,6 +104,11 @@ def audit_inventory(directory: Path, database: Path, adapter: TbankAdapter) -> d
             "in_snapshot": len(catalogue & collected),
             "missing_issue_urls": sorted(catalogue - collected),
         }
+        if detailed:
+            audit["catalogues"][kind]["public_details"] = {
+                "matched_issues": len(catalogue & detailed),
+                "missing_in_both_detail_sources": sorted(catalogue - (detailed | collected)),
+            }
         rows_file = directory / "catalogue-rows" / path.name
         if rows_file.is_file():
             fields = json.loads(rows_file.read_text(encoding="utf-8"))

@@ -5,13 +5,14 @@ import json
 import logging
 import re
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import unquote, urlsplit
 
 from .psb.parser import Product
 
 log = logging.getLogger(__name__)
 
 CATALOGUE_SOURCE = "Источник ценной бумаги: витрина"
+DETAIL_SOURCE = "Источник ценной бумаги: данные карточки"
 KIND = "Вид ценной бумаги"
 ISIN = "ISIN"
 _CODE = re.compile(r"\b[A-Z]{2}[A-Z0-9]{9}[0-9]\b")
@@ -98,6 +99,52 @@ def remember(product, body: list[str], *, page_title: str = "") -> None:
                 break
 
 
+def _public_issue(url: str, row: dict, source: dict[str, str], read_at: str) -> Product | None:
+    title = row.get("symbol", {}).get("showName")
+    if not title:
+        return None
+    symbol = row["symbol"]
+    terms = {KIND: issue_kind(url), **source}
+    code = str(symbol.get("isin") or "")
+    if valid_isin(code):
+        terms[ISIN] = code
+    fields = {"Тикер": symbol.get("ticker"), "Валюта бумаги": symbol.get("currency"),
+              "Размер лота": symbol.get("lotSize")}
+    details = row.get("fields", {})
+    fields.update({"Номинал": details.get("faceValue"), "Купон": details.get("couponValue"),
+                   "Дата погашения": details.get("matDate"),
+                   "Статус инструмента": details.get("instrumentStatusShortDesc")})
+    terms.update({label: str(value) for label, value in fields.items() if value not in (None, "")})
+    return Product(bank="Т-Банк", title=title, category="Инвестиции", source_url=url,
+                   url_path=urlsplit(url).path, terms=terms, collected_at=read_at)
+
+
+def detailed_public_products(path: Path) -> list[Product]:
+    """Replay public instrument detail responses without changing availability."""
+    if not path.is_file():
+        return []
+    products = {}
+    with path.open(encoding="utf-8") as rows:
+        for line in rows:
+            try:
+                row = json.loads(line)
+            except ValueError:
+                continue
+            if not isinstance(row, dict):
+                continue
+            url = row.get("url") or ""
+            parts = urlsplit(url)
+            if parts.scheme != "https" or parts.netloc != "www.tbank.ru" or not issue_kind(url):
+                continue
+            ticker = str(row.get("symbol", {}).get("ticker") or "")
+            if ticker.casefold() != unquote(parts.path.rstrip("/").rsplit("/", 1)[-1]).casefold():
+                continue
+            product = _public_issue(url, row, {DETAIL_SOURCE: url}, row.get("read_at", ""))
+            if product:
+                products[url.rstrip("/")] = product
+    return list(products.values())
+
+
 def catalogue_products(directory: Path, existing) -> list[Product]:
     """Use labelled listing data only where the detail page is absent."""
     seen = {p.source_url.rstrip("/") for p in existing if p.source_url}
@@ -122,26 +169,11 @@ def catalogue_products(directory: Path, existing) -> list[Product]:
                 canonical = url.rstrip("/")
                 if canonical in seen or not url.startswith(root) or not issue_kind(url):
                     continue
-                symbol = row.get("symbol", {})
-                title = symbol.get("showName")
-                if not title:
-                    continue
-                terms = {KIND: issue_kind(url), CATALOGUE_SOURCE: page}
-                code = str(symbol.get("isin") or "")
-                if valid_isin(code):
-                    terms[ISIN] = code
-                fields = {"Тикер": symbol.get("ticker"), "Валюта бумаги": symbol.get("currency"),
-                          "Размер лота": symbol.get("lotSize")}
-                details = row.get("fields", {})
-                fields.update({"Номинал": details.get("faceValue"), "Купон": details.get("couponValue"),
-                               "Дата погашения": details.get("matDate")})
-                terms.update({label: str(value) for label, value in fields.items() if value not in (None, "")})
-                products.append(Product(
-                    bank="Т-Банк", title=title, category="Инвестиции", source_url=url,
-                    url_path=urlsplit(url).path, terms=terms,
-                    collected_at=snapshot.get("read_at") or source.get("updated_at", ""),
-                ))
-                seen.add(canonical)
+                product = _public_issue(url, row, {CATALOGUE_SOURCE: page},
+                                        snapshot.get("read_at") or source.get("updated_at", ""))
+                if product:
+                    products.append(product)
+                    seen.add(canonical)
     return products
 
 
