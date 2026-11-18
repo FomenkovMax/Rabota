@@ -504,32 +504,24 @@ def full_snapshot_archive() -> Path | None:
     без повторных сборов."""
     import zipfile
 
+    from src.securities import outside_retail_scope
+
     sources = [ROOT / "data" / "pages-all", ROOT / "data" / "pages-missing"]
     files = [(src, f) for src in sources if src.exists()
              for f in sorted(src.rglob("*")) if f.is_file()]
-    inventory = ROOT / "data" / "tbank-inventory"
-    files.extend((inventory, inventory / name) for name in ("stocks.json", "bonds.json", "audit.json")
-                 if (inventory / name).is_file())
-    files.extend((inventory, inventory / name) for name in ("details.jsonl", "detail-failures.jsonl")
-                 if (inventory / name).is_file())
     office_evidence = ROOT / "data" / "vtb-lugansk-broker-office.json"
     if office_evidence.is_file():
         files.append((office_evidence.parent, office_evidence))
-    from src.psb.liquid_securities import FILE_NAME
-    from src.banks.vtb_securities import PLACEMENTS_NAME, PORTFOLIO_NAME, TARIFFS_NAME
-
-    for filename in (FILE_NAME, PORTFOLIO_NAME, PLACEMENTS_NAME, TARIFFS_NAME):
-        document = ROOT / "data" / filename
-        if document.is_file():
-            files.append((document.parent, document))
-    catalogue = inventory / "catalogue-rows"
-    files.extend((inventory, catalogue / name) for name in ("stocks.json", "bonds.json")
-                 if (catalogue / name).is_file())
     if not files:
         return None
     archive = ROOT / "data" / "snapshot.zip"
     with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as out:
         for src, path in files:
+            if path.suffix == ".txt":
+                with path.open(encoding="utf-8", errors="replace") as page:
+                    heading = page.readline()
+                if heading.startswith("URL: ") and outside_retail_scope(heading[5:].strip()):
+                    continue
             out.write(path, Path(src.name) / path.relative_to(src))
     return archive
 

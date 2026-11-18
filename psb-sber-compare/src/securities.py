@@ -35,6 +35,25 @@ def issue_kind(url: str) -> str:
     return "Акция" if match[1].lower() == "stocks" else "Облигация"
 
 
+def issue_page(url: str) -> bool:
+    """Recognize individual issues and their subpages inside stock/bond catalogues."""
+    path = urlsplit(url)
+    match = re.search(r"/(?:stocks|bonds)/[^/]+", path.path, re.I)
+    return bool(match and issue_kind(path._replace(path=path.path[:match.end()]).geturl()))
+
+
+def outside_retail_scope(url: str) -> bool:
+    parts = urlsplit(url)
+    return issue_page(url) or (
+        parts.hostname == "www.tbank.ru"
+        and parts.path.rstrip("/") in {"/invest/stocks", "/invest/bonds"}
+    )
+
+
+def excluded_product(url: str, terms: dict) -> bool:
+    return outside_retail_scope(url) or terms.get(KIND) in {"Акция", "Облигация"}
+
+
 def valid_isin(value: str) -> bool:
     """Check the identifier's shape and check digit, not its current listing."""
     if not _CODE.fullmatch(value):

@@ -57,6 +57,7 @@ class Config:
             "region": self.get("region", default="lugansk"),
             "region_label": self.get("region_label", default=""),
             "browser": self.get("browser", default={}) or {},
+            "exclude_securities": True,
         }
         common.update(self.get("banks", code, default={}) or {})
         return common
@@ -172,25 +173,20 @@ def _keep_unread(storage: Storage, result: Any, previous: int | None, run_id: in
     from datetime import datetime, timedelta
     from json import loads
 
-    from . import securities
     from .banks.crawl_adapter import is_product_title, normalize_title
     from .banks.seo import is_seo_page
 
     fresh_keys = {product_key(p) for p in result.products}
-    fresh_titles = {
-        normalize_title(p.title) for p in result.products
-        if not securities.issue_kind(p.source_url or "") and not p.terms.get(securities.KIND)
-    }
+    fresh_titles = {normalize_title(p.title) for p in result.products}
     cutoff = (datetime.now() - timedelta(days=KEEP_UNREAD_DAYS)).isoformat()
     keep = []
     for row in storage.products_of_run(previous, result.bank):
         if row["product_key"] in fresh_keys:
             continue
         if normalize_title(row["title"]) in fresh_titles:
-            old_issue = (securities.issue_kind(row["source_url"] or "")
-                         or loads(row["terms_json"] or "{}").get(securities.KIND))
-            if not old_issue:
-                continue
+            continue
+        if securities.excluded_product(row["source_url"] or "", loads(row["terms_json"] or "{}")):
+            continue
         if is_seo_page(row["source_url"] or ""):
             continue
         if not is_product_title(row["title"]) or (row["collected_at"] or "") < cutoff:
@@ -207,7 +203,8 @@ def _drop_seo(result: Any) -> None:
     from .banks.seo import is_seo_page
 
     result.products = [p for p in result.products
-                       if not is_seo_page(getattr(p, "source_url", ""))]
+                       if not is_seo_page(p.source_url)
+                       and not securities.excluded_product(p.source_url or "", p.terms)]
 
 
 def _mark_region(result: Any) -> None:
@@ -275,12 +272,15 @@ def crawl_completeness(links: dict[str, dict[str, str]]) -> dict[str, dict[str, 
         error = own.get(CRAWL_ERROR_KEY, "")
         if CRAWL_READ_KEY not in own and not error:
             continue
-        unread = [u for u in (own.get(CRAWL_UNREAD_KEY) or "").split() if u]
-        failed = [u for u in (own.get(CRAWL_FAILED_KEY) or "").split() if u.startswith("http")]
+        unread = [u for u in (own.get(CRAWL_UNREAD_KEY) or "").split()
+                  if not securities.outside_retail_scope(u)]
+        failed = [u for u in (own.get(CRAWL_FAILED_KEY) or "").split()
+                  if u.startswith("http") and not securities.outside_retail_scope(u.rstrip(":"))]
         out[bank] = {"read": int(own.get(CRAWL_READ_KEY) or 0),
                      "sitemap": int(own.get(CRAWL_SITEMAP_KEY) or 0),
                      "unread": unread, "failed": failed,
-                     "candidates": [u for u in (own.get(CRAWL_CANDIDATES_KEY) or "").split() if u],
+                     "candidates": [u for u in (own.get(CRAWL_CANDIDATES_KEY) or "").split()
+                                    if not securities.outside_retail_scope(u)],
                      "new_candidates": [],
                      "error": error,
                      "complete": not unread and not failed and not error}
@@ -393,7 +393,8 @@ def load_report_data(config: Config, *, competitor: str = "") -> dict[str, Any] 
 
         from .banks.crawl_adapter import is_product_title
         all_products = [p for p in _rows_to_products(storage.products_of_run(run_id))
-                        if not is_seo_page(p.source_url) and is_product_title(p.title)]
+                        if not is_seo_page(p.source_url) and is_product_title(p.title)
+                        and not securities.excluded_product(p.source_url or "", p.terms)]
         for product in all_products:
             category = coverage.classify(product.source_url)
             if product.category in {"Инвестиции", "Премиальное обслуживание"} and category in {"Страхование", "НПФ и ПДС"}:
@@ -420,7 +421,8 @@ def load_report_data(config: Config, *, competitor: str = "") -> dict[str, Any] 
         active_rival = [p for p in promos_rival if p.status != EXPIRED]
         active_home = [p for p in promos_home if p.status != EXPIRED]
 
-        changes = [dict(row) for row in storage.changes_of_run(run_id)]
+        changes = [dict(row) for row in storage.changes_of_run(run_id)
+                   if not securities.outside_retail_scope(row["product_key"] or "")]
 
         run_row = storage.conn.execute(
             "SELECT started_at FROM runs WHERE id=?", (run_id,)).fetchone()
@@ -517,27 +519,6 @@ def load_report_data(config: Config, *, competitor: str = "") -> dict[str, Any] 
                                                   [p for ps in by_bank.values() for p in ps])
                                   for code in [HOME_BANK] + competitor_codes) if c]
 
-        fields_dir = storage.path.parent / "tbank-inventory"
-        detailed_securities = securities.detailed_public_products(fields_dir / "details.jsonl")
-        detailed_urls = {p.source_url.rstrip("/") for p in scope if p.source_url}
-        supplemental_details = [
-            p for p in detailed_securities if p.source_url.rstrip("/") not in detailed_urls
-        ]
-        catalogue_securities = securities.catalogue_products(
-            fields_dir / "catalogue-rows", [*scope, *supplemental_details]
-        )
-        if "ПСБ" in competitor_titles:
-            from .psb import liquid_securities
-
-            catalogue_securities.extend(liquid_securities.load(
-                storage.path.parent / liquid_securities.FILE_NAME
-            ))
-        if "ВТБ" in competitor_titles:
-            from .banks import vtb_securities
-
-            catalogue_securities.extend(vtb_securities.load(
-                storage.path.parent, [*scope, *detailed_securities, *catalogue_securities]
-            ))
         html = render_report(
             comparisons=comparisons, counts=counts, changes=changes,
             promo_segments=segments, expired_promos=[],
@@ -556,7 +537,6 @@ def load_report_data(config: Config, *, competitor: str = "") -> dict[str, Any] 
             calculator=calc_offers, lnr_rows=lnr_rows, lnr_total=lnr_total,
             lnr_status=lnr_status, presence=presence, crawl=crawl,
             references=references,
-            catalogue_securities=supplemental_details + catalogue_securities,
         )
 
         return {

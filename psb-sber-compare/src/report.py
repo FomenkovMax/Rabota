@@ -805,55 +805,6 @@ def _catalog_rate(product: Any) -> tuple[str, bool]:
     return "не найдена", False
 
 
-def _securities_block(catalog: dict[str, list[Any]], catalogue_rows: list[Any] | None = None) -> str:
-    from . import securities
-    records = [p for items in catalog.values() for p in items]
-    groups = securities.groups(records + (catalogue_rows or []))
-    brokers = [bank for bank in ("Сбер", "ПСБ", "ВТБ") if bank in catalog]
-    completeness_note = (
-        '<p class="hint">Полный брокерский список требует сверки: '
-        f'{e(", ".join(brokers))}. В таблице показаны выпуски из прочитанных источников.</p>'
-        if brokers else ""
-    )
-    if not groups:
-        return completeness_note + '<p class="empty">Отдельные акции и облигации ещё не извлечены из страниц банков.</p>'
-    rows = []
-    for group in groups:
-        first = group[0]
-        isin = first.terms.get(securities.ISIN) or "не найден — сопоставление не выполнено"
-        sources = []
-        for product in group:
-            terms = product.terms or {}
-            details = " · ".join(str(terms[k]) for k in (
-                "Тикер", "Валюта бумаги", "Номинал", "Дата погашения", "Купон",
-                "Квалификация инвестора", "Маржинальная позиция") if terms.get(k))
-            listing = terms.get(securities.CATALOGUE_SOURCE)
-            listing_link = (f'<a href="{e(listing)}" target="_blank" rel="noopener">данные витрины</a> · '
-                            if listing else "")
-            if terms.get(securities.DETAIL_SOURCE):
-                listing_link = '<span>данные карточки</span> · '
-            if terms.get(securities.DOCUMENT_SCOPE):
-                listing_link = f'<span>{e(terms[securities.DOCUMENT_SCOPE])}</span> · '
-            isin_source = terms.get("Источник проверки ISIN")
-            if isin_source:
-                listing_link += f'<a href="{e(isin_source)}" target="_blank" rel="noopener">проверка ISIN</a> · '
-            date = ""
-            if product.collected_at:
-                label = "Дата документа" if terms.get(securities.DOCUMENT_SCOPE) else "Собрано"
-                date = f"{label}: {e(product.collected_at)} · "
-            sources.append(
-                f'<div><a href="{e(product.source_url)}" target="_blank" rel="noopener">'
-                f'{e(product.bank)}: {e(product.title)}</a>'
-                f'<div class="pmeta">{listing_link}{date}{e(details)}</div></div>')
-        rows.append(f'<tr><td>{e(first.terms.get(securities.KIND))}<br>{e(isin)}</td>'
-                    f'<td>{"".join(sources)}</td><td>Доступность покупки в Луганске '
-                    'не подтверждена</td></tr>')
-    return (completeness_note + '<details><summary>Найдено выпусков и несопоставленных страниц: '
-            f'{len(groups)}</summary><div class="scroll"><table><thead><tr>'
-            '<th>Вид / ISIN</th><th>Источники и условия выпуска</th><th>Луганск</th>'
-            '</tr></thead><tbody>' + "".join(rows) + '</tbody></table></div></details>')
-
-
 def _catalog(catalog: dict[str, list[Any]], banks: list[str],
              lnr_status: dict[int, Any] | None = None) -> str:
     """Все продукты банков по категориям — и те, у кого нет пары для светофора."""
@@ -1209,7 +1160,6 @@ def render_report(
     presence: dict[str, str] | None = None,
     crawl: dict[str, dict[str, Any]] | None = None,
     references: list[Any] | None = None,
-    catalogue_securities: list[Any] | None = None,
 ) -> str:
     total_promos = promo_active_total
     delta_chart = _delta_chart(comparisons)
@@ -1309,15 +1259,6 @@ def render_report(
   и именно города Луганска; Луганск входит в число ЛНР. Наличие раздела или офиса банка
   само по себе не подтверждает доступность каждого продукта.</p>
   {_coverage_block(coverage_matrix or {}, catalog_banks or list((catalog or {}).keys()))}
-</section>
-
-<section class="card">
-  <h2>Акции и облигации</h2>
-  <p class="hint">Один выпуск объединяется между банками только по ISIN с корректной
-  контрольной цифрой. Без однозначного ISIN страницы остаются отдельными.
-  Купон и историческая доходность не являются ставкой вклада. Наличие бумаги
-  на сайте не подтверждает возможность её покупки через банк в Луганске.</p>
-  {_securities_block(catalog or {}, catalogue_securities)}
 </section>
 
 <section class="card">

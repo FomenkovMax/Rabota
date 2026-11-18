@@ -30,7 +30,7 @@ def test_catalogue_rows_use_public_visible_issue_links_and_validate_isin():
     assert "sessionId" not in str(rows)
 
 
-def test_snapshot_includes_the_public_catalogue_rows(tmp_path, monkeypatch):
+def test_snapshot_excludes_securities_and_keeps_office_evidence(tmp_path, monkeypatch):
     from zipfile import ZipFile
     from bot import service
 
@@ -38,10 +38,13 @@ def test_snapshot_includes_the_public_catalogue_rows(tmp_path, monkeypatch):
     rows = tmp_path / "data" / "tbank-inventory" / "catalogue-rows"
     rows.mkdir(parents=True)
     (rows / "stocks.json").write_text("{}", encoding="utf-8")
-    (rows / "bonds.tmp").write_text("{}", encoding="utf-8")
+    (tmp_path / "data" / "vtb-lugansk-broker-office.json").write_text("{}", encoding="utf-8")
+    pages = tmp_path / "data" / "pages-all"
+    pages.mkdir()
+    (pages / "issue.txt").write_text("URL: https://www.tbank.ru/invest/stocks/GAZP", encoding="utf-8")
 
     with ZipFile(service.full_snapshot_archive()) as archive:
-        assert archive.namelist() == ["tbank-inventory/catalogue-rows/stocks.json"]
+        assert archive.namelist() == ["data/vtb-lugansk-broker-office.json"]
 
 
 def test_catalogue_read_resumes_after_last_saved_page(tmp_path):
@@ -77,10 +80,9 @@ def test_public_catalogue_request_changes_only_pagination():
     assert template["start"] == 0
 
 
-def test_securities_report_labels_listing_rows_and_prefers_detail_pages(tmp_path):
+def test_listing_rows_retain_source_and_prefer_detail_pages(tmp_path):
     from src import securities
     from src.psb.parser import Product
-    from src.report import _securities_block
 
     root = "https://www.tbank.ru/invest/stocks/"
     existing = Product(bank="Т-Банк", title="Карточка Сбера", source_url=root + "SBER/",
@@ -93,11 +95,8 @@ def test_securities_report_labels_listing_rows_and_prefers_detail_pages(tmp_path
     }), encoding="utf-8")
     listing = securities.catalogue_products(tmp_path, [existing])
     assert [item.title for item in listing] == ["Газпром"]
-    html = _securities_block({"Т-Банк": [existing]}, listing)
-    assert "Дубль из витрины" not in html
-    assert "данные витрины" in html
-    assert "RU0007661625" in html
-    assert "Доступность покупки в Луганске не подтверждена" in html
+    assert listing[0].terms[securities.CATALOGUE_SOURCE] == root
+    assert listing[0].terms[securities.ISIN] == "RU0007661625"
 
 
 def test_allstate_ticker_is_an_issue_not_a_section():
@@ -111,7 +110,6 @@ def test_allstate_ticker_is_an_issue_not_a_section():
 def test_public_detailed_response_is_reported_as_a_card_without_city_confirmation(tmp_path):
     from src import availability, securities
     from src.banks.tbank_detail_fields import instrument_fields
-    from src.report import _securities_block
 
     url = "https://www.tbank.ru/invest/bonds/SU26233RMFS5"
     result = instrument_fields({"status": "Ok", "payload": {
@@ -127,4 +125,4 @@ def test_public_detailed_response_is_reported_as_a_card_without_city_confirmatio
     assert len(products) == 1
     assert products[0].terms[securities.ISIN] == "RU000A101F94"
     assert not availability.status_of(products[0], region_method="selector").city_confirmed
-    assert "данные карточки" in _securities_block({}, products)
+    assert products[0].terms[securities.DETAIL_SOURCE] == url

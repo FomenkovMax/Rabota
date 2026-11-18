@@ -45,14 +45,24 @@ def test_tbank_uses_document_isin_for_ofz_instead_of_url_slug():
     assert p.terms[securities.ISIN] == "RU000A0JVW48"
 
 
-def test_registry_renders_sources_and_keeps_different_issues_separate():
-    from src.report import _securities_block
+def test_distinct_issues_are_outside_retail_comparison():
     a, b = instrument(), instrument("Другой банк", "Привилегированные акции")
     securities.remember(a, ["RU0009029540"])
     securities.remember(b, ["RU0009029557"])
-    html = _securities_block({a.bank: [a], b.bank: [b]})
-    assert "RU0009029540" in html and "RU0009029557" in html
-    assert "Доступность покупки в Луганске не подтверждена" in html
+    assert len(securities.groups([a, b])) == 2
+    assert securities.outside_retail_scope(a.source_url)
+    assert securities.outside_retail_scope(a.source_url.rstrip("/") + "/pulse")
+    assert not securities.outside_retail_scope("https://www.tbank.ru/invest/account/")
+    assert not securities.excluded_product("https://bank.example/fund", {securities.KIND: "Ценная бумага"})
+
+
+def test_regular_tbank_collection_keeps_investment_services():
+    from src.pipeline import Config, _adapter_for
+
+    adapter = _adapter_for(Config(raw={}), "tbank")
+    base = "https://www.tbank.ru/invest/"
+    links = adapter._links([base + path for path in ("stocks/", "bonds/ISIN", "account/")])
+    assert links == [base + "account"]
 
 
 def test_lessons_and_market_overviews_are_not_security_issues():
@@ -72,7 +82,7 @@ def test_legacy_lesson_metadata_does_not_enter_registry():
     assert securities.groups([p]) == []
 
 
-def test_partial_collection_keeps_distinct_issues_with_same_name(tmp_path):
+def test_partial_collection_keeps_old_issues_out_of_the_new_run(tmp_path):
     from datetime import datetime
 
     from src.banks.base import CollectResult
@@ -91,9 +101,8 @@ def test_partial_collection_keeps_distinct_issues_with_same_name(tmp_path):
         storage.save_products(after, [newer])
         result = CollectResult(bank="Т-Банк", products=[newer], partial=True)
         _keep_unread(storage, result, before, after)
-        assert {row["source_url"] for row in storage.products_of_run(after)} == {
-            older.source_url, newer.source_url,
-        }
+        assert {row["source_url"] for row in storage.products_of_run(after)} == {newer.source_url}
+        assert {row["source_url"] for row in storage.products_of_run(before)} == {older.source_url}
     finally:
         storage.close()
 

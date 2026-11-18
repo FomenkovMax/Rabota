@@ -1043,6 +1043,9 @@ class CrawlAdapter(BankAdapter):
         # Resume URLs are product pages, not showcase seeds.
         seed_set = {self._normalize(url) for url in self.seeds}
         first = [] if resume_urls else [self._normalize(url) for url in self.priority]
+        if self.settings.get("exclude_securities"):
+            seeds = [url for url in seeds if not securities.outside_retail_scope(url)]
+            first = [url for url in first if not securities.outside_retail_scope(url)]
         first_set = {self._normalize(url) for url in self.priority}
         queue: deque[str] = deque(seeds + [u for u in first if u not in seed_set])
         seen: set[str] = set(queue) | {self._normalize(url)
@@ -1568,6 +1571,8 @@ class CrawlAdapter(BankAdapter):
             url = self._normalize(href)
             parts = urlsplit(url)
             if parts.netloc != base_host or _FILE.search(parts.path):
+                continue
+            if self.settings.get("exclude_securities") and securities.outside_retail_scope(url):
                 continue
             # Склеенные адреса из меню («…/www.koronapay.com», «…/+74957253141»,
             # «…/ipoteka/[…](https://…)») — не страницы сайта.
