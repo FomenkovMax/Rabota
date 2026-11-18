@@ -819,7 +819,7 @@ def product_from_page(data: dict[str, Any], *, bank: str, url: str,
     title, body = describe_page(data)
     headline = title
     title = product_name(title)
-    if not is_product_title(title) or title.casefold() in {c.casefold() for c in coverage.CATEGORIES}:
+    if not is_product_title(title):
         return None
 
     product = Product(
@@ -827,6 +827,12 @@ def product_from_page(data: dict[str, Any], *, bank: str, url: str,
         category=category_for(title, category), region=region,
         source_url=url, collected_at=collected_at,
     )
+    from ..availability import SERVICE_CITY_KEY, remember_service_city
+
+    remember_service_city(product, data.get("text") or "")
+    if (title.casefold() in {c.casefold() for c in coverage.CATEGORIES}
+            and SERVICE_CITY_KEY not in product.terms):
+        return None
 
     rate_lines = body
     # Цифры в описании есть, а условия «от N % · Ставка» нет — это расчёт
@@ -917,8 +923,6 @@ def product_from_page(data: dict[str, Any], *, bank: str, url: str,
         product.terms.setdefault(market.REGION_KEY, f"на странице банка: «{clause}»")
     from .. import securities
     securities.remember(product, body)
-    from ..availability import remember_service_city
-    remember_service_city(product, data.get("text") or "")
     return product
 
 

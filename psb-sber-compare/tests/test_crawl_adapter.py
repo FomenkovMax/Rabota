@@ -15,6 +15,20 @@ def test_sber_deposit_legacy_url_uses_current_product_page():
     assert adapter._links([base + "sbervklad_a/", base + "vklad"]) == [base + "vklad"]
 
 
+def test_safe_deposit_service_with_office_list_is_a_product():
+    from src.availability import status_of
+    from src.banks.crawl_adapter import product_from_page
+
+    title = "Сейфовые ячейки"
+    page = {"h1": title, "text": title}
+    kwargs = {"bank": "Генбанк", "category": title, "region": "",
+              "collected_at": "2026-11-13", "url": "https://www.genbank.ru/chastnym-litsam/seyfovye-yacheyki/"}
+    assert product_from_page(page, **kwargs) is None
+    page["text"] += "\nПеречень ВСП, в которых предоставляется услуга:\nДО «Луганск», адрес: ул. Советская, д. 86А"
+    product = product_from_page(page, **kwargs)
+    assert status_of(product, region_method="federal").city_confirmed
+
+
 def test_vtb_pds_links_to_online_services_are_root_relative():
     from src.banks.others import VtbAdapter
 
