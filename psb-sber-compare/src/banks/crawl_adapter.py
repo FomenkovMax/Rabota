@@ -32,7 +32,8 @@ from .browser import (BrowserSettings, BrowserUnavailable, PageFailed,
 from .generic_site import caption_rules_out, category_for, extract_products, rates_of
 from .seo import is_seo_page
 from .. import card_terms, conditions, coverage, market, securities
-from ..availability import SERVICE_CITY_KEY, find_clause, remember_auto_city, remember_service_city
+from ..availability import (ROST_EXCHANGE_URL, SERVICE_CITY_KEY, find_clause,
+                            remember_auto_city, remember_service_city)
 
 log = logging.getLogger(__name__)
 
@@ -822,6 +823,8 @@ def product_from_page(data: dict[str, Any], *, bank: str, url: str,
     title, body = describe_page(data)
     headline = title
     title = product_name(title)
+    if url == ROST_EXCHANGE_URL and title == "ВЫГОДНЫЙ ОБМЕН":
+        title = "Выгодный обмен"
     if urlsplit(url).hostname == "www.tbank.ru" and securities.issue_kind(url):
         title = re.sub(r"^(?:О компании|Про облигацию)\s+", "", title, flags=re.I)
     if not is_product_title(title):
@@ -832,7 +835,8 @@ def product_from_page(data: dict[str, Any], *, bank: str, url: str,
         category=category_for(title, category), region=region,
         source_url=url, collected_at=collected_at,
     )
-    if bank == "РостФинанс" and urlsplit(url).hostname in {"rostfinance.ru", "www.rostfinance.ru"}:
+    if (bank == "РостФинанс" and category != "Валютные операции"
+            and urlsplit(url).hostname in {"rostfinance.ru", "www.rostfinance.ru"}):
         header = [line.strip() for line in (data.get("text") or "").splitlines()[:20] if line.strip()]
         if any(header[i:i + 3] == ["Контакты", "Луганск", "Помощь"] for i in range(len(header) - 2)):
             product.terms["Город выбран на сайте банка"] = "Луганск"

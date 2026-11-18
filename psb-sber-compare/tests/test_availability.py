@@ -317,3 +317,19 @@ def test_rostfinance_city_evidence_comes_from_selected_header():
     product = product_from_page(page, **kwargs)
     assert not av.status_of(product, region_method="selector").city_confirmed
 
+
+def test_rostfinance_exchange_confirms_office_from_the_exchange_table():
+    from src.banks.crawl_adapter import product_from_page
+
+    kwargs = dict(bank="РостФинанс", url=av.ROST_EXCHANGE_URL, category="Валютные операции",
+                  region="", collected_at="")
+    page = {"h1": "ВЫГОДНЫЙ ОБМЕН", "text": "ВЫГОДНЫЙ ОБМЕН\nКонтакты\nЛуганск\nПомощь"}
+    generic = product_from_page(page, **kwargs)
+    assert generic.title == "Выгодный обмен"
+    assert not av.status_of(generic, region_method="selector").city_confirmed
+
+    page["text"] += ("\nКурсы валют могут отличаться в офисах банка\nЛуганск\nГород\n"
+                     "ул. Демехина, 27 А\nОфис\nВалюта\nПродать\nКупить")
+    product = product_from_page(page, **kwargs)
+    assert av.status_of(product, region_method="selector").city_confirmed
+

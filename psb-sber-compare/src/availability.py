@@ -31,6 +31,7 @@ AUTO_CITY_KEY = "Регистрация для автокредита: цита�
 AUTO_SOURCE_KEY = "Регистрация для автокредита: источник"
 CARD_PICKUP_CITY_KEY = "Офис получения карты: Луганск"
 CARD_PICKUP_SOURCE_KEY = "Офис получения карты: источник"
+ROST_EXCHANGE_URL = "https://www.rostfinance.ru/currency/"
 _VTB_AUTO_ELIGIBILITY = re.compile(
     r"Вы\s+можете\s+получить\s+кредит\s+на\s+автомобиль,\s+если\s+вы\s+имеете\s+"
     r"постоянную\s+или\s+временную\s+регистрацию\s+в\s+следующих\s+городах[^.]*\.",
@@ -71,6 +72,16 @@ def remember_auto_city(product: Any, text: str) -> None:
 
 def remember_service_city(product: Any, text: str) -> None:
     """A service-specific office list is stronger evidence than a bank footer."""
+    if product.category == "Валютные операции" and product.source_url == ROST_EXCHANGE_URL:
+        office = re.search(
+            r"Курсы валют могут отличаться в\s+офисах банка\s+"
+            r"Луганск\s+Город\s+(ул\.[^\n]{1,120})\s+Офис\s+Валюта\s+Продать\s+Купить",
+            text, re.I,
+        )
+        if office:
+            product.terms[SERVICE_CITY_KEY] = "Таблица обмена наличной валюты: Луганск, " + office[1].strip()
+            product.terms[SERVICE_SOURCE_KEY] = product.source_url
+        return
     if product.category != "Сейфовые ячейки":
         return
     block = re.search(r"Перечень\s+ВСП,?\s+в\s+которых\s+предоставляется\s+услуга\s*:(.*)",
@@ -158,7 +169,9 @@ def status_of(product: Any, *, region_method: str, presence: str = "") -> Status
     if terms.get("Вид ценной бумаги"):
         return Status(UNKNOWN, str(terms.get("Доступность торгов в Луганске") or
                       "доступность торгов этим выпуском через банк в Луганске не подтверждена"), url)
-    if (getattr(product, "category", "") == "Сейфовые ячейки" and terms.get(SERVICE_CITY_KEY)
+    category = getattr(product, "category", "")
+    if ((category == "Сейфовые ячейки" or (category == "Валютные операции" and url == ROST_EXCHANGE_URL))
+            and terms.get(SERVICE_CITY_KEY)
             and url and terms.get(SERVICE_SOURCE_KEY) == url):
         return Status(LNR, f"услуга предоставляется в офисе Луганска: {terms[SERVICE_CITY_KEY]}", url)
     if terms.get(AUTO_CITY_KEY) and url and terms.get(AUTO_SOURCE_KEY) == url and _vtb_auto_product(product):
