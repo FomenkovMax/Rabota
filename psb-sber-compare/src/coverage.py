@@ -105,6 +105,9 @@ def classify(url: str) -> str | None:
         return "Сейфовые ячейки"
     if parts.hostname in {"psbank.ru", "www.psbank.ru"} and segments[0] == "rates":
         return "Валютные операции"
+    if (parts.hostname in {"vtb.ru", "www.vtb.ru"}
+            and segments[:2] == ["platezhi-i-perevody", "obmen-valjuty"]):
+        return "Валютные операции"
     # «/person/person-deposit», «/person/obmen-valjuty»,
     # «/person/payments-and-transfers» (ЦМР): раздел — первое слово сегмента.
     top = re.sub(r"^(?:person|personal)[-_]", "", segments[0], flags=re.I)

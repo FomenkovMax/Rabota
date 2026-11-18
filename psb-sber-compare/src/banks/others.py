@@ -197,6 +197,7 @@ class VtbAdapter(CrawlAdapter):
     # ссылается на десятки подборок и городов, и без этого списка лимит
     # страниц уходил на них, а до ипотеки и карт обход не доходил.
     priority = (
+        "https://www.vtb.ru/personal/platezhi-i-perevody/obmen-valjuty/",
         "https://www.vtb.ru/personal/vklady-i-scheta/seyfovye-yacheyki/",
         "https://www.vtb.ru/personal/avtokredity/bez-podtverzhdeniya-dohoda/",
         "https://www.vtb.ru/personal/avtokredity/avto-v-avtosalone/",
