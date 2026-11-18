@@ -116,7 +116,7 @@ products:
   - {name: "Накопительный счёт Рядом", category: "Накопительные счета", path: "/ru/person/contributions/deposits/nakopitelnyj_schyot_ryadom", source: site}
   - {name: "Накопительный счёт Пенсионный старт", category: "Накопительные счета", path: "/ru/person/contributions/deposits/pensionnyi_start", source: site}
   - {name: "Сберегательный счёт", category: "Накопительные счета", path: "/ru/person/contributions/deposits/sb_schet", source: site}
-  - {name: "СберВклад", category: "Вклады", path: "/ru/person/contributions/deposits/sbervklad_a", match: 'сбервклад$', source: site}
+  - {name: "СберВклад", category: "Вклады", path: "/ru/person/contributions/deposits/vklad", match: 'сбервклад$', source: site}
   - {name: "Зарплатный максимум", category: "Вклады", match: 'зарплатн\w*\s+максимум', source: aggregator}
   - {name: "Образовательный кредит (без господдержки)", category: "Кредиты", match: 'образовательн(?!.*господдерж)', source: aggregator}
   - {name: "СберПервый (пакет премиального обслуживания)", category: "Специальные предложения", match: '^(?:пакет\w*\s+(?:услуг\s+)?)?«?сберпервый»?$', source: site-text}

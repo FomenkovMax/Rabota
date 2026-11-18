@@ -32,6 +32,13 @@ class SberAdapter(CrawlAdapter):
     """
 
     code = "sber"
+
+    def _normalize(self, url: str) -> str:
+        url = super()._normalize(url)
+        old = self.base_url + "/ru/person/contributions/deposits/sbervklad_a"
+        if url == old:
+            return self.base_url + "/ru/person/contributions/deposits/vklad"
+        return url
     title = "Сбер"
     strategy = "браузер: обход витрин и страниц продуктов"
     protection = "JS-челлендж F5 (переменная bobcmn в ответе)"
@@ -148,6 +155,13 @@ class VtbAdapter(CrawlAdapter):
     """
 
     code = "vtb"
+
+    def _normalize(self, url: str) -> str:
+        url = super()._normalize(url)
+        prefix = self.base_url + "/personal/investicii/pds-detskiy/-/personal/"
+        if url.startswith(prefix):
+            return self.base_url + "/personal/" + url.removeprefix(prefix)
+        return url
     title = "ВТБ"
     strategy = "браузер: обход витрин и страниц продуктов"
     protection = "не проверено"
@@ -203,7 +217,7 @@ class VtbAdapter(CrawlAdapter):
         r"/vklad-\d|/vklady-(?!i-scheta)|/so-snyatiem|/sberezhenija$|/nakopitelnyy-chet-|"
         r"/kurs-|asv|/informacija|"
         r"/restrukturizaciya|/spisok-partnerov|/katalog-nedvizhimosti|/maksimum-vygody|"
-        r"/zarplatnyj-proekt|/vtbpay|"
+        r"/zarplatnyj-proekt|/vtbpay|/-/r/online/|"
         # Опция к вкладам («Надбавка за покупки») и программа лояльности
         # («Дополнительные категории кешбэка») — не продукты (03.11.2026).
         r"/vklady-i-scheta/traty|"

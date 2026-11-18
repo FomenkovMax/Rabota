@@ -8,6 +8,23 @@ import src.banks.crawl_adapter as crawl
 from src.banks.browser import PageFailed, PageTooSlow
 from src.banks.others import SberAdapter
 
+
+def test_sber_deposit_legacy_url_uses_current_product_page():
+    adapter = SberAdapter(region=None, settings={})
+    base = adapter.base_url + "/ru/person/contributions/deposits/"
+    assert adapter._links([base + "sbervklad_a/", base + "vklad"]) == [base + "vklad"]
+
+
+def test_vtb_pds_links_to_online_services_are_root_relative():
+    from src.banks.others import VtbAdapter
+
+    adapter = VtbAdapter(region=None, settings={})
+    prefix = adapter.base_url + "/personal/investicii/pds-detskiy/-/"
+    assert adapter._normalize(prefix + "personal/online-servisy/vtb-online") == (
+        adapter.base_url + "/personal/online-servisy/vtb-online"
+    )
+    assert not adapter._links([prefix + "r/online/debit-card/step1/deposit"])
+
 BASE = "https://www.sberbank.ru"
 
 
