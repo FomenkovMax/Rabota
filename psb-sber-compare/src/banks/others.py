@@ -277,6 +277,7 @@ class TbankAdapter(CrawlAdapter):
     )
     family_words = RETAIL_WORDS
     skip = re.compile(NOT_RETAIL.pattern + "|" + (
+        r"/invest/(?:social|education)(?:/|$)|"
         r"/city/|/foreign|/form$|/(dlya|bez|s)-|virtualnaya|beskontaktnaya|"
         r"nakopitelnaya-karta|mezhdunarodnaya|imennaya|besplatnaya|momentalnaya|"
         r"/debit-cards/(premium|travel|driver|games|shopping)$|"

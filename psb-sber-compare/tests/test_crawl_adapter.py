@@ -1127,3 +1127,12 @@ def test_trailing_slash_catalogue_is_not_a_product(monkeypatch, tmp_path):
     assert catalogue not in calls
     assert set(calls) == set(products)
 
+def test_tbank_community_is_not_a_security_catalogue():
+    from src.banks.others import TbankAdapter
+    adapter = TbankAdapter(region=None, settings={})
+    for path in ("/invest/social/profile/UA1CEC_INVEST_CLUB",
+                 "/invest/social/hashtag/bonds", "/invest/education/videocourses/example"):
+        assert adapter._links(["https://www.tbank.ru" + path]) == []
+    for path in ("/invest/stocks/SBER", "/invest/bonds/SU29021RMFS1"):
+        assert adapter._links(["https://www.tbank.ru" + path])
+
