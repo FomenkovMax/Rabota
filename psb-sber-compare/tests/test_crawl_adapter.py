@@ -118,6 +118,25 @@ class FakeReader:
         return found
 
 
+def test_security_page_is_kept_when_it_links_to_multiple_tabs(monkeypatch):
+    from src.banks.others import TbankAdapter
+
+    url = "https://www.tbank.ru/invest/stocks/GAZP"
+    tabs = [[f"{url}/section-{i}", ""] for i in range(3)]
+    monkeypatch.setitem(PAGES, url, {
+        "title": "Купить акции Газпром (GAZP)",
+        "h1": "О компании Газпром",
+        "text": "О компании Газпром\nISIN: RU0007661625",
+        "links": tabs,
+    })
+    monkeypatch.setattr(crawl, "PageReader", FakeReader)
+    adapter = TbankAdapter(region=None, settings={"resume_urls": [url], "max_pages": 1})
+    result = adapter.collect()
+    assert [(p.title, p.terms["ISIN"]) for p in result.products] == [
+        ("Газпром", "RU0007661625"),
+    ]
+
+
 class OnlyCredits(SberAdapter):
     seeds = (f"{BASE}/ru/person/credits/money", f"{BASE}/ru/person/contributions")
 

@@ -9,6 +9,14 @@ ISIN = "ISIN"
 _CODE = re.compile(r"\b[A-Z]{2}[A-Z0-9]{9}[0-9]\b")
 
 
+def issue_kind(url: str) -> str:
+    path = urlsplit(url).path
+    match = re.search(r"/(stocks|bonds)/([^/]+)/?$", path, re.I)
+    if not match or match[2].lower() in {"offer", "offer_ofz", "all", "catalog"}:
+        return ""
+    return "Акция" if match[1].lower() == "stocks" else "Облигация"
+
+
 def valid_isin(value: str) -> bool:
     """Check the identifier's shape and check digit, not its current listing."""
     if not _CODE.fullmatch(value):
@@ -31,8 +39,9 @@ def remember(product, body: list[str]) -> None:
     issue_path = re.search(r"/(?:stocks|bonds)/([^/]+)/?$", path, re.I)
     if issue_path and issue_path.group(1).lower() in {"offer", "offer_ofz", "all", "catalog"}:
         return
-    kind = ("Облигация" if re.search(r"/bonds/[^/]+|\bоблигаци", path + " " + title, re.I)
-            else "Акция" if re.search(r"/stocks/[^/]+|\bакци[яиюй]\b", path + " " + title, re.I)
+    kind = issue_kind(product.source_url) or (
+            "Облигация" if re.search(r"\bоблигаци", title, re.I)
+            else "Акция" if re.search(r"\bакци[яиюй]\b", title, re.I)
             else "")
     # An index/listing is not a specific issue. A unique ISIN can identify
     # an issue even when the heading omits the instrument type.

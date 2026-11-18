@@ -31,8 +31,8 @@ from .browser import (BrowserSettings, BrowserUnavailable, PageFailed,
                       PageReader, PageTooSlow)
 from .generic_site import caption_rules_out, category_for, extract_products, rates_of
 from .seo import is_seo_page
-from .. import card_terms, conditions, coverage, market
-from ..availability import find_clause
+from .. import card_terms, conditions, coverage, market, securities
+from ..availability import SERVICE_CITY_KEY, find_clause, remember_service_city
 
 log = logging.getLogger(__name__)
 
@@ -819,6 +819,8 @@ def product_from_page(data: dict[str, Any], *, bank: str, url: str,
     title, body = describe_page(data)
     headline = title
     title = product_name(title)
+    if urlsplit(url).hostname == "www.tbank.ru" and securities.issue_kind(url):
+        title = re.sub(r"^(?:О компании|Про облигацию)\s+", "", title, flags=re.I)
     if not is_product_title(title):
         return None
 
@@ -827,8 +829,6 @@ def product_from_page(data: dict[str, Any], *, bank: str, url: str,
         category=category_for(title, category), region=region,
         source_url=url, collected_at=collected_at,
     )
-    from ..availability import SERVICE_CITY_KEY, remember_service_city
-
     remember_service_city(product, data.get("text") or "")
     if (title.casefold() in {c.casefold() for c in coverage.CATEGORIES}
             and SERVICE_CITY_KEY not in product.terms):
@@ -921,7 +921,6 @@ def product_from_page(data: dict[str, Any], *, bank: str, url: str,
     clause = find_clause("\n".join(body + rates_section(data)))
     if clause:
         product.terms.setdefault(market.REGION_KEY, f"на странице банка: «{clause}»")
-    from .. import securities
     securities.remember(product, body)
     return product
 
@@ -1090,8 +1089,9 @@ class CrawlAdapter(BankAdapter):
                     # у него есть подстраницы: у Т-Банка «Кредит наличными»
                     # ссылается на /cash-loan/auto и т. п. и иначе читался
                     # как раздел — продукт не создавался.
-                    is_listing = url in seed_set or (url not in first_set
-                                                     and len(deeper) >= 3)
+                    is_issue = family == "Инвестиции" and bool(securities.issue_kind(url))
+                    is_listing = not is_issue and (
+                        url in seed_set or (url not in first_set and len(deeper) >= 3))
 
                     if is_listing:
                         # С витрины берём пары «название — ставка»: пригодятся
@@ -1110,7 +1110,7 @@ class CrawlAdapter(BankAdapter):
                             data, bank=self.title, url=url, category=family,
                             region=region_label, collected_at=now)
                         if product is not None:
-                            key = normalize_title(product.title)
+                            key = url if is_issue else normalize_title(product.title)
                             # «Карта ЛУКОЙЛ» у Т-Банка — и дебетовая, и кредитная
                             # (30.10.2026): одно название, разные продукты.
                             if key in products and products[key].category != product.category:
