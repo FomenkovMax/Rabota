@@ -39,6 +39,12 @@ def test_coupon_is_preserved_as_source_text_not_bank_rate():
     assert p.rate_min is None
 
 
+def test_tbank_uses_document_isin_for_ofz_instead_of_url_slug():
+    p = instrument(title="ОФЗ 26218", url="https://www.tbank.ru/invest/bonds/SU26218RMFS6")
+    securities.remember(p, [], page_title="Купить облигации ОФЗ 26218 (RU000A0JVW48) 📈: цена")
+    assert p.terms[securities.ISIN] == "RU000A0JVW48"
+
+
 def test_registry_renders_sources_and_keeps_different_issues_separate():
     from src.report import _securities_block
     a, b = instrument(), instrument("Другой банк", "Привилегированные акции")

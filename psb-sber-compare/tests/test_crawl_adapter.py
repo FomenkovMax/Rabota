@@ -38,6 +38,8 @@ def test_vtb_pds_links_to_online_services_are_root_relative():
         adapter.base_url + "/personal/online-servisy/vtb-online"
     )
     assert not adapter._links([prefix + "r/online/debit-card/step1/deposit"])
+    payroll = adapter.base_url + "/personal/karty/zarplatnye"
+    assert adapter._links([payroll]) == [payroll + "/zarplatnyj-proekt"]
 
 BASE = "https://www.sberbank.ru"
 

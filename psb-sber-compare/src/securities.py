@@ -29,7 +29,7 @@ def valid_isin(value: str) -> bool:
     return total % 10 == 0
 
 
-def remember(product, body: list[str]) -> None:
+def remember(product, body: list[str], *, page_title: str = "") -> None:
     if product.category != "Инвестиции":
         return
     path = urlsplit(product.source_url).path
@@ -46,6 +46,12 @@ def remember(product, body: list[str]) -> None:
     # An index/listing is not a specific issue. A unique ISIN can identify
     # an issue even when the heading omits the instrument type.
     codes = sorted({c for c in _CODE.findall("\n".join([title, *body])) if valid_isin(c)})
+    # T-Bank labels the instrument in the document title. For OFZs the URL
+    # slug can differ from the ISIN printed there for the issue.
+    if issue_path and urlsplit(product.source_url).hostname == "www.tbank.ru":
+        match = re.search(r"^Купить облигации .+? \(([A-Z]{2}[A-Z0-9]{9}[0-9])\)", page_title, re.I)
+        if match and valid_isin(match[1]):
+            codes = [match[1]]
     if not issue_path and len(codes) != 1:
         return
     product.terms[KIND] = kind or "Ценная бумага"

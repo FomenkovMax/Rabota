@@ -161,7 +161,13 @@ class VtbAdapter(CrawlAdapter):
         prefix = self.base_url + "/personal/investicii/pds-detskiy/-/personal/"
         if url.startswith(prefix):
             return self.base_url + "/personal/" + url.removeprefix(prefix)
-        return url
+        path = url.removeprefix(self.base_url)
+        aliases = {
+            "/personal/platezhi-i-perevody/perevody-v-iran": "/personal/platezhi-i-perevody/perevody-v-real",
+            "/personal/platezhi-i-perevody/perevody-s-karty-na-kartu": "/personal/platezhi-i-perevody",
+            "/personal/karty/zarplatnye": "/personal/karty/zarplatnye/zarplatnyj-proekt",
+        }
+        return self.base_url + aliases[path] if path in aliases else url
     title = "ВТБ"
     strategy = "браузер: обход витрин и страниц продуктов"
     protection = "не проверено"
@@ -217,7 +223,7 @@ class VtbAdapter(CrawlAdapter):
         r"/vklad-\d|/vklady-(?!i-scheta)|/so-snyatiem|/sberezhenija$|/nakopitelnyy-chet-|"
         r"/kurs-|asv|/informacija|"
         r"/restrukturizaciya|/spisok-partnerov|/katalog-nedvizhimosti|/maksimum-vygody|"
-        r"/zarplatnyj-proekt|/vtbpay|/-/r/online/|"
+        r"/vtbpay|/-/r/online/|"
         # Опция к вкладам («Надбавка за покупки») и программа лояльности
         # («Дополнительные категории кешбэка») — не продукты (03.11.2026).
         r"/vklady-i-scheta/traty|"

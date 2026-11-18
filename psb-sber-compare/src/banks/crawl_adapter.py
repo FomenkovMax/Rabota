@@ -921,7 +921,7 @@ def product_from_page(data: dict[str, Any], *, bank: str, url: str,
     clause = find_clause("\n".join(body + rates_section(data)))
     if clause:
         product.terms.setdefault(market.REGION_KEY, f"на странице банка: «{clause}»")
-    securities.remember(product, body)
+    securities.remember(product, body, page_title=data.get("title") or "")
     return product
 
 
