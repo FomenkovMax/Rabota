@@ -51,7 +51,9 @@ def remember_auto_city(product: Any, text: str) -> None:
     match = _VTB_AUTO_ELIGIBILITY.search(text)
     if not match:
         return
-    for line in text[match.end():].splitlines():
+    cities = re.sub(r"^\s*Не\s+нашли\s+свой\s+город\s+в\s+списке,[^.\n]*\.",
+                    "", text[match.end():], count=1, flags=re.I)
+    for line in cities.splitlines():
         city = line.strip().lstrip("• ").strip()
         if not city:
             continue

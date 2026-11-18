@@ -293,7 +293,9 @@ def test_vtb_auto_loan_requires_lugansk_in_registration_list():
                    "постоянную или временную регистрацию в следующих городах.")
     kwargs = dict(bank="ВТБ", url=url, category="Кредиты", region="", collected_at="")
     title = "Автокредит без подтверждения дохода"
-    text = title + "\n" + eligibility + "\nКаменск-Шахтинский\nЛуганск\nМосква"
+    text = (title + "\n" + eligibility
+            + "\nНе нашли свой город в списке, оставьте заявку и узнайте решение банка через три минуты."
+            + "\nКаменск-Шахтинский\nЛуганск\nМосква")
     product = product_from_page({"h1": title, "text": text}, **kwargs)
     assert av.status_of(product, region_method="federal").city_confirmed
 
