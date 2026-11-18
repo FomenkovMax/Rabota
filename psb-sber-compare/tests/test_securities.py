@@ -96,3 +96,24 @@ def test_partial_collection_keeps_distinct_issues_with_same_name(tmp_path):
         }
     finally:
         storage.close()
+
+
+def test_tbank_inventory_reports_missing_pages(tmp_path):
+    from types import SimpleNamespace
+
+    from src.banks.others import TbankAdapter
+    from src.banks.tbank_inventory import collect_catalogue
+
+    adapter = TbankAdapter(region=None, settings={})
+    root = adapter.base_url + "/invest/stocks/"
+    last = adapter._normalize(root + "?start=24&end=36")
+    responses = {
+        root: {"h1": "Каталог акций", "links": [root + "SBER/", last]},
+        last: {"h1": "Каталог акций", "links": [root + "GAZP/"]},
+    }
+    output = tmp_path / "stocks.json"
+    result = collect_catalogue(SimpleNamespace(read=responses.__getitem__), adapter, root, output)
+    assert result["expected_pages"] == 3
+    assert result["missing_offsets"] == [12]
+    assert result["unique_issues"] == 2
+    assert output.is_file()

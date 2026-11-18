@@ -15,6 +15,23 @@ def test_sber_deposit_legacy_url_uses_current_product_page():
     assert adapter._links([base + "sbervklad_a/", base + "vklad"]) == [base + "vklad"]
 
 
+def test_tbank_preserves_distinct_catalogue_pages_and_deduplicates_filters():
+    from src.banks.others import TbankAdapter
+
+    adapter = TbankAdapter(region=None, settings={})
+    root = adapter.base_url + "/invest/stocks/"
+    second = root + "?start=12&end=24&orderType=Desc&sortType=ByPopularity"
+    third = root + "?start=24&end=36&orderType=Desc&sortType=ByPopularity"
+    assert adapter._links([
+        root + "?start=0&end=12",
+        second + "&currencies=&tickers=",
+        third,
+        root + "?end=24&start=12",
+        root + "?start=12&end=24&currencies=rub",
+        root + "GAZP/?start=12&end=24",
+    ]) == [root, second, third, root + "GAZP"]
+
+
 def test_safe_deposit_service_with_office_list_is_a_product():
     from src.availability import status_of
     from src.banks.crawl_adapter import product_from_page
@@ -137,6 +154,23 @@ def test_security_page_is_kept_when_it_links_to_multiple_tabs(monkeypatch):
     assert [(p.title, p.terms["ISIN"]) for p in result.products] == [
         ("Газпром", "RU0007661625"),
     ]
+
+
+def test_tbank_catalogue_collects_security_from_the_next_page(monkeypatch):
+    from src.banks.others import TbankAdapter
+
+    root = "https://www.tbank.ru/invest/stocks/"
+    second = root + "?start=12&end=24&orderType=Desc&sortType=ByPopularity"
+    issue = root + "GAZP"
+    monkeypatch.setitem(PAGES, root, {"h1": "Каталог акций", "text": "Каталог акций",
+                                    "links": [[second, "Показать еще"]]})
+    monkeypatch.setitem(PAGES, second, {"h1": "Каталог акций", "text": "Каталог акций",
+                                      "links": [[issue + "/", "Газпром"]]})
+    monkeypatch.setitem(PAGES, issue, {"h1": "О компании Газпром", "text": "О компании Газпром",
+                                     "links": []})
+    monkeypatch.setattr(crawl, "PageReader", FakeReader)
+    result = TbankAdapter(region=None, settings={"resume_urls": [root]}).collect()
+    assert [product.source_url for product in result.products] == [issue]
 
 
 def test_empty_snapshot_is_reported_as_unread(monkeypatch):

@@ -1104,7 +1104,7 @@ class CrawlAdapter(BankAdapter):
                     # как раздел — продукт не создавался.
                     is_issue = family == "Инвестиции" and bool(securities.issue_kind(url))
                     is_listing = not is_issue and (
-                        url in seed_set or (url not in first_set and len(deeper) >= 3))
+                        url.split("?", 1)[0] in seed_set or (url not in first_set and len(deeper) >= 3))
 
                     if is_listing:
                         # С витрины берём пары «название — ставка»: пригодятся

@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 import re
+from urllib.parse import parse_qs, urlencode, urlsplit
 
 from .base import registry
 from .crawl_adapter import CrawlAdapter
@@ -293,6 +294,32 @@ class TbankAdapter(CrawlAdapter):
     verified = True
 
     base_url = "https://www.tbank.ru"
+    catalogue_pages = {
+        "/invest/stocks": (12, {"orderType": "Desc", "sortType": "ByPopularity"}),
+        "/invest/bonds": (30, {"country": "All", "orderType": "Desc",
+                               "sortType": "ByRateAndYieldToClient"}),
+    }
+
+    def _normalize(self, url: str) -> str:
+        canonical = super()._normalize(url)
+        path = canonical.removeprefix(self.base_url)
+        if path not in self.catalogue_pages:
+            return canonical
+
+        root = canonical + "/"
+        size, filters = self.catalogue_pages[path]
+        query = parse_qs(urlsplit(url).query)
+        if query.get("currencies") or query.get("tickers"):
+            return root
+        if any(query.get(key, [value]) != [value] for key, value in filters.items()):
+            return root
+        start, end = query.get("start", [""])[0], query.get("end", [""])[0]
+        if not all(re.fullmatch(r"[0-9]{1,8}", value) for value in (start, end)):
+            return root
+        first, last = int(start), int(end)
+        if not first or first % size or last - first != size:
+            return root
+        return root + "?" + urlencode({"start": first, "end": last, **filters})
     # Главные продукты — по обходу 07.10.2026; иначе лимит уходит на
     # рекламные копии карты Black («для студентов», «именная»…).
     priority = (
@@ -307,6 +334,8 @@ class TbankAdapter(CrawlAdapter):
     )
     seeds = (
         "https://www.tbank.ru/",
+        "https://www.tbank.ru/invest/stocks/",
+        "https://www.tbank.ru/invest/bonds/",
         "https://www.tbank.ru/cards/debit-cards/",
         "https://www.tbank.ru/cards/credit-cards/",
         "https://www.tbank.ru/loans/",
