@@ -828,6 +828,9 @@ def _securities_block(catalog: dict[str, list[Any]], catalogue_rows: list[Any] |
                 listing_link = '<span>данные карточки</span> · '
             if terms.get(securities.DOCUMENT_SCOPE):
                 listing_link = f'<span>{e(terms[securities.DOCUMENT_SCOPE])}</span> · '
+            isin_source = terms.get("Источник проверки ISIN")
+            if isin_source:
+                listing_link += f'<a href="{e(isin_source)}" target="_blank" rel="noopener">проверка ISIN</a> · '
             date = ""
             if product.collected_at:
                 label = "Дата документа" if terms.get(securities.DOCUMENT_SCOPE) else "Собрано"

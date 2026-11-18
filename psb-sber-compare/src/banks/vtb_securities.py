@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import re
 from datetime import datetime
+from html import unescape
 from pathlib import Path
 
 from ..psb.parser import Product
@@ -13,11 +14,16 @@ from ..securities import DOCUMENT_SCOPE, ISIN, KIND, valid_isin
 _BASE = "https://www.vtb.ru/media-files/vtb.ru/sitepages/personal/investicii/marzhinalnoe-kreditovanie/"
 PORTFOLIO_NAME = "vtb-portfolio-securities.xlsx"
 PLACEMENTS_NAME = "vtb-financed-placements.pdf"
+TARIFFS_NAME = "vtb-bond-tariffs.html"
 PORTFOLIO_SOURCE = _BASE + (
     "spisok_cennykh_bumag_dokhody_po_kotorym_mogut_byt_vklyucheny_v_sostav_portfeley_klientov_31072026.xlsx"
 )
 PLACEMENTS_SOURCE = _BASE + "spisok_bumag_po_zayzvkam_na_razmeheniyah__v_marzhu.pdf"
+TARIFFS_SOURCE = "https://www.vtb.ru/personal/investicii/tarify/"
 _SERVICE_PATH = "/personal/investicii/marzhinalnoe-kreditovanie/"
+_BOND_SECTION = re.compile(r"Список субординированных облигаций ВТБ\b.*?</h2>(.*?)<h2\b", re.S)
+_BOND_ROW = re.compile(r"(СУБ-Т[12]-\d+)\s+(?:ISIN:\s*)?(RU(?:\s*[A-Z0-9]){9,10})\b")
+_SUB_T1_8_ISSUE = "https://www.moex.com/ru/listing/securities-cards.aspx?code=RU000A103S89"
 log = logging.getLogger(__name__)
 
 
@@ -90,6 +96,40 @@ def placement_products(path: Path, identities: dict[str, Product]) -> list[Produ
         return []
 
 
+def tariff_bonds(path: Path) -> list[Product]:
+    if not path.is_file():
+        return []
+    try:
+        page = path.read_text(encoding="utf-8")
+        section = _BOND_SECTION.search(page)
+        if not section:
+            raise ValueError("Раздел субординированных облигаций отсутствует")
+        body = unescape(re.sub(r"<[^>]+>", " ", section[1]))
+        products = []
+        for title, code in _BOND_ROW.findall(body):
+            code = "".join(code.split())
+            readback = ""
+            if (title, code) == ("СУБ-Т1-8", "RU000A103S8"):
+                code = "RU000A103S89"
+                readback = _SUB_T1_8_ISSUE
+            if not valid_isin(code):
+                raise ValueError(f"Некорректный ISIN в строке {title}")
+            product = _product(
+                code, title, TARIFFS_SOURCE, "Перечень субординированных облигаций в тарифах ВТБ",
+                "Облигация",
+            )
+            if readback:
+                product.terms["Источник проверки ISIN"] = readback
+                product.terms["Квалификация инвестора"] = "Для квалифицированных инвесторов"
+            products.append(product)
+        if not products or len({p.terms[ISIN] for p in products}) != len(products):
+            raise ValueError("Не удалось выделить уникальные выпуски")
+        return products
+    except (OSError, ValueError) as error:
+        log.warning("Не прочитан перечень облигаций ВТБ %s: %s", path, error)
+        return []
+
+
 def load(directory: Path, securities) -> list[Product]:
     kinds: dict[str, set[str]] = {}
     identities = {}
@@ -100,5 +140,8 @@ def load(directory: Path, securities) -> list[Product]:
             identities.setdefault(code, product)
             kinds.setdefault(code, set()).add(kind)
     identities = {code: product for code, product in identities.items() if len(kinds[code]) == 1}
-    return (portfolio_products(directory / PORTFOLIO_NAME, identities)
-            + placement_products(directory / PLACEMENTS_NAME, identities))
+    portfolio = portfolio_products(directory / PORTFOLIO_NAME, identities)
+    for product in portfolio:
+        identities.setdefault(product.terms[ISIN], product)
+    return (portfolio + placement_products(directory / PLACEMENTS_NAME, identities)
+            + tariff_bonds(directory / TARIFFS_NAME))

@@ -516,9 +516,9 @@ def full_snapshot_archive() -> Path | None:
     if office_evidence.is_file():
         files.append((office_evidence.parent, office_evidence))
     from src.psb.liquid_securities import FILE_NAME
-    from src.banks.vtb_securities import PLACEMENTS_NAME, PORTFOLIO_NAME
+    from src.banks.vtb_securities import PLACEMENTS_NAME, PORTFOLIO_NAME, TARIFFS_NAME
 
-    for filename in (FILE_NAME, PORTFOLIO_NAME, PLACEMENTS_NAME):
+    for filename in (FILE_NAME, PORTFOLIO_NAME, PLACEMENTS_NAME, TARIFFS_NAME):
         document = ROOT / "data" / filename
         if document.is_file():
             files.append((document.parent, document))
