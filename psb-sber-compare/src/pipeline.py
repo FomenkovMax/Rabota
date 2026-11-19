@@ -14,10 +14,10 @@ import yaml
 from .banks import registry
 from .banks.base import region_binding
 from .banks.from_file import FileAdapter
-from . import availability, charts, coverage, keyrate, market, securities
+from . import availability, charts, coverage, current_offers, keyrate, market, securities
 from .changes import detect_changes, format_digest
 from .compare import Thresholds, from_matrix, summarize
-from .promos import EXPIRED, classify_all, compare_segments
+from .promos import classify_all, compare_segments
 from .report import render_report
 from .storage import Storage, product_key
 
@@ -368,7 +368,8 @@ def mark_not_in_region(config: Config, products: list[Any]) -> None:
             product.terms[market.REGION_KEY] = note
 
 
-def load_report_data(config: Config, *, competitor: str = "") -> dict[str, Any] | None:
+def load_report_data(config: Config, *, competitor: str = "",
+                     now: datetime | None = None) -> dict[str, Any] | None:
     """Собирает всё нужное для отчёта из последнего успешного сбора.
 
     `competitor` ограничивает сравнение одним банком — так работают кнопки
@@ -437,16 +438,15 @@ def load_report_data(config: Config, *, competitor: str = "") -> dict[str, Any] 
             competitor_codes = [competitor]
 
         competitor_titles = [titles.get(c, c) for c in competitor_codes]
+        banks = [home_title] + competitor_titles
+        now = (now or datetime.now(current_offers.MOSCOW)).astimezone(current_offers.MOSCOW)
         promo_rows = storage.promos_of_run(run_id)
         promos_home = classify_all(
-            [r for r in promo_rows if r["bank"] == home_title], home_title)
+            [r for r in promo_rows if r["bank"] == home_title], home_title, today=now.date())
         promos_rival = []
         for title in competitor_titles:
             promos_rival.extend(classify_all(
-                [r for r in promo_rows if r["bank"] == title], title))
-
-        active_rival = [p for p in promos_rival if p.status != EXPIRED]
-        active_home = [p for p in promos_home if p.status != EXPIRED]
+                [r for r in promo_rows if r["bank"] == title], title, today=now.date()))
 
         changes = [dict(row) for row in storage.changes_of_run(run_id)
                    if not securities.outside_retail_scope(row["product_key"] or "")]
@@ -502,9 +502,26 @@ def load_report_data(config: Config, *, competitor: str = "") -> dict[str, Any] 
                 log.warning("Не прочитан список инвестиционных офисов ВТБ: %s", office_evidence)
         lnr_status = availability.statuses(scope, region_methods=region_methods,
                                            presence=presence)
-        available_ids = {key for key, status in lnr_status.items()
-                         if status.code == availability.LNR}
-        regional_scope = [p for p in scope if id(p) in available_ids]
+        ranking_hours = int(config.get("freshness", "ranking_hours", default=72))
+        promo_hours = int(config.get("freshness", "promo_hours", default=24))
+        imported_banks = {titles.get(c, c) for c in [HOME_BANK] + competitor_codes
+                          if config.bank_settings(c).get("source")}
+        candidates = [p for p in scope if p.bank not in imported_banks]
+        regional_scope = [p for p in candidates if current_offers.current_product(
+            p, lnr_status.get(id(p)), "lnr", now, ranking_hours)]
+        available_ids = {id(p) for p in regional_scope}
+        regional_offers = {}
+        for region_code in current_offers.REGIONS:
+            regional_offers[region_code] = {
+                "rankings": current_offers.rankings(
+                    candidates, lnr_status, banks, region=region_code, now=now,
+                    hours=ranking_hours, key_rate=key_rate, region_methods=region_methods),
+                "promos": [p for p in promos_home + promos_rival if current_offers.active_promo(
+                    p, region=region_code, now=now, hours=promo_hours)],
+            }
+        active_lnr = regional_offers["lnr"]["promos"]
+        active_home = [p for p in active_lnr if p.bank == home_title]
+        active_rival = [p for p in active_lnr if p.bank != home_title]
 
         # Витрина в блоке акций — только ставки, прошедшие проверки: иначе
         # «Платинум 5 %» (ставка льготного периода) выигрывал бы сегмент.
@@ -551,7 +568,7 @@ def load_report_data(config: Config, *, competitor: str = "") -> dict[str, Any] 
             promo_segments=segments, expired_promos=[],
             promo_active_total=len(active_rival) + len(active_home),
             history=history, region=region,
-            generated_at=datetime.now().strftime("%d.%m.%Y %H:%M") + " МСК",
+            generated_at=now.strftime("%d.%m.%Y %H:%M") + " МСК",
             run_count=len(storage.run_summary(limit=400)),
             psb_total=len(rival_products), sber_total=len(sber_products),
             thresholds=thresholds,
@@ -564,6 +581,7 @@ def load_report_data(config: Config, *, competitor: str = "") -> dict[str, Any] 
             calculator=calc_offers, lnr_rows=lnr_rows, lnr_total=lnr_total,
             lnr_status=lnr_status, presence=presence, crawl=crawl,
             references=references,
+            regional_offers=regional_offers,
         )
 
         return {
@@ -579,6 +597,7 @@ def load_report_data(config: Config, *, competitor: str = "") -> dict[str, Any] 
             "history": history,
             "html": html,
             "specials": special_rows,
+            "regional_offers": regional_offers,
             "coverage": coverage_matrix,
             "unverified": unverified,
             "no_region": no_region,
@@ -628,6 +647,7 @@ def run(config: Config) -> dict[str, Any]:
                 if previous_ok is not None:
                     rows = storage.products_of_run(previous_ok, bank=result.bank)
                     storage.copy_products(run_id, [row["id"] for row in rows])
+                    storage.copy_bank_promos(previous_ok, run_id, result.bank)
                     old_coverage = storage.coverage_of_run(previous_ok).get(result.bank, {})
                 storage.save_coverage(run_id, result.bank, {
                     **old_coverage, CRAWL_ERROR_KEY: result.summary,

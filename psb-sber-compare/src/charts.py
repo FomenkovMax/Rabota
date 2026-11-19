@@ -697,7 +697,7 @@ function draw() {
     info.push(`<a href="${esc(o.url)}" target="_blank" rel="noopener">${esc(o.title)} — страница банка ↗</a>`);
     const bc = D.codes[o.bank] || 'other';
     return `<tr class="cr${o.bank === D.home ? ' own' : ''}${o.warn.length ? ' nofit' : ''}" data-i="${i}" style="--bc:var(--b-${bc})">
-      <td><span class="arr">▸</span> <span class="bn"><i class="bl bl-${bc}"></i><b>${esc(o.bank)}</b></span>${o === best && fit.length > 1 ? ' <span class="star" title="лучший вариант">★</span>' : ''}${o.warn.length ? ' <span class="warn" title="' + esc(o.warn.join('; ')) + '">⚠</span>' : ''}<div class="ct">${esc(o.title)}</div></td>
+      <td><span class="arr">▸</span> <span class="bn"><i class="bl bl-${bc}"></i><b>${esc(o.bank)}</b></span>${o.warn.length ? ' <span class="warn" title="' + esc(o.warn.join('; ')) + '">⚠</span>' : ''}<div class="ct">${esc(o.title)}</div></td>
       <td class="num">${pc(o.rate)}</td>${cells}<td class="num">${vs}</td></tr>
       <tr class="cd" id="cd${i}" hidden><td colspan="${cols}">${info.join('')}</td></tr>`;
   }).join('');

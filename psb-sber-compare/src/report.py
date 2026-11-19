@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Any
 
 from . import brand, conditions
-from . import charts
+from . import charts, current_offers
 from .compare import GREEN, GREY, LIGHT_LABEL, RED, YELLOW, Comparison
 
 LIGHT_ICON = {GREEN: "▲", YELLOW: "■", RED: "▼", GREY: "—"}
@@ -395,9 +395,9 @@ def _calculator_section(offers: list[dict[str, Any]], home: str) -> str:
     block = charts.calculator_block(offers, home=home)
     if not block:
         return ""
-    return ('<section class="card"><h2>Калькулятор: сколько это стоит в каждом банке</h2>'
+    return ('<section class="card"><h2>Ориентировочный калькулятор · ЛНР</h2>'
             '<p class="hint">Выберите продукт и подвиньте сумму и срок — платёж, переплата '
-            'или доход посчитаются по лучшей базовой проверенной ставке каждого банка. '
+            'или доход посчитаются по витринным ставкам из свежих источников. '
             'Плюсы и минусы — из условий продукта: пределы суммы и срока, ПСК, ставки '
             f"на особых условиях того же банка.</p>{block}</section>")
 
@@ -1129,6 +1129,48 @@ def _specials_block(rows: list[Any]) -> str:
         "</tr></thead><tbody>" + "".join(body) + "</tbody></table></div>")
 
 
+def _current_offers_block(regional_offers: dict) -> str:
+    sections = []
+    for region, data in regional_offers.items():
+        label = current_offers.REGIONS[region]
+        parts = [f'<section class="card"><h2>Актуальные предложения · {e(label)}</h2>']
+        for category, ranking in data["rankings"].items():
+            heading = ("Лучшие предложения" if ranking["checked"] == ranking["total"]
+                       else "Лучшие среди проверенных")
+            parts.append(f'<h3>{heading} · {e(category)}</h3><p>'
+                         f'{e(f"{current_offers.AMOUNT:,}".replace(",", " "))} ₽ · '
+                         f'{ranking["months"]} мес. · Банков с сопоставимыми условиями '
+                         f'{ranking["checked"]} из {ranking["total"]}</p>')
+            if ranking["leaders"]:
+                parts.append("<ol>")
+                for leader in ranking["leaders"]:
+                    metric = (f"Доход {leader.value:,.2f} ₽".replace(",", " ").replace(".", ",")
+                              if category == "Вклады" else f"ПСК {fmt_rate(leader.value)}")
+                    parts.append(f'<li>{e(leader.bank)} · <a href="{e(leader.url)}">{e(leader.title)}</a>'
+                                 f' · {e(metric)} · Проверено {e(leader.checked_at)}. '
+                                 f'<a href="{e(leader.region_source)}">{e(leader.region_reason)}</a></li>')
+                parts.append("</ol>")
+            else:
+                parts.append("<p>Подтверждённых сопоставимых предложений пока нет.</p>")
+            if ranking["excluded_banks"]:
+                parts.append("<details><summary>Почему остальные банки вне рейтинга</summary><ul>")
+                parts.extend(f"<li>{e(bank)} — {e(reason)}</li>"
+                             for bank, reason in ranking["excluded_banks"].items())
+                parts.append("</ul></details>")
+        parts.append("<h3>Действующие акции</h3>")
+        if data["promos"]:
+            parts.append("<ul>")
+            parts.extend(f'<li>{e(promo.bank)} · <a href="{e(promo.source_url)}">{e(promo.title)}</a>'
+                         f' · {e(promo.valid_display if promo.valid_until else "До отмены")} '
+                         f'· Проверено {e(promo.checked_at)}<br>{e(promo.text)}</li>'
+                         for promo in data["promos"])
+            parts.append("</ul>")
+        else:
+            parts.append("<p>Действующих акций с подтверждёнными условиями пока нет.</p>")
+        sections.append("".join(parts) + "</section>")
+    return "".join(sections)
+
+
 def render_report(
     *,
     comparisons: list[Comparison],
@@ -1154,6 +1196,7 @@ def render_report(
     specials: list[Any] | None = None,
     coverage_matrix: dict[str, dict[str, Any]] | None = None,
     calculator: list[dict[str, Any]] | None = None,
+    regional_offers: dict | None = None,
     lnr_rows: list[Any] | None = None,
     lnr_total: dict[str, int] | None = None,
     lnr_status: dict[int, Any] | None = None,
@@ -1203,6 +1246,8 @@ def render_report(
                                for b in (catalog_banks or list((catalog or {}).keys())))}</div>
 </header>
 
+{_current_offers_block(regional_offers or {})}
+
 {_overview(gaps=gaps or [], home=home, comparisons=comparisons, specials=specials or [],
            quality_rows=quality_rows or [], changes=changes,
            banks=catalog_banks or list((catalog or {}).keys()), lnr_total=lnr_total)}
@@ -1212,7 +1257,7 @@ def render_report(
 {_calculator_section(calculator or [], home)}
 
 <section class="card">
-  <h2>Место Сбера на рынке</h2>
+  <h2>Позиция Сбера по витринным ставкам · ЛНР</h2>
   <p class="hint">Все банки сразу, без ручных пар. Продукты разложены по программам:
   семейная ипотека сравнивается с семейной, рыночная — с рыночной. По каждой программе
   у банка берётся лучшая витринная ставка: «до» для вкладов и счетов, «от» для кредитов.
@@ -1228,7 +1273,7 @@ def render_report(
 </section>
 
 <section class="card">
-  <h2>Специальные условия и нишевые предложения</h2>
+  <h2>Специальные условия и нишевые предложения · ЛНР</h2>
   <p class="hint">Ставки, которые доступны не всем или не на весь срок: приветственные
   и для новых клиентов, на «новые деньги», для премиальных и зарплатных клиентов,
   с подпиской или платной услугой, вклады до месяца, нишевые продукты (ПДС,
@@ -1294,7 +1339,7 @@ def render_report(
 {history_section}
 
 <section class="card">
-  <h2>Акции: сравнительный анализ по сегментам</h2>
+  <h2>Акции по сегментам · ЛНР</h2>
   <p class="hint">Только действующие предложения — завершившиеся отсеяны.
   Внутри сегмента сравнивается однотипная выгода: кешбэк с кешбэком, ставка со ставкой.
   Если размеченных акций у банка нет, вывод строится по условиям его продуктов —

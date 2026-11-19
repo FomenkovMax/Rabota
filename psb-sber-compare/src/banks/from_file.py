@@ -60,6 +60,7 @@ class FileAdapter(BankAdapter):
         # Загрузчик писал в поле банка «Сбер» — проставляем настоящий банк.
         for product in products:
             product.bank = self.title
+            product.terms["Импорт из файла"] = self.source.name
 
         log.info("%s: из файла %s прочитано продуктов %s, акций %s",
                  self.title, self.source.name, len(products), len(promos))
