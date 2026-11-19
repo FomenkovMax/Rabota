@@ -1139,13 +1139,13 @@ def _current_offers_block(regional_offers: dict) -> str:
                        else "Лучшие среди проверенных")
             parts.append(f'<h3>{heading} · {e(category)}</h3><p>'
                          f'{e(f"{current_offers.AMOUNT:,}".replace(",", " "))} ₽ · '
-                         f'{ranking["months"]} мес. · Банков с сопоставимыми условиями '
+                         f'{e(ranking["term"])} · Банков с сопоставимыми условиями '
                          f'{ranking["checked"]} из {ranking["total"]}</p>')
             if ranking["leaders"]:
                 parts.append("<ol>")
                 for leader in ranking["leaders"]:
-                    metric = (f"Доход {leader.value:,.2f} ₽".replace(",", " ").replace(".", ",")
-                              if category == "Вклады" else f"ПСК {fmt_rate(leader.value)}")
+                    metric = (f"Доход {leader.value:,.2f} ₽ до налога".replace(",", " ").replace(".", ",")
+                              if ranking["deposit"] else f"ПСК {fmt_rate(leader.value)}")
                     parts.append(f'<li>{e(leader.bank)} · <a href="{e(leader.url)}">{e(leader.title)}</a>'
                                  f' · {e(metric)} · Проверено {e(leader.checked_at)}. '
                                  f'<a href="{e(leader.region_source)}">{e(leader.region_reason)}</a></li>')
@@ -1162,7 +1162,9 @@ def _current_offers_block(regional_offers: dict) -> str:
             parts.append("<ul>")
             parts.extend(f'<li>{e(promo.bank)} · <a href="{e(promo.source_url)}">{e(promo.title)}</a>'
                          f' · {e(promo.valid_display if promo.valid_until else "До отмены")} '
-                         f'· Проверено {e(promo.checked_at)}<br>{e(promo.text)}</li>'
+                         f'· Проверено {e(promo.checked_at)}<br>{e(promo.text)}'
+                         + (f' · <a href="{e(promo.regional_source)}">География</a>'
+                            if promo.regional_source else "") + "</li>"
                          for promo in data["promos"])
             parts.append("</ul>")
         else:

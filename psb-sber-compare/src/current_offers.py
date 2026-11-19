@@ -1,5 +1,6 @@
 """Eligibility for current offers based on observations from the source."""
 from dataclasses import dataclass
+from calendar import isleap
 from datetime import date, datetime, timedelta, timezone
 import re
 from urllib.parse import urlsplit
@@ -100,9 +101,30 @@ def _scenario_metric(product, months: int) -> float | None:
     return None
 
 
+def _fixed_days(product, days: int, today: date) -> float | None:
+    terms = product.terms
+    rate = product.rate_min
+    if (product.amount_min != AMOUNT or product.amount_max != AMOUNT
+            or terms.get("Точный срок, дней") != str(days)
+            or terms.get("База начисления процентов") != "Факт/факт"
+            or terms.get("Валюта") != "Рубли"
+            or terms.get("Выплата процентов") != "В конце срока"
+            or rate is None or rate != product.rate_max or not 0 < rate < 100
+            or not conditions.is_comparable(product)):
+        return None
+    fraction = sum(1 / (366 if isleap(day.year) else 365)
+                   for day in (today + timedelta(days=offset) for offset in range(1, days + 1)))
+    return round(AMOUNT * rate * fraction / 100, 2)
+
+
 def rankings(products, statuses, banks, *, region, now, hours, key_rate, region_methods):
     result = {}
-    for category, months in SCENARIOS.items():
+    days_options = sorted({int(p.terms["Точный срок, дней"]) for p in products
+                           if p.category == "Вклады" and p.terms.get("Точный срок, дней", "").isdigit()
+                           and 1 <= int(p.terms["Точный срок, дней"]) <= 1096})
+    scenarios = [(category, category, months, 0) for category, months in SCENARIOS.items()]
+    scenarios.extend((f"Вклады на {days} дней", "Вклады", 0, days) for days in days_options)
+    for heading, category, months, days in scenarios:
         offers, reasons = {}, dict.fromkeys(banks, "Нет карточки по этому сценарию")
         for product in products:
             if product.category != category or product.bank not in banks:
@@ -114,7 +136,8 @@ def rankings(products, statuses, banks, *, region, now, hours, key_rate, region_
                     if reasons[bank] == "Нет карточки по этому сценарию":
                         reasons[bank] = "Нет свежих условий с подтверждением региона"
                 continue
-            metric = _scenario_metric(product, months)
+            metric = (_fixed_days(product, days, now.date()) if days
+                      else _scenario_metric(product, months))
             check = market.assess(product, key_rate=key_rate,
                                   region_method=market.method_of(product, region_methods))
             if metric is None or check.confidence == market.LOW:
@@ -127,8 +150,10 @@ def rankings(products, statuses, banks, *, region, now, hours, key_rate, region_
                                       else metric < offers[bank].value):
                 offers[bank] = candidate
             reasons.pop(bank, None)
-        result[category] = {
+        result[heading] = {
             "months": months, "checked": len(offers), "total": len(banks),
+            "term": f"{days} дней" if days else f"{months} мес.",
+            "deposit": category == "Вклады",
             "leaders": sorted(offers.values(), key=lambda x: (
                 -x.value if category == "Вклады" else x.value, x.bank, x.title))[:3],
             "excluded_banks": reasons,

@@ -138,8 +138,8 @@ def _sheet_regional_offers(book: Workbook, data: dict[str, Any]) -> None:
     for region, offers in data["regional_offers"].items():
         label = REGIONS[region]
         for category, ranking in offers["rankings"].items():
-            metric = "Доход, ₽" if category == "Вклады" else "ПСК, %"
-            coverage = (f"{AMOUNT} ₽, {ranking['months']} мес. · {metric} · "
+            metric = "Доход до налога, ₽" if ranking["deposit"] else "ПСК, %"
+            coverage = (f"{AMOUNT} ₽, {ranking['term']} · {metric} · "
                         f"Банков с сопоставимыми условиями {ranking['checked']} из {ranking['total']}")
             sheet.append([label, category, "", "", "", "", "", coverage])
             for leader in ranking["leaders"]:
@@ -149,8 +149,9 @@ def _sheet_regional_offers(book: Workbook, data: dict[str, Any]) -> None:
                 sheet.append([label, category, bank, "", "", "", "", reason])
         for promo in offers["promos"]:
             period = promo.valid_display if promo.valid_until else "До отмены"
+            evidence = f"{promo.text}\nГеография: {promo.regional_source}" if promo.regional_source else promo.text
             sheet.append([label, "Акции", promo.bank, promo.title, period,
-                          promo.checked_at, promo.source_url, promo.text])
+                          promo.checked_at, promo.source_url, evidence])
     _finish(sheet, 8)
 
 

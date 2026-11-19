@@ -411,6 +411,7 @@ class PromoInsight:
     benefit_unit: str = ""
     source_url: str = ""
     checked_at: str = ""
+    regional_source: str = ""
 
     @property
     def status_label(self) -> str:

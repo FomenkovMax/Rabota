@@ -14,7 +14,7 @@ import yaml
 from .banks import registry
 from .banks.base import region_binding
 from .banks.from_file import FileAdapter
-from . import availability, charts, coverage, current_offers, keyrate, market, securities
+from . import availability, charts, coverage, current_offers, keyrate, market, reviewed_offers, securities
 from .changes import detect_changes, format_digest
 from .compare import Thresholds, from_matrix, summarize
 from .promos import classify_all, compare_segments
@@ -387,6 +387,11 @@ def load_report_data(config: Config, *, competitor: str = "",
 
         titles = registry.titles()
         home_title = titles.get(HOME_BANK, "Сбер")
+        now = (now or datetime.now(current_offers.MOSCOW)).astimezone(current_offers.MOSCOW)
+        reviewed_products, reviewed_statuses, reviewed_promos = [], {}, []
+        if config.get("reviewed_offers"):
+            reviewed_products, reviewed_statuses, reviewed_promos = reviewed_offers.load(
+                config.path("reviewed_offers"), {titles.get(c, c) for c in config.enabled_banks()}, now.date())
 
         # SEO-страницы отсеиваем и здесь: в базе они остались от прошлых
         # сборов, а пересобирать ради этого все банки незачем.
@@ -396,6 +401,7 @@ def load_report_data(config: Config, *, competitor: str = "",
         all_products = [p for p in _rows_to_products(storage.products_of_run(run_id))
                         if not is_seo_page(p.source_url) and is_product_title(p.title)
                         and not securities.excluded_product(p.source_url or "", p.terms)]
+        all_products.extend(reviewed_products)
         if "tbank" in config.enabled_banks():
             from .availability import TBANK_MFC_CARD_URL
             from .banks.others import tbank_mfc_card_from_evidence
@@ -439,7 +445,6 @@ def load_report_data(config: Config, *, competitor: str = "",
 
         competitor_titles = [titles.get(c, c) for c in competitor_codes]
         banks = [home_title] + competitor_titles
-        now = (now or datetime.now(current_offers.MOSCOW)).astimezone(current_offers.MOSCOW)
         promo_rows = storage.promos_of_run(run_id)
         promos_home = classify_all(
             [r for r in promo_rows if r["bank"] == home_title], home_title, today=now.date())
@@ -502,22 +507,33 @@ def load_report_data(config: Config, *, competitor: str = "",
                 log.warning("Не прочитан список инвестиционных офисов ВТБ: %s", office_evidence)
         lnr_status = availability.statuses(scope, region_methods=region_methods,
                                            presence=presence)
+        lnr_status.update({id(p): reviewed_statuses[id(p)] for p in scope
+                           if id(p) in reviewed_statuses and not p.terms.get(market.REGION_KEY)})
         ranking_hours = int(config.get("freshness", "ranking_hours", default=72))
         promo_hours = int(config.get("freshness", "promo_hours", default=24))
         imported_banks = {titles.get(c, c) for c in [HOME_BANK] + competitor_codes
                           if config.bank_settings(c).get("source")}
         candidates = [p for p in scope if p.bank not in imported_banks]
-        regional_scope = [p for p in candidates if current_offers.current_product(
-            p, lnr_status.get(id(p)), "lnr", now, ranking_hours)]
+        regional_scope = [p for p in candidates if not p.terms.get("Точный срок, дней")
+                          and current_offers.current_product(
+                              p, lnr_status.get(id(p)), "lnr", now, ranking_hours)]
         available_ids = {id(p) for p in regional_scope}
+        promo_candidates = promos_home + promos_rival + [p for p in reviewed_promos if p.bank in banks]
         regional_offers = {}
         for region_code in current_offers.REGIONS:
+            current_promos = {}
+            for promo in promo_candidates:
+                if not current_offers.active_promo(promo, region=region_code, now=now, hours=promo_hours):
+                    continue
+                promo_key = (promo.bank, promo.title)
+                previous = current_promos.get(promo_key)
+                if previous is None or promo.checked_at >= previous.checked_at:
+                    current_promos[promo_key] = promo
             regional_offers[region_code] = {
                 "rankings": current_offers.rankings(
                     candidates, lnr_status, banks, region=region_code, now=now,
                     hours=ranking_hours, key_rate=key_rate, region_methods=region_methods),
-                "promos": [p for p in promos_home + promos_rival if current_offers.active_promo(
-                    p, region=region_code, now=now, hours=promo_hours)],
+                "promos": list(current_promos.values()),
             }
         active_lnr = regional_offers["lnr"]["promos"]
         active_home = [p for p in active_lnr if p.bank == home_title]
