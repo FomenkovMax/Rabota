@@ -20,7 +20,7 @@ def _p(bank, title, rate=10.0, category="Кредиты", terms=None, method="")
 
 @pytest.mark.parametrize("method, presence, terms, code", [
     ("selector", "", {}, av.LNR),
-    ("local", "https://cmr/offices", {}, av.LNR),
+    ("local", "https://cmr/offices", {}, av.UNKNOWN),
     ("federal", "https://bankprofi.ru/...", {}, av.FEDERAL),
     ("federal", "", {}, av.UNKNOWN),
     ("not_confirmed", "x", {}, av.UNKNOWN),
@@ -224,3 +224,193 @@ def test_new_money_and_welcome_are_same_kind():
     got = from_matrix(av.matrix(items, home="Сбер", banks=["Сбер", "ВТБ"], status=st), Thresholds())
     assert len(got) == 1
     assert not any("Тип ставки" in n for n in got[0].notes)
+
+
+@pytest.mark.parametrize("text", [
+    "Кредит не предоставляется в ДНР.",
+    "Программа недоступна в Донецке.",
+    "Оформление невозможно, кроме жителей Херсонской области.",
+])
+def test_other_region_restriction_does_not_mean_lnr_restriction(text):
+    assert av.find_clause(text) == ""
+
+
+@pytest.mark.parametrize("code", [av.ABSENT, av.UNKNOWN, av.FEDERAL])
+@pytest.mark.parametrize("side", ["own", "rival"])
+def test_unconfirmed_or_absent_products_do_not_enter_lnr_traffic_light(code, side):
+    from src.compare import Thresholds, from_matrix
+    own = _p("Сбер", "Кредит наличными", 18)
+    rival = _p("ВТБ", "Кредит наличными", 20)
+    items = [own, rival]
+    status = {id(p): av.Status(av.LNR, "ЛНР") for p in items}
+    status[id(own if side == "own" else rival)] = av.Status(code, "проверка")
+    rows = av.matrix(items, home="Сбер", banks=["Сбер", "ВТБ"], status=status)
+    assert from_matrix(rows, Thresholds()) == []
+
+
+def test_city_evidence_requires_exact_city_and_product_calculation():
+    assert av.Status(av.LNR, "калькулятор на сайте банка: ЛНР, Луганск — ставка 18%").city_confirmed
+    assert not av.Status(av.LNR, "условия получены с выбранным регионом ЛНР").city_confirmed
+    assert not av.Status(av.LNR, "калькулятор на сайте банка: Луганская Народная Республика — 18%").city_confirmed
+    assert not av.Status(av.FEDERAL, "банк имеет офис в Луганске").city_confirmed
+
+
+def test_selected_city_is_preserved_as_product_evidence():
+    product = _p("ПСБ", "Вклад", terms={"Город выбран на сайте банка": "Луганск"})
+    selected = av.status_of(product, region_method="selector")
+    assert selected.city_selected and not selected.city_confirmed
+    assert not av.status_of(product, region_method="federal", presence="офис").city_confirmed
+
+
+def test_service_percentage_is_not_ranked_as_loan_interest():
+    from src.compare import Thresholds, from_matrix
+    items = [_p("Сбер", "Страхование квартиры", 1, category="Страхование"),
+             _p("ВТБ", "Страхование квартиры", 2, category="Страхование")]
+    status = {id(p): av.Status(av.LNR, "условия ЛНР") for p in items}
+    rows = av.matrix(items, home="Сбер", banks=["Сбер", "ВТБ"], status=status)
+    assert from_matrix(rows, Thresholds()) == []
+def test_safe_deposit_city_requires_service_specific_office_list():
+    from src import availability
+    from src.psb.parser import Product
+    p = Product(bank="Генбанк", title="Сейфовые ячейки", category="Сейфовые ячейки",
+                source_url="https://www.genbank.ru/chastnym-litsam/seyfovye-yacheyki/")
+    office = 'ДО «Луганск», адрес 291011, Луганская Народная Республика, г. Луганск, ул. Советская, д. 86А'
+    availability.remember_service_city(p, 'Отделения банка\n' + office)
+    assert availability.status_of(p, region_method="not_confirmed").code == availability.UNKNOWN
+    availability.remember_service_city(p, 'Перечень ВСП, в которых предоставляется услуга:\nДО «Москва»\nМобильный банк\n' + office)
+    assert availability.status_of(p, region_method="not_confirmed").code == availability.UNKNOWN
+    availability.remember_service_city(p, 'Перечень ВСП, в которых предоставляется услуга:\n' + office + '\nЗаявка на аренду сейфовой ячейки')
+    status = availability.status_of(p, region_method="not_confirmed")
+    assert status.code == availability.LNR and status.city_confirmed
+    p.terms[availability.SERVICE_SOURCE_KEY] = "https://www.genbank.ru/about/"
+    assert availability.status_of(p, region_method="not_confirmed").code == availability.UNKNOWN
+
+
+def test_vtb_auto_loan_requires_lugansk_in_registration_list():
+    from src.banks.crawl_adapter import product_from_page
+
+    url = "https://www.vtb.ru/personal/avtokredity/bez-podtverzhdeniya-dohoda"
+    eligibility = ("Вы можете получить кредит на автомобиль, если вы имеете "
+                   "постоянную или временную регистрацию в следующих городах.")
+    kwargs = dict(bank="ВТБ", url=url, category="Кредиты", region="", collected_at="")
+    title = "Автокредит без подтверждения дохода"
+    text = (title + "\n" + eligibility
+            + "\nНе нашли свой город в списке, оставьте заявку и узнайте решение банка через три минуты."
+            + "\nКаменск-Шахтинский\nЛуганск\nМосква")
+    product = product_from_page({"h1": title, "text": text}, **kwargs)
+    assert av.status_of(product, region_method="federal").city_confirmed
+
+    text = title + "\n" + eligibility + "\nМосква\nАдреса офисов.\nЛуганск"
+    product = product_from_page({"h1": title, "text": text}, **kwargs)
+    assert not av.status_of(product, region_method="federal").city_confirmed
+
+
+def test_rostfinance_city_evidence_comes_from_selected_header():
+    from src.banks.crawl_adapter import product_from_page
+
+    title = "Классический Рост"
+    kwargs = dict(bank="РостФинанс", url="https://www.rostfinance.ru/deposits/klassicheskiy-rost/",
+                  category="Вклады", region="", collected_at="")
+    page = {"h1": title, "text": "Контакты\n Луганск\nПомощь\n" + title}
+    product = product_from_page(page, **kwargs)
+    selected = av.status_of(product, region_method="selector")
+    assert selected.city_selected and not selected.city_confirmed
+    page["text"] = "Контакты\nМосква\nПомощь\n" + title + "\nОфис в Луганске"
+    product = product_from_page(page, **kwargs)
+    assert not av.status_of(product, region_method="selector").city_confirmed
+
+
+def test_lugansk_sources_apply_only_to_the_named_service():
+    from src import availability as av
+    from src.psb.parser import Product
+
+    pds = Product(bank="ПСБ", title="Программа долгосрочных сбережений",
+                  category="Долгосрочные сбережения", source_url=av.PSB_PDS_URL)
+    assert av.status_of(pds, region_method="selector").city_confirmed
+    atm = Product(bank="Сбер", title="Наличный обмен", category="Валютные операции",
+                  source_url=av.SBER_ATM_FX_URL)
+    status = av.status_of(atm, region_method="federal")
+    assert status.city_confirmed and "Оборонная, 26" in status.reason
+    atm.source_url = "https://www.sberbank.ru/ru/quotes/currencies"
+    assert not av.status_of(atm, region_method="federal").city_confirmed
+    vtb = Product(bank="ВТБ", title="Привилегия", category="Премиальное обслуживание",
+                  source_url=av.VTB_PRIVILEGE_URL + "/")
+    assert av.status_of(vtb, region_method="federal").city_confirmed
+    vtb.source_url += "premialnye-produkty/vtb-vklad-r"
+    assert not av.status_of(vtb, region_method="federal").city_confirmed
+
+
+def test_tbank_mfc_evidence_does_not_imply_named_card_delivery():
+    from src import availability as av
+    from src.banks.crawl_adapter import product_from_page
+
+    product = product_from_page({
+        "h1": "Открытие счета «Т-Банк»",
+        "text": "Открытие счета «Т-Банк»\nРезультат предоставления услуги: карта «Т-БАНК».",
+    }, bank="Т-Банк", category="Дебетовые карты", url=av.TBANK_MFC_CARD_URL,
+        region="Луганск", collected_at="")
+    assert product is not None
+    assert av.status_of(product, region_method="not_confirmed").city_confirmed
+    product.source_url = "https://www.tbank.ru/cards/debit-cards/tinkoff-black"
+    assert not av.status_of(product, region_method="not_confirmed").city_confirmed
+
+
+def test_saved_tbank_mfc_evidence_retains_its_verification_date():
+    from src.availability import TBANK_MFC_CARD_URL, status_of
+    from src.banks.others import tbank_mfc_card_from_evidence
+
+    product = tbank_mfc_card_from_evidence()
+    assert product is not None
+    assert product.source_url == TBANK_MFC_CARD_URL
+    assert product.collected_at == "2026-11-18"
+    assert status_of(product, region_method="not_confirmed").city_confirmed
+
+
+def test_rostfinance_exchange_confirms_office_from_the_exchange_table():
+    from src.banks.crawl_adapter import product_from_page
+
+    kwargs = dict(bank="РостФинанс", url=av.ROST_EXCHANGE_URL, category="Валютные операции",
+                  region="", collected_at="")
+    page = {"h1": "ВЫГОДНЫЙ ОБМЕН", "text": "ВЫГОДНЫЙ ОБМЕН\nКонтакты\nЛуганск\nПомощь"}
+    generic = product_from_page(page, **kwargs)
+    assert generic.title == "Выгодный обмен"
+    assert not av.status_of(generic, region_method="selector").city_confirmed
+
+    page["text"] += ("\nКурсы валют могут отличаться в офисах банка\nЛуганск\nГород\n"
+                     "ул. Демехина, 27 А\nОфис\nВалюта\nПродать\nКупить")
+    product = product_from_page(page, **kwargs)
+    assert av.status_of(product, region_method="selector").city_confirmed
+
+
+
+def test_rostfinance_safe_offer_does_not_inherit_region_of_the_header():
+    from src.banks.crawl_adapter import product_from_page
+
+    url = "https://www.rostfinance.ru/safe/"
+    product = product_from_page(
+        {"h1": "Сейфовые ячейки",
+         "text": "Контакты\nЛуганск\nПомощь\nСейфовые ячейки\nСрок аренды от 1 дня до года"},
+        bank="РостФинанс", url=url, category="Сейфовые ячейки", region="Луганск", collected_at="",
+    )
+    assert product.title == "Аренда сейфовой ячейки"
+    assert "Город выбран на сайте банка" not in product.terms
+    status = av.status_of(product, region_method="selector")
+    assert status.code == av.UNKNOWN and status.source == url
+
+
+def test_vtb_brokerage_office_registry_only_confirms_brokerage():
+    from src.psb.parser import Product
+
+    evidence = {"source": av.VTB_BROKER_OFFICES, "rows": [
+        {"sheet": "Действующие", "values": ["Луганск", "г. Луганск, ул. Фрунзе, 4А"]},
+        {"sheet": "Архив", "values": ["Луганск", "г. Луганск, ул. Тестовая, 1"]},
+    ]}
+    product = Product(bank="ВТБ", category="Инвестиции", source_url=av.VTB_BROKER_URL + "/")
+    av.remember_vtb_broker_offices(product, evidence)
+    status = av.status_of(product, region_method="federal")
+    assert status.city_confirmed and status.source == av.VTB_BROKER_OFFICES
+    assert "Фрунзе" in status.reason and "Тестовая" not in status.reason
+
+    other = Product(bank="ВТБ", category="Инвестиции", source_url=av.VTB_BROKER_URL + "/fund")
+    av.remember_vtb_broker_offices(other, evidence)
+    assert not av.status_of(other, region_method="federal").city_confirmed

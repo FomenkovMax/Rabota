@@ -20,15 +20,25 @@ from src.storage import Storage
     ("https://www.vtb.ru/personal/karty/kreditnye", "Кредитные карты"),
     ("https://www.vtb.ru/personal/kredit/pod-zalog-avto", "Потребительские кредиты"),
     ("https://www.vtb.ru/personal/investicii/", "Инвестиции"),
+    ("https://www.vtb.ru/personal/platezhi-i-perevody/obmen-valjuty/", "Валютные операции"),
+    ("https://www.vtb.ru/personal/platezhi-i-perevody/obmen-valjuty/dollar/", "Валютные операции"),
+    ("https://www.vtb.ru/personal/platezhi-i-perevody/perevody-v-iran/", "Переводы и платежи"),
     ("https://www.sberbank.ru/ru/person/bank_cards/credit", "Кредитные карты"),
     ("https://www.sberbank.ru/ru/person/credits/home/family", "Ипотека"),
     ("https://www.sberbank.ru/ru/person/investments", "Инвестиции"),
+    ("https://www.sberbank.ru/ru/person/additional/rent_of_safes", "Сейфовые ячейки"),
+    ("https://www.sberbank.ru/retail/ru/person/bank_inshure/insuranceprogram/injury", "Страхование"),
+    ("https://www.sberbank.ru/ru/person/new_sb1", "Премиальное обслуживание"),
     ("https://www.sberbank.ru/ru/person/contributions/deposits/vklady-dolgosrochnye", "Вклады"),
     ("https://www.tbank.ru/loans/auto-loan", "Автокредиты"),
     ("https://www.tbank.ru/insurance/mortgage", "Страхование"),
+    ("https://www.tbank.ru/pension/", "НПФ и ПДС"),
+    ("https://www.tbank.ru/tinkoff-premium/", "Премиальное обслуживание"),
     ("https://www.tbank.ru/payments/card-to-card", "Переводы и платежи"),
     ("https://www.psbank.ru/personal/pds/dolgosrochnyye-sbyeryezhyeniya", "НПФ и ПДС"),
     ("https://www.psbank.ru/personal/creditcards/100_plus", "Кредитные карты"),
+    ("https://www.psbank.ru/personal/saving/safes", "Сейфовые ячейки"),
+    ("https://www.psbank.ru/personal/rates", "Валютные операции"),
     ("https://cmrbank.ru/person/person-deposit/", "Вклады"),
     ("https://cmrbank.ru/person/obmen-valjuty/", "Валютные операции"),
     ("https://cmrbank.ru/person/payments-and-transfers/", "Переводы и платежи"),
@@ -81,3 +91,23 @@ def test_coverage_is_stored_and_carried_over(tmp_path):
     second = storage.start_run("ЛНР")
     storage.carry_over(first, second, except_bank="Сбер")
     assert storage.coverage_of_run(second) == {"ВТБ": {"Инвестиции": "https://vtb/invest"}}
+
+
+def test_coverage_separates_bank_catalogue_from_city_availability():
+    from src import availability
+    from src.psb.parser import Product
+    products = [Product(bank="Банк", title=str(i), category="Страхование") for i in range(3)]
+    status = {
+        id(products[0]): availability.Status(availability.LNR, "на сайте банка выбран город Луганск"),
+        id(products[1]): availability.Status(availability.LNR, "выбран регион ЛНР"),
+        id(products[2]): availability.Status(availability.FEDERAL, "общие условия"),
+    }
+    cell = coverage.matrix(["Банк"], products, {}, statuses=status)["Страхование"]["Банк"]
+    assert (cell.products, cell.lnr, cell.lugansk, cell.unresolved) == (3, 2, 0, 1)
+
+
+def test_nested_vtb_insurance_and_pds_keep_their_retail_categories():
+    assert coverage.classify("https://www.vtb.ru/privilegia/strahovye-produkty/nakopitelnoe-strakhovanie-zhizni/zabota-o-semje") == "Страхование"
+    assert coverage.classify("https://www.vtb.ru/personal/investicii/pds-detskiy") == "НПФ и ПДС"
+    assert coverage.classify("https://www.vtb.ru/personal/investicii/ops") == "НПФ и ПДС"
+    assert coverage.classify("https://www.vtb.ru/personal/vklady-i-scheta/invest-plus") == "Вклады"

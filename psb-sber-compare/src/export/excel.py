@@ -98,7 +98,7 @@ def _sheet_traffic(book: Workbook, data: dict[str, Any]) -> None:
 
 
 def _sheet_promos(book: Workbook, data: dict[str, Any]) -> None:
-    sheet = book.create_sheet("Акции")
+    sheet = book.create_sheet("Акции ЛНР" if "regional_offers" in data else "Акции")
     _write_header(
         sheet,
         ["Сегмент", "Вердикт", "Вывод", "Банк", "Предложение",
@@ -125,6 +125,38 @@ def _sheet_promos(book: Workbook, data: dict[str, Any]) -> None:
             for cell in sheet[sheet.max_row]:
                 cell.fill = fill
 
+    _finish(sheet, 8)
+
+
+def _sheet_regional_offers(book: Workbook, data: dict[str, Any]) -> None:
+    from ..current_offers import AMOUNT, REGIONS
+
+    sheet = book.create_sheet("Актуальные по регионам")
+    _write_header(sheet, ["Регион", "Категория", "Банк", "Предложение", "Показатель",
+                          "Проверено", "Источник", "Условия и охват"],
+                  [16, 20, 20, 45, 18, 23, 42, 75])
+    for region, offers in data["regional_offers"].items():
+        label = REGIONS[region]
+        for category, ranking in offers["rankings"].items():
+            metric = "Доход до налога, ₽" if ranking["deposit"] else "ПСК, %"
+            coverage = (f"{AMOUNT} ₽, {ranking['term']} · {metric} · "
+                        f"Банков с сопоставимыми условиями {ranking['checked']} из {ranking['total']}")
+            sheet.append([label, category, "", "", "", "", "", coverage])
+            for leader in ranking["leaders"]:
+                sheet.append([label, category, leader.bank, leader.title, leader.value,
+                              leader.checked_at, leader.url, leader.region_reason])
+            for product, status in ranking.get("ranges", ()):
+                evidence = (f'{product.terms["Публичный диапазон ПСК"]}\n'
+                            f'География: {status.reason}\n{status.source}')
+                sheet.append([label, "Кредиты · диапазон ПСК", product.bank, product.title, product.apr_raw,
+                              product.collected_at, product.source_url, evidence])
+            for bank, reason in ranking["excluded_banks"].items():
+                sheet.append([label, category, bank, "", "", "", "", reason])
+        for promo in offers["promos"]:
+            period = promo.valid_display if promo.valid_until else "До отмены"
+            evidence = f"{promo.text}\nГеография: {promo.regional_source}" if promo.regional_source else promo.text
+            sheet.append([label, "Акции", promo.bank, promo.title, period,
+                          promo.checked_at, promo.source_url, evidence])
     _finish(sheet, 8)
 
 
@@ -356,6 +388,8 @@ def build(path: str | Path, data: dict[str, Any]) -> Path:
     _sheet_specials(book, data)
     _sheet_coverage(book, data)
     _sheet_promos(book, data)
+    if "regional_offers" in data:
+        _sheet_regional_offers(book, data)
     _sheet_changes(book, data)
     _sheet_products(book, data)
 

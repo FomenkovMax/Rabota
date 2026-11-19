@@ -8,6 +8,56 @@ import src.banks.crawl_adapter as crawl
 from src.banks.browser import PageFailed, PageTooSlow
 from src.banks.others import SberAdapter
 
+
+def test_sber_deposit_legacy_url_uses_current_product_page():
+    adapter = SberAdapter(region=None, settings={})
+    base = adapter.base_url + "/ru/person/contributions/deposits/"
+    assert adapter._links([base + "sbervklad_a/", base + "vklad"]) == [base + "vklad"]
+
+
+def test_tbank_preserves_distinct_catalogue_pages_and_deduplicates_filters():
+    from src.banks.others import TbankAdapter
+
+    adapter = TbankAdapter(region=None, settings={})
+    root = adapter.base_url + "/invest/stocks/"
+    second = root + "?start=12&end=24&orderType=Desc&sortType=ByPopularity"
+    third = root + "?start=24&end=36&orderType=Desc&sortType=ByPopularity"
+    assert adapter._links([
+        root + "?start=0&end=12",
+        second + "&currencies=&tickers=",
+        third,
+        root + "?end=24&start=12",
+        root + "?start=12&end=24&currencies=rub",
+        root + "GAZP/?start=12&end=24",
+    ]) == [root, second, third, root + "GAZP"]
+
+
+def test_safe_deposit_service_with_office_list_is_a_product():
+    from src.availability import status_of
+    from src.banks.crawl_adapter import product_from_page
+
+    title = "Сейфовые ячейки"
+    page = {"h1": title, "text": title}
+    kwargs = {"bank": "Генбанк", "category": title, "region": "",
+              "collected_at": "2026-11-13", "url": "https://www.genbank.ru/chastnym-litsam/seyfovye-yacheyki/"}
+    assert product_from_page(page, **kwargs) is None
+    page["text"] += "\nПеречень ВСП, в которых предоставляется услуга:\nДО «Луганск», адрес: ул. Советская, д. 86А"
+    product = product_from_page(page, **kwargs)
+    assert status_of(product, region_method="federal").city_confirmed
+
+
+def test_vtb_pds_links_to_online_services_are_root_relative():
+    from src.banks.others import VtbAdapter
+
+    adapter = VtbAdapter(region=None, settings={})
+    prefix = adapter.base_url + "/personal/investicii/pds-detskiy/-/"
+    assert adapter._normalize(prefix + "personal/online-servisy/vtb-online") == (
+        adapter.base_url + "/personal/online-servisy/vtb-online"
+    )
+    assert not adapter._links([prefix + "r/online/debit-card/step1/deposit"])
+    payroll = adapter.base_url + "/personal/karty/zarplatnye"
+    assert adapter._links([payroll]) == [payroll + "/zarplatnyj-proekt"]
+
 BASE = "https://www.sberbank.ru"
 
 
@@ -85,6 +135,66 @@ class FakeReader:
         if found is None:
             raise PageFailed(f"нет страницы {url}")
         return found
+
+
+def test_security_page_is_kept_when_it_links_to_multiple_tabs(monkeypatch):
+    from src.banks.others import TbankAdapter
+
+    url = "https://www.tbank.ru/invest/stocks/GAZP"
+    tabs = [[f"{url}/section-{i}", ""] for i in range(3)]
+    monkeypatch.setitem(PAGES, url, {
+        "title": "Купить акции Газпром (GAZP)",
+        "h1": "О компании Газпром",
+        "text": "О компании Газпром\nISIN: RU0007661625",
+        "links": tabs,
+    })
+    monkeypatch.setattr(crawl, "PageReader", FakeReader)
+    adapter = TbankAdapter(region=None, settings={"resume_urls": [url], "max_pages": 1})
+    result = adapter.collect()
+    assert [(p.title, p.terms["ISIN"]) for p in result.products] == [
+        ("Газпром", "RU0007661625"),
+    ]
+
+
+def test_tbank_catalogue_collects_security_from_the_next_page(monkeypatch):
+    from src.banks.others import TbankAdapter
+
+    root = "https://www.tbank.ru/invest/stocks/"
+    second = root + "?start=12&end=24&orderType=Desc&sortType=ByPopularity"
+    issue = root + "GAZP"
+    monkeypatch.setitem(PAGES, root, {"h1": "Каталог акций", "text": "Каталог акций",
+                                    "links": [[second, "Показать еще"]]})
+    monkeypatch.setitem(PAGES, second, {"h1": "Каталог акций", "text": "Каталог акций",
+                                      "links": [[issue + "/", "Газпром"]]})
+    monkeypatch.setitem(PAGES, issue, {"h1": "О компании Газпром", "text": "О компании Газпром",
+                                     "links": []})
+    monkeypatch.setattr(crawl, "PageReader", FakeReader)
+    result = TbankAdapter(region=None, settings={"resume_urls": [root]}).collect()
+    assert [product.source_url for product in result.products] == [issue]
+
+
+def test_resume_only_does_not_follow_related_issue_links(monkeypatch):
+    from src.banks.others import TbankAdapter
+
+    root = "https://www.tbank.ru/invest/stocks/"
+    issue = root + "GAZP"
+    monkeypatch.setitem(PAGES, issue, {"h1": "О компании Газпром", "text": "О компании Газпром",
+                                     "links": [[root + "SBER", "Сбербанк"]]})
+    reader = FakeReader(None)
+    monkeypatch.setattr(crawl, "PageReader", lambda *args, **kwargs: reader)
+    adapter = TbankAdapter(region=None, settings={"resume_urls": [issue], "resume_only": True})
+    result = adapter.collect()
+    assert reader.read_urls == [issue]
+    assert [product.source_url for product in result.products] == [issue]
+
+
+def test_empty_snapshot_is_reported_as_unread(monkeypatch):
+    url = BASE + "/ru/person/contributions/deposits/vklad"
+    monkeypatch.setitem(PAGES, url, {"title": "Открыть СберВклад в СберБанке онлайн", "text": ""})
+    monkeypatch.setattr(crawl, "PageReader", FakeReader)
+    result = SberAdapter(region=None, settings={"resume_urls": [url], "max_pages": 1}).collect()
+    assert not result.ok
+    assert "видимый текст не загрузился" in result.error
 
 
 class OnlyCredits(SberAdapter):
@@ -308,13 +418,13 @@ def test_check_bank_saves_page_texts(monkeypatch, tmp_path):
     assert page.startswith("URL: https://") and "ТЕКСТ:" in page
 
 
-def test_local_bank_counts_as_lnr():
-    """ЦМР работает только в ЛНР: условия его сайта — луганские, не «по РФ»."""
+def test_local_profile_does_not_claim_lnr_availability():
+    """Локальный профиль не подтверждает доступность каждого продукта."""
     from src.banks.base import region_binding
     from src.pipeline import Config, bank_region_methods
 
     method, label = region_binding(False, {"region_mode": "local"})
-    assert method == "local" and "только в ЛНР" in label
+    assert method == "local" and "не подтверждена" in label
     assert bank_region_methods(Config.load(), ["cmr"]) == {"ЦМР": "local"}
 
 
@@ -541,6 +651,10 @@ def test_new_bank_without_known_sections_is_crawled_by_url_words(monkeypatch):
 def test_not_found_page_is_not_a_product():
     page = {"h1": "Классический Рост", "text": "404\nТАКОЙ СТРАНИЦЫ НЕТ :(\nЛУЧШИЕ ПРЕДЛОЖЕНИЯ"}
     assert crawl.is_not_found(page)
+    assert crawl.is_not_found({
+        "status": 200, "h1": "У нас проблема — мы уже решаем ее",
+        "title": "Купить акции компаний онлайн",
+    })
     assert not crawl.is_not_found({"h1": "Вклад", "text": "Ставка до 14%"})
 
 
@@ -661,8 +775,7 @@ def test_vtb_first_check_junk():
 
     for title in ("Вклады в Самаре", "Вклады на 1 год", "Вклады с капитализацией",
                   "Накопительные счета в Санкт-Петербурге", "Сберегательные вклады",
-                  "Курс покупки и продажи золота", "Монеты из драгоценных металлов",
-                  "Обезличенный металлический счет", "Услуги по размещению сбережений"):
+                  "Курс покупки и продажи золота", "Услуги по размещению сбережений"):
         assert not crawl.is_product_title(title), title
     for title in ("Накопительный ВТБ-Счет в рублях", "ВТБ-Вклад", "Ипотека на новых территориях"):
         assert crawl.is_product_title(title), title
@@ -997,3 +1110,175 @@ def test_amount_and_term_bounds():
 def test_closed_package_no_longer_sold():
     from src.banks.crawl_adapter import _CLOSED
     assert _CLOSED.search("При оформлении ипотеки больше нельзя приобрести пакет услуг «Домклик Плюс».")
+
+
+def test_full_retail_sections_are_followed():
+    adapter = SberAdapter(region=None, settings={})
+    for path, category in [
+        ("/ru/person/investments", "Инвестиции"),
+        ("/ru/person/payments", "Переводы и платежи"),
+        ("/ru/person/insurance", "Страхование"),
+        ("/ru/person/safe", "Сейфовые ячейки"),
+    ]:
+        url = "https://www.sberbank.ru" + path
+        assert adapter._family(url) == category
+        assert adapter._links([url]) == [url]
+
+
+def test_mortgage_insurance_does_not_become_mortgage_loan():
+    product = crawl.product_from_page(
+        {"h1": "Страхование ипотеки со скидкой 20%", "title": "", "links": [],
+         "text": "Страхование ипотеки со скидкой 20%\nЗащита недвижимости"},
+        bank="Банк", url="https://bank.ru/insurance/mortgage", category="Страхование",
+        region="ЛНР", collected_at="")
+    assert product is not None
+    assert product.category == "Страхование"
+    assert product.rate_min is None and product.rate_max is None
+
+
+def test_resume_reads_pending_urls_without_reopening_completed_pages(monkeypatch, tmp_path):
+    reader = FakeReader(None)
+    monkeypatch.setattr(crawl, "PageReader", lambda *a, **kw: reader)
+    url = BASE + "/ru/person/credits/money/consumer"
+    old = BASE + "/ru/person/credits/auto"
+    adapter = OnlyCredits(region=None, settings={
+        "resume_urls": [url], "skip_urls": [old], "sitemap": True,
+        "max_pages": 0, "pages_dir": str(tmp_path), "region_mode": "federal",
+    })
+    evidence = tmp_path / "001-previous.txt"
+    evidence.write_text("Previously read product", encoding="utf-8")
+    result = adapter.collect()
+    assert evidence.read_text(encoding="utf-8") == "Previously read product"
+    assert result.ok
+    assert reader.read_urls == [url]
+    assert result.coverage[crawl.CRAWL_UNREAD_KEY] == ""
+
+
+def test_zero_page_limit_means_complete_queue(monkeypatch, tmp_path):
+    urls = [BASE + f"/ru/person/credits/product-{i}" for i in range(81)]
+    pages = {url: page(f"Кредит наличными номер {i}", f"Кредит наличными номер {i}\nСтавка от 20%",
+                       [urls[i + 1].removeprefix(BASE)] if i + 1 < len(urls) else [])
+             for i, url in enumerate(urls)}
+    reader = FakeReader(None)
+    monkeypatch.setattr(reader, "read", lambda url: pages[url])
+    monkeypatch.setattr(crawl, "PageReader", lambda *a, **kw: reader)
+    result = OnlyCredits(region=None, settings={
+        "resume_urls": urls[:1], "max_pages": 0, "pages_dir": str(tmp_path),
+        "region_mode": "federal",
+    }).collect()
+    assert result.pages_visited == 81
+    assert len(result.products) == 81
+    assert all("#" not in p.url_path for p in result.products)
+    assert not result.partial
+
+
+def test_retail_insurance_and_metals_titles_are_products():
+    for title in ("ОСАГО", "КАСКО", "Обезличенный металлический счёт", "Монеты из драгоценных металлов"):
+        assert crawl.is_product_title(title)
+    assert not crawl.is_product_title("ВКЛАДЫ И СЧЕТА")
+
+
+def test_vtb_service_sections_are_not_filtered_as_junk():
+    from src.banks.others import VtbAdapter
+    adapter = VtbAdapter(region=None, settings={})
+    for path, category in [
+        ("/personal/strahovanie", "Страхование"),
+        ("/personal/seyfovye-yacheyki", "Сейфовые ячейки"),
+        ("/personal/programma-loyalnosti", "Лояльность и кешбэк"),
+        ("/personal/vklady-i-scheta/metallicheskij-schet", "Инвестиции"),
+    ]:
+        url = adapter.base_url + path
+        assert adapter._links([url]) == [url]
+        assert adapter._family(url) == category
+
+
+def test_service_terms_and_tariff_are_kept_without_a_loan_rate():
+    product = crawl.product_from_page(
+        {"h1": "ОСАГО", "text": "ОСАГО\nКомиссия 2%\nПокрытие по договору",
+         "links": ["https://bank.example/osago.pdf"]},
+        bank="Банк", url="https://bank.example/insurance/osago",
+        category="Страхование", region="", collected_at="")
+    assert product is not None
+    assert product.rate_min is None
+    assert "2%" in product.terms["Условия услуги на сайте"]
+    assert product.terms["Документы и тарифы"].endswith("osago.pdf")
+    assert "Ставка" not in product.terms
+
+
+def test_tbank_insurance_and_payments_are_retail_not_loans():
+    from src.banks.others import TbankAdapter
+    adapter = TbankAdapter(region=None, settings={})
+    for path, category in [("/insurance/mortgage/", "Страхование"),
+                           ("/payments/mobile/", "Переводы и платежи")]:
+        url = adapter.base_url + path.rstrip("/")
+        assert adapter._links([url]) == [url]
+        assert adapter._family(url) == category
+
+
+def test_lessons_and_error_pages_do_not_become_products():
+    assert not crawl.is_product_title("Урок 5. Как рассчитать доходность по облигациям")
+    assert not crawl.is_product_title("У нас проблема")
+def test_trailing_slash_catalogue_is_not_a_product(monkeypatch, tmp_path):
+    from src.banks.genbank import GenbankAdapter
+    monkeypatch.setattr(GenbankAdapter, "priority", ())
+    root = "https://www.genbank.ru/"
+    catalogue = root + "chastnym-litsam/deposits/"
+    products = [catalogue + name + "/" for name in ("first", "second", "third")]
+    class Reader(FakeReader):
+        def read(self, url):
+            if url == root:
+                return {"h1": "Главная", "text": "Главная", "links": [[catalogue, "Вклады"]]}
+            if url == catalogue:
+                return {"h1": "Вклады и Счета", "text": "Вклады и Счета", "links": [[u, "Вклад"] for u in products]}
+            return {"h1": "Вклад " + url.split("/")[-2], "text": "Вклад\nСтавка 10%", "links": []}
+    calls = []
+    original = crawl.product_from_page
+    def record(data, **kwargs):
+        calls.append(kwargs["url"])
+        return original(data, **kwargs)
+    monkeypatch.setattr(crawl, "PageReader", Reader)
+    monkeypatch.setattr(crawl, "product_from_page", record)
+    GenbankAdapter(region=None, settings={"max_pages": 0, "tariff_pdf": False, "pages_dir": str(tmp_path)}).collect()
+    assert catalogue not in calls
+    assert set(calls) == set(products)
+
+def test_tbank_community_is_not_a_security_catalogue():
+    from src.banks.others import TbankAdapter
+    adapter = TbankAdapter(region=None, settings={})
+    for path in ("/invest/social/profile/UA1CEC_INVEST_CLUB",
+                 "/invest/social/hashtag/bonds", "/invest/education/videocourses/example"):
+        assert adapter._links(["https://www.tbank.ru" + path]) == []
+    for path in ("/invest/stocks/SBER", "/invest/bonds/SU29021RMFS1"):
+        assert adapter._links(["https://www.tbank.ru" + path])
+
+
+
+def test_pension_forecast_stays_in_service_description():
+    title = "Программа долгосрочных сбережений"
+    product = crawl.product_from_page(
+        {"h1": title, "text": title + "\nДо 15% годовых\nПрогноз дохода"},
+        bank="Т-Банк", url="https://www.tbank.ru/pension",
+        category="НПФ и ПДС", region="", collected_at="",
+    )
+
+    assert product.rate_min is None
+    assert "15%" in product.terms["Условия услуги на сайте"]
+
+
+def test_vtb_loyalty_programme_is_not_a_card_or_interest_rate():
+    from src.banks.others import VtbAdapter
+
+    url = "https://www.vtb.ru/personal/karty/programma-loyalnosti"
+    category = VtbAdapter(region=None)._family(url)
+    assert category == "Лояльность и кешбэк"
+
+    title = "Кешбэк до 3 000 рублей ежемесячно"
+    product = crawl.product_from_page(
+        {"h1": title, "text": title + "\nДо 15%\nКешбэк за покупки"},
+        bank="ВТБ", url=url, category=category, region="", collected_at="",
+    )
+
+    assert product.category == category
+    assert product.rate_min is None
+    assert product.title == "Мультибонус"
+    assert "Кешбэк за покупки" in product.terms["Условия услуги на сайте"]

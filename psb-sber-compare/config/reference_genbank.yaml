@@ -1,0 +1,38 @@
+# Позиции из сохранённых официальных витрин от 13.11.2026.
+# Этот список покрывает просмотренные разделы. Условия и город проверяются отдельно.
+bank: Генбанк
+base_url: https://www.genbank.ru
+products:
+  - {name: "Накопительный счёт в рублях", category: "Накопительные счета", path: "/chastnym-litsam/deposits/nakopitelnyy-schyet-v-rublyakh/", source: site-catalogue}
+  - {name: "Классический ПЛЮС", category: "Вклады", path: "/chastnym-litsam/deposits/klassicheskiy-plus/", source: site-catalogue}
+  - {name: "Максимальный", category: "Вклады", path: "/chastnym-litsam/deposits/maksimalnyy/", source: site-catalogue}
+  - {name: "Пополняемый", category: "Вклады", path: "/chastnym-litsam/deposits/popolnyaemyy/", source: site-catalogue}
+  - {name: "Копилка", category: "Накопительные счета", path: "/chastnym-litsam/deposits/kopilka/", source: site-catalogue}
+  - {name: "Кредит на любые цели с низкой ставкой", category: "Потребительские кредиты", path: "/chastnym-litsam/credit_for_clients/kredity-dlya-chastnykh-lits-/dostupnyy/", source: site-catalogue}
+  - {name: "Деньги на обучение", category: "Потребительские кредиты", path: "/chastnym-litsam/credit_for_clients/kredity-dlya-chastnykh-lits-/kredit-na-obrazovanie/", source: site-catalogue}
+  - {name: "Деньги на путешествие", category: "Потребительские кредиты", path: "/chastnym-litsam/credit_for_clients/kredity-dlya-chastnykh-lits-/kredit-na-puteshestvie/", source: site-catalogue}
+  - {name: "Деньги на ремонт", category: "Потребительские кредиты", path: "/chastnym-litsam/credit_for_clients/kredity-dlya-chastnykh-lits-/dengi-na-remont/", source: site-catalogue}
+  - {name: "Рефинансирование", category: "Потребительские кредиты", path: "/chastnym-litsam/credit_for_clients/kredity-dlya-chastnykh-lits-/refinansirovanie-/", source: site-catalogue}
+  - {name: "Кредит под залог на самое важное", category: "Потребительские кредиты", path: "/chastnym-litsam/credit_for_clients/kredity-dlya-chastnykh-lits-/obespechennyy/", source: site-catalogue}
+  - {name: "Газификация домовладений", category: "Потребительские кредиты", path: "/chastnym-litsam/credit_for_clients/kredity-dlya-chastnykh-lits-/gazifikatsiya-domovladeniya-/", source: site-catalogue}
+  - {name: "Купить автомобиль без первоначального взноса", category: "Автокредиты", path: "/chastnym-litsam/credit_for_clients/avtokreditovani/avtokredit-nal/", source: site-catalogue}
+  - {name: "Автокредит на авто с пробегом у частного лица", category: "Автокредиты", path: "/chastnym-litsam/credit_for_clients/avtokreditovani/spring_vibor/", source: site-catalogue}
+  - {name: "Кредит на новый автомобиль", category: "Автокредиты", path: "/chastnym-litsam/credit_for_clients/avtokreditovani/kredit-na-novyy-avtomobil/", source: site-catalogue}
+  - {name: "Автокредит на автомобиль с пробегом", category: "Автокредиты", path: "/chastnym-litsam/credit_for_clients/avtokreditovani/avtokredit-na-podderzhannoe-avto-iz-salona/", source: site-catalogue}
+  - {name: "Крымская ипотека", category: "Ипотека", path: "/chastnym-litsam/mortgage/krymskaya-ipoteka/", source: site-catalogue}
+  - {name: "Нежилая (Коммерческая) ипотека", category: "Ипотека", path: "/chastnym-litsam/mortgage/kommercheskaya-ipoteka/", source: site-catalogue}
+  - {name: "Ипотека Новые Территории", category: "Ипотека", path: "/chastnym-litsam/mortgage/ipoteka-novye-territorii/", source: site-catalogue}
+  - {name: "Семейная ипотека", category: "Ипотека", path: "/chastnym-litsam/mortgage/semeynaya-ipoteka/", source: site-catalogue}
+  - {name: "Новостройка", category: "Ипотека", path: "/chastnym-litsam/mortgage/novostrojka/", source: site-catalogue}
+  - {name: "Своя квартира", category: "Ипотека", path: "/chastnym-litsam/mortgage/svoya_kvartira/", source: site-catalogue}
+  - {name: "Своя квартира-апартаменты", category: "Ипотека", path: "/chastnym-litsam/mortgage/svoya_kvartira_apartamenti/", source: site-catalogue}
+  - {name: "Свой дом", category: "Ипотека", path: "/chastnym-litsam/mortgage/svoy_dom/", source: site-catalogue}
+  - {name: "Спортивная страховка", category: "Страхование", path: "/chastnym-litsam/insurance/sportivnaya-strakhovka/", source: site-catalogue}
+  - {name: "Туристическое страхование", category: "Страхование", path: "/chastnym-litsam/insurance/turisticheskoe-strakhovanie/", source: site-catalogue}
+  - {name: "Страхование ОСАГО", category: "Страхование", path: "/chastnym-litsam/insurance/osago/", source: site-catalogue}
+  - {name: "Доходный полис", category: "Страхование", path: "/chastnym-litsam/insurance/dokhodnyy-polis/", source: site-catalogue}
+  - {name: "Страхование банковских карт", category: "Страхование", path: "/chastnym-litsam/insurance/Bank-card-insurance/", source: site-catalogue}
+  - {name: "Страхование заемщиков", category: "Страхование", path: "/chastnym-litsam/insurance/Insurance-of-borrowers/", source: site-catalogue}
+  - {name: "Страхование имущества", category: "Страхование", path: "/chastnym-litsam/insurance/Property-insurance/", source: site-catalogue}
+  - {name: "Страхование от несчастных случаев", category: "Страхование", path: "/chastnym-litsam/insurance/Accident-insurance/", source: site-catalogue}
+  - {name: "Сейфовые ячейки", category: "Сейфовые ячейки", path: "/chastnym-litsam/seyfovye-yacheyki/", source: site}

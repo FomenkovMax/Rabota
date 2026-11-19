@@ -14,10 +14,10 @@ import yaml
 from .banks import registry
 from .banks.base import region_binding
 from .banks.from_file import FileAdapter
-from . import availability, charts, coverage, keyrate, market
+from . import availability, charts, coverage, current_offers, keyrate, market, reviewed_offers, securities
 from .changes import detect_changes, format_digest
 from .compare import Thresholds, from_matrix, summarize
-from .promos import EXPIRED, classify_all, compare_segments
+from .promos import classify_all, compare_segments
 from .report import render_report
 from .storage import Storage, product_key
 
@@ -57,6 +57,7 @@ class Config:
             "region": self.get("region", default="lugansk"),
             "region_label": self.get("region_label", default=""),
             "browser": self.get("browser", default={}) or {},
+            "exclude_securities": True,
         }
         common.update(self.get("banks", code, default={}) or {})
         return common
@@ -104,8 +105,16 @@ def collect_bank(config: Config, code: str, *, save: bool = True) -> Any:
         _drop_seo(result)
         _mark_region(result)
         storage.save_products(run_id, result.products)
-        storage.save_coverage(run_id, adapter.title, getattr(result, "coverage", {}))
-        _keep_unread(storage, result, previous, run_id)
+        collected_coverage = getattr(result, "coverage", {})
+        if previous is not None and adapter.settings.get("resume_urls"):
+            from .banks.crawl_adapter import CRAWL_ERROR_KEY, CRAWL_READ_KEY
+            old_coverage = storage.coverage_of_run(previous).get(adapter.title, {})
+            old_coverage.pop(CRAWL_ERROR_KEY, None)
+            total_read = int(old_coverage.get(CRAWL_READ_KEY, 0)) + int(collected_coverage.get(CRAWL_READ_KEY, 0))
+            collected_coverage = {**old_coverage, **collected_coverage, CRAWL_READ_KEY: str(total_read)}
+        storage.save_coverage(run_id, adapter.title, collected_coverage)
+        _keep_unread(storage, result, previous, run_id,
+                     force=bool(adapter.settings.get("resume_urls")))
         # Остальные банки берём из прошлого сбора, иначе свод после
         # обновления одного банка показал бы только его.
         if previous is not None:
@@ -147,7 +156,8 @@ def collect_all(config: Config) -> dict[str, Any]:
 KEEP_UNREAD_DAYS = 14
 
 
-def _keep_unread(storage: Storage, result: Any, previous: int | None, run_id: int) -> None:
+def _keep_unread(storage: Storage, result: Any, previous: int | None, run_id: int,
+                 *, force: bool = False) -> None:
     """Обход оборвался — непрочитанные продукты банка берём из прошлого сбора.
 
     Переносится не всё подряд. Первый перенос 07.10.2026 вернул в отчёт
@@ -158,9 +168,10 @@ def _keep_unread(storage: Storage, result: Any, previous: int | None, run_id: in
     карточки на витрине и у страницы продукта разный), страницы, которые
     нынешние правила продуктом не считают, и всё старше двух недель.
     """
-    if previous is None or not getattr(result, "partial", False):
+    if previous is None or not (force or getattr(result, "partial", False)):
         return
     from datetime import datetime, timedelta
+    from json import loads
 
     from .banks.crawl_adapter import is_product_title, normalize_title
     from .banks.seo import is_seo_page
@@ -170,7 +181,11 @@ def _keep_unread(storage: Storage, result: Any, previous: int | None, run_id: in
     cutoff = (datetime.now() - timedelta(days=KEEP_UNREAD_DAYS)).isoformat()
     keep = []
     for row in storage.products_of_run(previous, result.bank):
-        if row["product_key"] in fresh_keys or normalize_title(row["title"]) in fresh_titles:
+        if row["product_key"] in fresh_keys:
+            continue
+        if normalize_title(row["title"]) in fresh_titles:
+            continue
+        if securities.excluded_product(row["source_url"] or "", loads(row["terms_json"] or "{}")):
             continue
         if is_seo_page(row["source_url"] or ""):
             continue
@@ -188,14 +203,15 @@ def _drop_seo(result: Any) -> None:
     from .banks.seo import is_seo_page
 
     result.products = [p for p in result.products
-                       if not is_seo_page(getattr(p, "source_url", ""))]
+                       if not is_seo_page(p.source_url)
+                       and not securities.excluded_product(p.source_url or "", p.terms)]
 
 
 def _mark_region(result: Any) -> None:
     """Каждому продукту — способ привязки к ЛНР, с которым его собрали."""
     for product in result.products:
         if not getattr(product, "region_method", ""):
-            product.region_method = getattr(result, "region_method", "") or "selector"
+            product.region_method = getattr(result, "region_method", "") or "not_confirmed"
 
 
 # --- история --------------------------------------------------------------
@@ -249,20 +265,25 @@ def crawl_completeness(links: dict[str, dict[str, str]]) -> dict[str, dict[str, 
 
     Ответ на вопрос «собраны ли все данные с сайта»: не прочитанные
     продуктовые страницы (лимит, защита сайта, ошибки) перечислены поимённо."""
-    from .banks.crawl_adapter import (CRAWL_CANDIDATES_KEY, CRAWL_FAILED_KEY, CRAWL_READ_KEY,
+    from .banks.crawl_adapter import (CRAWL_CANDIDATES_KEY, CRAWL_ERROR_KEY, CRAWL_FAILED_KEY, CRAWL_READ_KEY,
                                       CRAWL_SITEMAP_KEY, CRAWL_UNREAD_KEY)
     out: dict[str, dict[str, Any]] = {}
     for bank, own in links.items():
-        if CRAWL_READ_KEY not in own:
+        error = own.get(CRAWL_ERROR_KEY, "")
+        if CRAWL_READ_KEY not in own and not error:
             continue
-        unread = [u for u in (own.get(CRAWL_UNREAD_KEY) or "").split() if u]
-        failed = [u for u in (own.get(CRAWL_FAILED_KEY) or "").split() if u.startswith("http")]
+        unread = [u for u in (own.get(CRAWL_UNREAD_KEY) or "").split()
+                  if not securities.outside_retail_scope(u)]
+        failed = [u for u in (own.get(CRAWL_FAILED_KEY) or "").split()
+                  if u.startswith("http") and not securities.outside_retail_scope(u.rstrip(":"))]
         out[bank] = {"read": int(own.get(CRAWL_READ_KEY) or 0),
                      "sitemap": int(own.get(CRAWL_SITEMAP_KEY) or 0),
                      "unread": unread, "failed": failed,
-                     "candidates": [u for u in (own.get(CRAWL_CANDIDATES_KEY) or "").split() if u],
+                     "candidates": [u for u in (own.get(CRAWL_CANDIDATES_KEY) or "").split()
+                                    if not securities.outside_retail_scope(u)],
                      "new_candidates": [],
-                     "complete": not unread and not failed}
+                     "error": error,
+                     "complete": not unread and not failed and not error}
     return out
 
 
@@ -347,7 +368,8 @@ def mark_not_in_region(config: Config, products: list[Any]) -> None:
             product.terms[market.REGION_KEY] = note
 
 
-def load_report_data(config: Config, *, competitor: str = "") -> dict[str, Any] | None:
+def load_report_data(config: Config, *, competitor: str = "",
+                     now: datetime | None = None) -> dict[str, Any] | None:
     """Собирает всё нужное для отчёта из последнего успешного сбора.
 
     `competitor` ограничивает сравнение одним банком — так работают кнопки
@@ -365,13 +387,52 @@ def load_report_data(config: Config, *, competitor: str = "") -> dict[str, Any] 
 
         titles = registry.titles()
         home_title = titles.get(HOME_BANK, "Сбер")
+        now = (now or datetime.now(current_offers.MOSCOW)).astimezone(current_offers.MOSCOW)
+        reviewed_products, reviewed_statuses, reviewed_promos = [], {}, []
+        if config.get("reviewed_offers"):
+            reviewed_products, reviewed_statuses, reviewed_promos = reviewed_offers.load(
+                config.path("reviewed_offers"), {titles.get(c, c) for c in config.enabled_banks()}, now.date())
 
         # SEO-страницы отсеиваем и здесь: в базе они остались от прошлых
         # сборов, а пересобирать ради этого все банки незачем.
         from .banks.seo import is_seo_page
 
+        from .banks.crawl_adapter import is_product_title
         all_products = [p for p in _rows_to_products(storage.products_of_run(run_id))
-                        if not is_seo_page(p.source_url)]
+                        if not is_seo_page(p.source_url) and is_product_title(p.title)
+                        and not securities.excluded_product(p.source_url or "", p.terms)]
+        all_products.extend(reviewed_products)
+        if "tbank" in config.enabled_banks():
+            from .availability import TBANK_MFC_CARD_URL
+            from .banks.others import tbank_mfc_card_from_evidence
+
+            if not any(p.bank == "Т-Банк" and p.source_url.rstrip("/") == TBANK_MFC_CARD_URL
+                       for p in all_products):
+                mfc_card = tbank_mfc_card_from_evidence()
+                if mfc_card is not None:
+                    all_products.append(mfc_card)
+        if "genbank" in config.enabled_banks():
+            from .banks.genbank import (CREDIT_CARD_DOCUMENT, credit_card_from_disclosure,
+                                        saved_catalogue_products)
+
+            if not any(p.bank == "Генбанк" for p in all_products):
+                all_products.extend(saved_catalogue_products(storage.path.parent, region=region))
+
+            credit_card = credit_card_from_disclosure(storage.path.parent / CREDIT_CARD_DOCUMENT)
+            if credit_card:
+                existing_card = next(
+                    (p for p in all_products if p.bank == credit_card.bank
+                     and p.source_url.rstrip("/") == credit_card.source_url.rstrip("/")), None,
+                )
+                if existing_card is None:
+                    all_products.append(credit_card)
+                else:
+                    for label, value in credit_card.terms.items():
+                        existing_card.terms.setdefault(label, value)
+        for product in all_products:
+            category = coverage.classify(product.source_url)
+            if product.category in {"Инвестиции", "Премиальное обслуживание"} and category in {"Страхование", "НПФ и ПДС"}:
+                product.category = category
         mark_not_in_region(config, all_products)
         by_bank: dict[str, list[Any]] = {}
         for product in all_products:
@@ -383,18 +444,17 @@ def load_report_data(config: Config, *, competitor: str = "") -> dict[str, Any] 
             competitor_codes = [competitor]
 
         competitor_titles = [titles.get(c, c) for c in competitor_codes]
+        banks = [home_title] + competitor_titles
         promo_rows = storage.promos_of_run(run_id)
         promos_home = classify_all(
-            [r for r in promo_rows if r["bank"] == home_title], home_title)
+            [r for r in promo_rows if r["bank"] == home_title], home_title, today=now.date())
         promos_rival = []
         for title in competitor_titles:
             promos_rival.extend(classify_all(
-                [r for r in promo_rows if r["bank"] == title], title))
+                [r for r in promo_rows if r["bank"] == title], title, today=now.date()))
 
-        active_rival = [p for p in promos_rival if p.status != EXPIRED]
-        active_home = [p for p in promos_home if p.status != EXPIRED]
-
-        changes = [dict(row) for row in storage.changes_of_run(run_id)]
+        changes = [dict(row) for row in storage.changes_of_run(run_id)
+                   if not securities.outside_retail_scope(row["product_key"] or "")]
 
         run_row = storage.conn.execute(
             "SELECT started_at FROM runs WHERE id=?", (run_id,)).fetchone()
@@ -433,11 +493,57 @@ def load_report_data(config: Config, *, competitor: str = "") -> dict[str, Any] 
         key_rate = key.value if key else None
 
         scope = [p for t in [home_title] + competitor_titles for p in by_bank.get(t, [])]
+        presence = bank_presence(config, competitor_codes + [HOME_BANK],
+                                 storage.coverage_of_run(run_id))
+        office_evidence = storage.path.parent / "vtb-lugansk-broker-office.json"
+        if office_evidence.is_file():
+            import json
+
+            try:
+                verified_offices = json.loads(office_evidence.read_text(encoding="utf-8"))
+                for product in by_bank.get("ВТБ", []):
+                    availability.remember_vtb_broker_offices(product, verified_offices)
+            except (OSError, TypeError, ValueError):
+                log.warning("Не прочитан список инвестиционных офисов ВТБ: %s", office_evidence)
+        lnr_status = availability.statuses(scope, region_methods=region_methods,
+                                           presence=presence)
+        lnr_status.update({id(p): reviewed_statuses[id(p)] for p in scope
+                           if id(p) in reviewed_statuses and not p.terms.get(market.REGION_KEY)})
+        ranking_hours = int(config.get("freshness", "ranking_hours", default=72))
+        promo_hours = int(config.get("freshness", "promo_hours", default=24))
+        imported_banks = {titles.get(c, c) for c in [HOME_BANK] + competitor_codes
+                          if config.bank_settings(c).get("source")}
+        candidates = [p for p in scope if p.bank not in imported_banks]
+        regional_scope = [p for p in candidates
+                          if not ({"Точный срок, дней", "Точный срок, месяцев"} & p.terms.keys())
+                          and current_offers.current_product(
+                              p, lnr_status.get(id(p)), "lnr", now, ranking_hours)]
+        available_ids = {id(p) for p in regional_scope}
+        promo_candidates = promos_home + promos_rival + [p for p in reviewed_promos if p.bank in banks]
+        regional_offers = {}
+        for region_code in current_offers.REGIONS:
+            current_promos = {}
+            for promo in promo_candidates:
+                if not current_offers.active_promo(promo, region=region_code, now=now, hours=promo_hours):
+                    continue
+                promo_key = (promo.bank, promo.title)
+                previous = current_promos.get(promo_key)
+                if previous is None or promo.checked_at >= previous.checked_at:
+                    current_promos[promo_key] = promo
+            regional_offers[region_code] = {
+                "rankings": current_offers.rankings(
+                    candidates, lnr_status, banks, region=region_code, now=now,
+                    hours=ranking_hours, key_rate=key_rate, region_methods=region_methods),
+                "promos": list(current_promos.values()),
+            }
+        active_lnr = regional_offers["lnr"]["promos"]
+        active_home = [p for p in active_lnr if p.bank == home_title]
+        active_rival = [p for p in active_lnr if p.bank != home_title]
 
         # Витрина в блоке акций — только ставки, прошедшие проверки: иначе
         # «Платинум 5 %» (ставка льготного периода) выигрывал бы сегмент.
         def checked(products: list[Any]) -> list[Any]:
-            return [p for p in products if market.assess(
+            return [p for p in products if id(p) in available_ids and market.assess(
                 p, key_rate=key_rate, region_method=region_methods.get(p.bank, ""),
             ).confidence != market.LOW]
 
@@ -447,20 +553,16 @@ def load_report_data(config: Config, *, competitor: str = "") -> dict[str, Any] 
                                     sber_products=checked(sber_products))
         gaps = market.build_gaps(scope, home=home_title, key_rate=key_rate,
                                  region_methods=region_methods,
-                                 parity_pp=thresholds.parity)
+                                 parity_pp=thresholds.parity, available_ids=available_ids)
         quality_rows, manual = market.quality(scope, key_rate=key_rate,
                                               region_methods=region_methods)
-        special_rows = market.specials(scope, key_rate=key_rate,
+        special_rows = market.specials(regional_scope, key_rate=key_rate,
                                        region_methods=region_methods)
         coverage_matrix = coverage.matrix([home_title] + competitor_titles, scope,
-                                          storage.coverage_of_run(run_id))
-        calc_offers = charts.calculator_offers(scope, key_rate=key_rate,
+                                          storage.coverage_of_run(run_id), statuses=lnr_status)
+        calc_offers = charts.calculator_offers(regional_scope, key_rate=key_rate,
                                                region_methods=region_methods)
         # Главное по ТЗ — есть ли продукт в Луганске: статус и основание.
-        presence = bank_presence(config, competitor_codes + [HOME_BANK],
-                                 storage.coverage_of_run(run_id))
-        lnr_status = availability.statuses(scope, region_methods=region_methods,
-                                           presence=presence)
         lnr_rows = availability.matrix(scope, home=home_title,
                                        banks=[home_title] + competitor_titles,
                                        status=lnr_status)
@@ -483,7 +585,7 @@ def load_report_data(config: Config, *, competitor: str = "") -> dict[str, Any] 
             promo_segments=segments, expired_promos=[],
             promo_active_total=len(active_rival) + len(active_home),
             history=history, region=region,
-            generated_at=datetime.now().strftime("%d.%m.%Y %H:%M") + " МСК",
+            generated_at=now.strftime("%d.%m.%Y %H:%M") + " МСК",
             run_count=len(storage.run_summary(limit=400)),
             psb_total=len(rival_products), sber_total=len(sber_products),
             thresholds=thresholds,
@@ -496,6 +598,7 @@ def load_report_data(config: Config, *, competitor: str = "") -> dict[str, Any] 
             calculator=calc_offers, lnr_rows=lnr_rows, lnr_total=lnr_total,
             lnr_status=lnr_status, presence=presence, crawl=crawl,
             references=references,
+            regional_offers=regional_offers,
         )
 
         return {
@@ -511,6 +614,7 @@ def load_report_data(config: Config, *, competitor: str = "") -> dict[str, Any] 
             "history": history,
             "html": html,
             "specials": special_rows,
+            "regional_offers": regional_offers,
             "coverage": coverage_matrix,
             "unverified": unverified,
             "no_region": no_region,
@@ -541,6 +645,8 @@ def load_report_data(config: Config, *, competitor: str = "") -> dict[str, Any] 
 
 def run(config: Config) -> dict[str, Any]:
     """Сбор по всем банкам плюс отчёт."""
+    from .banks.crawl_adapter import CRAWL_ERROR_KEY
+
     storage = Storage(config.path("storage", "db_path", default="data/psb_sber.db"))
     previous_ok = storage.last_successful_run_id()
     run_id = storage.start_run(config.get("region_label", default=""))
@@ -554,6 +660,15 @@ def run(config: Config) -> dict[str, Any]:
         for code, result in collect_all(config).items():
             if not result.ok:
                 failures.append(result.summary)
+                old_coverage = {}
+                if previous_ok is not None:
+                    rows = storage.products_of_run(previous_ok, bank=result.bank)
+                    storage.copy_products(run_id, [row["id"] for row in rows])
+                    storage.copy_bank_promos(previous_ok, run_id, result.bank)
+                    old_coverage = storage.coverage_of_run(previous_ok).get(result.bank, {})
+                storage.save_coverage(run_id, result.bank, {
+                    **old_coverage, CRAWL_ERROR_KEY: result.summary,
+                })
                 continue
             banks_ok.append(result.bank)
             _drop_seo(result)
@@ -577,6 +692,7 @@ def run(config: Config) -> dict[str, Any]:
         storage.save_changes(run_id, changes)
         storage.finish_run(run_id, psb=products_total, sber=0,
                            promos=promos_total,
+                           status="ok" if banks_ok else "failed",
                            note="; ".join(failures) if failures else "")
         storage.purge_older_than(int(config.get("storage", "history_days", default=365)))
     except Exception as exc:

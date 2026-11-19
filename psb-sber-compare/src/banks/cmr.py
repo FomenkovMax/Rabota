@@ -25,6 +25,7 @@ from urllib.parse import urljoin, urlsplit
 import requests
 
 from .. import conditions, coverage
+from ..availability import CARD_PICKUP_CITY_KEY, CARD_PICKUP_SOURCE_KEY, CMR_CARD_FORMS
 from ..psb.parser import Product
 from .base import BankAdapter, CollectResult, region_binding, registry
 
@@ -67,6 +68,22 @@ def page_lines(page: str) -> list[str]:
     text = html.unescape(re.sub(r"<[^>]+>", " ", text))
     lines = (re.sub(r"\s+", " ", line).strip() for line in text.split("\n"))
     return [line for line in lines if line]
+
+
+def card_pickup_office(page: str, card_name: str) -> str:
+    """Read a selectable Lugansk branch from the card's own pickup field."""
+    if not re.search(rf"<title>[^<]*Заказать карту \({re.escape(card_name)}\)[^<]*</title>", page, re.I):
+        return ""
+    select = re.search(r"Офис\s+получения\s+карты.{0,500}?<select\b[^>]*>(.*?)</select>",
+                       page, re.I | re.S)
+    if not select:
+        return ""
+    for attrs, option in re.findall(r"<option\b([^>]*)>([^<]*)</option>", select[1], re.I):
+        office = " ".join(html.unescape(option).split())
+        if (not re.search(r"(?:^|\s)disabled(?:\s|=|$)", attrs, re.I)
+                and re.match(r"г\.\s*Луганск\s*,\s*ул\.", office, re.I)):
+            return office
+    return ""
 
 
 def _quotes(name: str) -> str:
@@ -284,6 +301,29 @@ def section_links(page: str, prefix: str) -> list[str]:
     return found
 
 
+def service_product(page: str, url: str, *, category: str, region: str, now: str) -> Product | None:
+    """Услуга со страницы банка с текстом условий и ссылками на тарифы."""
+    lines = page_lines(page)
+    start = next((i for i, line in enumerate(lines)
+                  if line.startswith("Главная страница /")), None)
+    if start is None:
+        return None
+    title = lines[start].rsplit(" / ", 1)[-1].strip()
+    body = lines[start + 1:]
+    end = next((i for i, line in enumerate(body) if line.startswith("©")), len(body))
+    body = body[:end]
+    if not title or not body:
+        return None
+    product = Product(bank="ЦМР", url_path=urlsplit(url).path, title=title,
+                      category=category, region=region, source_url=url, collected_at=now)
+    product.terms["Условия услуги на сайте"] = "\n".join(body)[:4000]
+    documents = [urljoin(url, href) for href in _HREF.findall(page)
+                 if re.search(r"\.(?:pdf|docx?|xlsx?)(?:$|\?)", href, re.I)]
+    if documents:
+        product.terms["Документы и тарифы"] = "\n".join(dict.fromkeys(documents))
+    return product
+
+
 # --- адаптер ----------------------------------------------------------------
 
 @registry.register
@@ -351,15 +391,56 @@ class CmrAdapter(BankAdapter):
             for url in section_links(index, prefix):
                 time.sleep(pause)
                 try:
-                    product = parse(self._get(session, url), url, region=region, now=now)
+                    page = self._get(session, url)
+                    product = parse(page, url, region=region, now=now)
                     visited += 1
                 except Exception as exc:            # noqa: BLE001
                     failures.append(f"{url}: {exc}")
                     log.warning("ЦМР: %s не прочиталась — %s", url, exc)
                     continue
                 if product:
+                    form_url, name = CMR_CARD_FORMS.get(url, ("", ""))
+                    if form_url and form_url in {urljoin(url, href) for href in _HREF.findall(page)}:
+                        try:
+                            time.sleep(pause)
+                            office = card_pickup_office(self._get(session, form_url), name)
+                            visited += 1
+                            if office:
+                                product.terms[CARD_PICKUP_CITY_KEY] = office
+                                product.terms[CARD_PICKUP_SOURCE_KEY] = form_url
+                        except RuntimeError as exc:
+                            failures.append(f"{form_url}: {exc}")
+                            log.warning("ЦМР: не прочитался список офисов получения карты")
                     products.append(product)
                     log.info("ЦМР: %s — %s", product.title, product.rate_raw or "ставка не указана")
+
+        service_categories = {"Переводы и платежи", "Валютные операции", "Страхование",
+                              "Инвестиции", "НПФ и ПДС", "Сейфовые ячейки"}
+        for category, section in list(site_sections.items()):
+            if category not in service_categories:
+                continue
+            queue = [section]
+            seen = set(queue)
+            while queue:
+                url = queue.pop(0)
+                time.sleep(pause)
+                try:
+                    page = self._get(session, url)
+                    visited += 1
+                    children = section_links(page, urlsplit(section).path)
+                    for child in children:
+                        if child not in seen:
+                            seen.add(child)
+                            queue.append(child)
+                    # Витрина со ссылками ведёт к отдельным услугам.
+                    if url == section and children:
+                        continue
+                    product = service_product(page, url, category=category, region=region, now=now)
+                    if product:
+                        products.append(product)
+                except Exception as exc:
+                    failures.append(f"{url}: {exc}")
+                    log.warning("ЦМР: услуга не прочиталась — %s", url)
 
         for product in products:
             product.region_method = method

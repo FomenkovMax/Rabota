@@ -28,7 +28,7 @@ _SEO_PAGES = {
     # (избирательный, участника закупок, «С», «Амана», текущий) — не
     # сберегательные продукты для сравнения.
     "sberbank.ru": re.compile(
-        r"^/ru/person/contributions/deposits/(?:schet-v-[\w-]+|vklad-na-mesyac|"
+        r"^/ru/person/contributions/deposits/(?:vklady-(?:v|vo)-[\w-]+|schet-v-[\w-]+|vklad-na-mesyac|"
         r"vklad-ot-\d+-rubley|vklad-s-ezhemesyachnoy-kapitalizaciey|"
         r"vklady-(?:dolgosrochnye|kratkosrochnye|s-ezhemesyachnymi-vyplatami)|"
         r"srochnyy-vklad|schet-tipa-c|schyot_amana|tec)/?$"

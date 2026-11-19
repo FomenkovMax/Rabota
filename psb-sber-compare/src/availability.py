@@ -3,10 +3,9 @@
 У каждого продукта — один из четырёх статусов и основание для него:
 
 * «есть в ЛНР, условия ЛНР» — регион ЛНР выбран на сайте или в калькуляторе
-  банка, либо банк работает только в ЛНР (ЦМР);
-* «есть в ЛНР, условия общероссийские» — банк в ЛНР работает (источник в
-  настройке presence_source), а отдельных условий для ЛНР на сайте нет:
-  по ТЗ тогда берутся общероссийские;
+  банка, либо конкретная услуга указана для луганского офиса;
+* «общероссийские условия» — присутствие банка в ЛНР подтверждено,
+  доступность конкретного продукта требует проверки;
 * «нет в ЛНР» — есть прямое указание: калькулятор пишет «недоступно в
   вашем регионе», на странице сказано «не предоставляется в … ЛНР» и т. п.;
 * «не установлено» — ни того, ни другого; что проверено, сказано в
@@ -21,14 +20,186 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from typing import Any, Iterable
+from urllib.parse import urlsplit
 
-from . import card_terms, conditions, market
+from . import card_terms, conditions, coverage, market
 
 LNR, FEDERAL, ABSENT, UNKNOWN = "lnr", "federal", "absent", "unknown"
+SERVICE_CITY_KEY = "Услуга в офисе Луганска: цитата"
+SERVICE_SOURCE_KEY = "Услуга в офисе Луганска: источник"
+AUTO_CITY_KEY = "Регистрация для автокредита: цитата"
+AUTO_SOURCE_KEY = "Регистрация для автокредита: источник"
+CARD_PICKUP_CITY_KEY = "Офис получения карты: Луганск"
+CARD_PICKUP_SOURCE_KEY = "Офис получения карты: источник"
+CMR_CARD_FORMS = {
+    "https://cmrbank.ru/person/card/plus-card/": ("https://cmrbank.ru/person-request-for-card/", "Плюс"),
+    "https://cmrbank.ru/person/card/drive-card/": ("https://cmrbank.ru/person-request-for-drive/", "Драйв"),
+    "https://cmrbank.ru/person/card/comfort-card/": ("https://cmrbank.ru/person-request-for-comfort/", "Комфорт"),
+}
+ROST_EXCHANGE_URL = "https://www.rostfinance.ru/currency/"
+ROST_TRANSFERS_URL = "https://www.rostfinance.ru/money-transfers/"
+ROST_INSURANCE_URL = "https://www.rostfinance.ru/offers/insurance-and-services/strakhovanie-zhizni-i-zdorovya/"
+ROST_LOYALTY_URL = "https://www.rostfinance.ru/news/bolshe-vozmozhnostey-poluchat-bonusy-s-bonusami-dlya-vsekh/"
+SBER_PDS_URL = "https://npfsberbanka.ru/pds"
+SBER_INSURANCE_URL = "https://www.sberbank.ru/ru/person/bank_insure/insuranceprogram/strahovoi-polis-zashita-na-lyuboi-sluchai"
+SBER_INSURER_URL = "https://sberbankins.ru/products/kombo"
+SBER_ATM_FX_URL = "https://959.xn--p1ai/news/ekonomika/40231"
+SBER_PRIME_URL = "https://www.sberbank.ru/sberprime"
+PSB_PDS_URL = "https://www.psbank.ru/personal/pds/dolgosrochnyye-sbyeryezhyeniya"
+PSB_BROKER_URL = "https://www.psbank.ru/personal/wealth/markets"
+TBANK_MFC_CARD_URL = "https://mfclnr.ru/service/59"
+GENBANK_CREDIT_CARD_URL = "https://www.genbank.ru/chastnym-litsam/cards/moya-kreditnaya-karta"
+GENBANK_CREDIT_CARD_TERMS = ("https://www.genbank.ru/upload/iblock/e29/66c651yfaxpohscy6ic2cvludxc9pyzr/"
+                            "Prilog_1_Credit_Kart.pdf")
+VTB_LOYALTY_URL = "https://www.vtb.ru/personal/karty/programma-loyalnosti"
+VTB_PRIVILEGE_URL = "https://www.vtb.ru/privilegia"
+VTB_BROKER_URL = "https://www.vtb.ru/personal/investicii/brokerskoe-obsluzhivanie"
+VTB_BROKER_OFFICES = "https://www.vtb.ru/media-files/vtb.ru/sitepages/personal/investicii/documents/Broker_points.xlsx"
+_SBER_CITY_RELEASE = "https://lug-info.ru/news/chislo-klientov-luganskogo-otdelenija-sbera-prevysilo-odin-million/"
+_VTB_CITY_RELEASE = "https://lug-info.ru/news/novyj-ofis-vtb-otkrylsja-v-luganske/"
+_CITY_PRODUCT_EVIDENCE = {
+    ("Сбер", "Валютные операции", SBER_ATM_FX_URL): (
+        "Луганск, ул. Оборонная, 26, ТЦ «Аврора». Сбер сообщил об обмене наличных через банкомат 12.10.2026.",
+        SBER_ATM_FX_URL,
+    ),
+    ("Сбер", "Лояльность и кешбэк", SBER_PRIME_URL): (
+        "Сбер указывает подключение подписки в офисах новых регионов, в том числе в городе Луганск.",
+        "https://www.sberbank.ru/ru/oib/regions",
+    ),
+    ("ПСБ", "НПФ и ПДС", PSB_PDS_URL): (
+        "ПСБ указывает заключение договора в любом офисе. Банк ведёт филиальную сеть в городе Луганск.",
+        "https://www.psbank.ru/bank/branches",
+    ),
+    ("ПСБ", "Инвестиции", PSB_BROKER_URL): (
+        "ПСБ указывает открытие брокерского счёта в любом офисе; "
+        "у банка есть розничный офис в городе Луганск.",
+        PSB_BROKER_URL + "/faq",
+    ),
+    ("Т-Банк", "Дебетовые карты", TBANK_MFC_CARD_URL): (
+        "В городе Луганск доступно очное оформление счёта с получением карты Т-Банка через МФЦ. "
+        "Тариф карты и курьерская доставка требуют отдельного подтверждения.",
+        TBANK_MFC_CARD_URL,
+    ),
+    ("ВТБ", "Лояльность и кешбэк", VTB_LOYALTY_URL): (
+        "По сообщению ВТБ от 11.11.2025, в офисе помогают подключить программу лояльности. "
+        "Луганск, ул. 2-я Краснознаменная, 1Г.",
+        _VTB_CITY_RELEASE,
+    ),
+    ("ВТБ", "Премиальное обслуживание", VTB_PRIVILEGE_URL): (
+        "По сообщению ВТБ от 11.11.2025, в офисе обслуживают клиентов «Привилегии». "
+        "Луганск, ул. 2-я Краснознаменная, 1Г.",
+        _VTB_CITY_RELEASE,
+    ),
+    ("Сбер", "НПФ и ПДС", SBER_PDS_URL): (
+        "Луганск, ул. Советская, 59А. Об оформлении договора ПДС сообщено 11.06.2026.",
+        _SBER_CITY_RELEASE,
+    ),
+    ("Сбер", "Страхование", SBER_INSURANCE_URL): (
+        "Луганск, ул. Советская, 59А. Об оформлении полиса «Защита на любой случай» сообщено 11.06.2026.",
+        _SBER_CITY_RELEASE,
+    ),
+    ("РостФинанс", "Переводы и платежи", ROST_TRANSFERS_URL.rstrip("/")): (
+        "Луганск указан банком среди городов выдачи наличных переводов без открытия счёта.",
+        "https://www.rostfinance.ru/upload/iblock/61d/t6dxvjewjwwipe5xw1gpp1hjjlinizto/"
+        "Справочная информация по осуществлению переводов денежных средств по поручению "
+        "физических лиц без открытия банковског.pdf",
+    ),
+    ("РостФинанс", "Страхование", ROST_INSURANCE_URL.rstrip("/")): (
+        "Банк указывает оформление в любом отделении. В реестре банка есть действующий "
+        "розничный офис: Луганск, ул. Демехина, 27А.",
+        "https://www.rostfinance.ru/about/structure/",
+    ),
+}
+_CITY_PRODUCT_EVIDENCE[("Сбер", "Страхование", SBER_INSURER_URL)] = (
+    _CITY_PRODUCT_EVIDENCE["Сбер", "Страхование", SBER_INSURANCE_URL]
+)
+
+
+def _vtb_broker_product(product: Any) -> bool:
+    return (getattr(product, "bank", "") == "ВТБ"
+            and getattr(product, "category", "") == "Инвестиции"
+            and (getattr(product, "source_url", "") or "").rstrip("/") == VTB_BROKER_URL
+            and not product.terms.get("Вид ценной бумаги"))
+
+
+def remember_vtb_broker_offices(product: Any, evidence: dict) -> None:
+    if not _vtb_broker_product(product) or not isinstance(evidence, dict) or evidence.get("source") != VTB_BROKER_OFFICES:
+        return
+    addresses = []
+    for row in evidence.get("rows", []):
+        values = row.get("values") or []
+        if row.get("sheet") == "Действующие" and len(values) >= 2 and values[0] == "Луганск":
+            if re.search(r"г\.\s*Луганск\b", values[1], re.I):
+                addresses.append(values[1])
+    if addresses:
+        product.terms[SERVICE_CITY_KEY] = " / ".join(dict.fromkeys(addresses))
+        product.terms[SERVICE_SOURCE_KEY] = VTB_BROKER_OFFICES
+        product.terms["Дата сверки списка офисов"] = evidence.get("read_at", "")
+_VTB_AUTO_ELIGIBILITY = re.compile(
+    r"Вы\s+можете\s+получить\s+кредит\s+на\s+автомобиль,\s+если\s+вы\s+имеете\s+"
+    r"постоянную\s+или\s+временную\s+регистрацию\s+в\s+следующих\s+городах[^.]*\.",
+    re.I,
+)
+
+
+def _vtb_auto_product(product: Any) -> bool:
+    url = urlsplit(product.source_url)
+    return (product.bank == "ВТБ" and product.category == "Кредиты"
+            and url.hostname == "www.vtb.ru"
+            and url.path.startswith("/personal/avtokredity/")
+            and not url.path.startswith("/personal/avtokredity/services/"))
+
+
+def remember_auto_city(product: Any, text: str) -> None:
+    """Extract the city only from the car loan's registration requirements."""
+    if not _vtb_auto_product(product):
+        return
+    match = _VTB_AUTO_ELIGIBILITY.search(text)
+    if not match:
+        return
+    cities = re.sub(r"^\s*Не\s+нашли\s+свой\s+город\s+в\s+списке,[^.\n]*\.",
+                    "", text[match.end():], count=1, flags=re.I)
+    for line in cities.splitlines():
+        city = line.strip().lstrip("• ").strip()
+        if not city:
+            continue
+        # Registration cities are standalone rows. Stop at the next heading,
+        # sentence, link label with punctuation, or phone number.
+        if not re.fullmatch(r"[А-ЯЁ][А-Яа-яЁё-]+(?:\s+(?:[А-ЯЁ][А-Яа-яЁё-]+|на|над|под)){0,3}", city):
+            break
+        if city == "Луганск":
+            product.terms[AUTO_CITY_KEY] = " ".join(match[0].split()) + " Список городов: Луганск."
+            product.terms[AUTO_SOURCE_KEY] = product.source_url
+            break
+
+
+def remember_service_city(product: Any, text: str) -> None:
+    """A service-specific office list is stronger evidence than a bank footer."""
+    if product.category == "Валютные операции" and product.source_url == ROST_EXCHANGE_URL:
+        office = re.search(
+            r"Курсы валют могут отличаться в\s+офисах банка\s+"
+            r"Луганск\s+Город\s+(ул\.[^\n]{1,120})\s+Офис\s+Валюта\s+Продать\s+Купить",
+            text, re.I,
+        )
+        if office:
+            product.terms[SERVICE_CITY_KEY] = "Таблица обмена наличной валюты: Луганск, " + office[1].strip()
+            product.terms[SERVICE_SOURCE_KEY] = product.source_url
+        return
+    if product.category != "Сейфовые ячейки":
+        return
+    block = re.search(r"Перечень\s+ВСП,?\s+в\s+которых\s+предоставляется\s+услуга\s*:(.*)",
+                      text or "", re.I | re.S)
+    if not block:
+        return
+    body = re.split(r"Заявка на|Мобильный банк|Обратная связь|Реквизиты", block[1], maxsplit=1, flags=re.I)[0]
+    match = re.search(r"ДО\s+[«\"]Луганск[»\"],?\s+адрес[^\n]{0,250}", body, re.I)
+    if match and re.search(r"Советская|Луганская Народная Республика", match[0], re.I):
+        product.terms[SERVICE_CITY_KEY] = " ".join(match[0].split())
+        product.terms[SERVICE_SOURCE_KEY] = product.source_url
 
 LABELS = {
     LNR: "есть в ЛНР, условия ЛНР",
-    FEDERAL: "есть в ЛНР, условия общероссийские",
+    FEDERAL: "общероссийские условия; доступность в ЛНР не подтверждена",
     ABSENT: "нет в ЛНР",
     UNKNOWN: "не установлено",
 }
@@ -36,7 +207,7 @@ ICONS = {LNR: "🟢", FEDERAL: "🔵", ABSENT: "🔴", UNKNOWN: "⚪"}
 #: Какой статус сильнее, когда у банка несколько продуктов одной программы.
 RANK = {LNR: 3, FEDERAL: 2, UNKNOWN: 1, ABSENT: 0}
 
-_REGION_WORDS = (r"(?:ДНР|ЛНР|Луганск\w*|Донецк\w*|Запорожск\w*|Херсонск\w*|"
+_REGION_WORDS = (r"(?:ЛНР|Луганск\w*|"
                  r"нов\w+\s+(?:регион|субъект|территори)\w*)")
 # «Не предоставляется в ДНР, ЛНР…», «недоступна для жителей новых регионов»,
 # «кроме Луганской Народной Республики». Только в одном предложении с
@@ -66,6 +237,21 @@ class Status:
     source: str = ""     # ссылка или настройка
 
     @property
+    def city_confirmed(self) -> bool:
+        """Есть основание по конкретной услуге или её условиям в городе."""
+        return (self.code == LNR
+                and ("калькулятор на сайте банка:" in self.reason
+                     or "регистрация в Луганске подходит для автокредита:" in self.reason
+                     or "для получения карты можно выбрать Луганск:" in self.reason
+                     or "есть подтверждение услуги в Луганске:" in self.reason
+                     or "услуга предоставляется в офисе Луганска:" in self.reason)
+                and bool(re.search(r"\bЛуганск\b", self.reason, re.I)))
+
+    @property
+    def city_selected(self) -> bool:
+        return self.code == LNR and self.reason.startswith("на сайте банка выбран город Луганск;")
+
+    @property
     def label(self) -> str:
         return LABELS[self.code]
 
@@ -87,21 +273,60 @@ def status_of(product: Any, *, region_method: str, presence: str = "") -> Status
     absent = terms.get(market.REGION_KEY)
     if absent:
         return Status(ABSENT, str(absent), url)
+    if terms.get("Вид ценной бумаги"):
+        return Status(UNKNOWN, str(terms.get("Доступность торгов в Луганске") or
+                      "доступность торгов этим выпуском через банк в Луганске не подтверждена"), url)
+    category = getattr(product, "category", "")
+    product_url = urlsplit(url)
+    canonical_url = f"{product_url.scheme}://{product_url.netloc}{product_url.path.rstrip('/')}"
+    city_evidence = _CITY_PRODUCT_EVIDENCE.get(
+        (getattr(product, "bank", ""), coverage.tz_category(product), canonical_url)
+    )
+    if city_evidence:
+        reason, source = city_evidence
+        return Status(LNR, f"есть подтверждение услуги в Луганске: {reason}", source)
+    if (getattr(product, "bank", "") == "Генбанк" and category == "Кредитные карты"
+            and canonical_url == GENBANK_CREDIT_CARD_URL
+            and terms.get("Источник условий проживания") == GENBANK_CREDIT_CARD_TERMS):
+        return Status(LNR, "условия программы допускают фактическое проживание в ЛНР, "
+                      "включая город Луганск. Место выдачи карты "
+                      "и действующие условия выдачи в офисе требуют проверки.", GENBANK_CREDIT_CARD_TERMS)
+    if ((category == "Сейфовые ячейки" or (category == "Валютные операции" and url == ROST_EXCHANGE_URL))
+            and terms.get(SERVICE_CITY_KEY)
+            and url and terms.get(SERVICE_SOURCE_KEY) == url):
+        return Status(LNR, f"услуга предоставляется в офисе Луганска: {terms[SERVICE_CITY_KEY]}", url)
+    if (_vtb_broker_product(product) and terms.get(SERVICE_CITY_KEY)
+            and terms.get(SERVICE_SOURCE_KEY) == VTB_BROKER_OFFICES):
+        return Status(LNR, f"услуга предоставляется в офисе Луганска: {terms[SERVICE_CITY_KEY]}",
+                      VTB_BROKER_OFFICES)
+    if category == "Сейфовые ячейки":
+        return Status(UNKNOWN, "аренда ячеек в конкретном офисе Луганска не подтверждена", url)
+    if terms.get(AUTO_CITY_KEY) and url and terms.get(AUTO_SOURCE_KEY) == url and _vtb_auto_product(product):
+        return Status(LNR, f"регистрация в Луганске подходит для автокредита: {terms[AUTO_CITY_KEY]}", url)
+    form_url, _ = CMR_CARD_FORMS.get(url, ("", ""))
+    if (getattr(product, "bank", "") == "ЦМР" and form_url
+            and terms.get(CARD_PICKUP_CITY_KEY)
+            and terms.get(CARD_PICKUP_SOURCE_KEY) == form_url):
+        return Status(LNR, f"для получения карты можно выбрать Луганск: {terms[CARD_PICKUP_CITY_KEY]}",
+                      terms[CARD_PICKUP_SOURCE_KEY])
     calc = str(terms.get("Калькулятор на сайте") or "")
     # «Есть в ЛНР» — только если калькулятор для ЛНР показал хоть одну ставку:
     # строка из одних «недоступно» и «не показал расчёт» этого не доказывает.
     if (calc and "регион не выбран" not in calc and re.search(r"луганск", calc, re.I)
             and re.search(r"\d\s?%", calc)):
         return Status(LNR, f"калькулятор на сайте банка: {calc}", url)
+    if region_method == "selector" and terms.get("Город выбран на сайте банка") == "Луганск":
+        return Status(LNR, "на сайте банка выбран город Луганск; нужен источник по оформлению этого продукта", url)
     if region_method == "selector":
         return Status(LNR, "условия получены на сайте банка с выбранным регионом ЛНР", url)
     if region_method == "local":
-        return Status(LNR, "банк работает только в ЛНР — условия на сайте луганские",
-                      presence or url)
+        return Status(UNKNOWN, "в настройках указан локальный профиль банка; доступность "
+                          "конкретного продукта в ЛНР и Луганске требует подтверждения",
+                          presence or url)
     if region_method == "federal":
         if presence:
-            return Status(FEDERAL, "банк работает в ЛНР, отдельных условий для ЛНР на "
-                                   "сайте нет — по ТЗ берутся общероссийские", presence)
+            return Status(FEDERAL, "присутствие банка в ЛНР подтверждено; доступность этого "
+                                   "продукта и способ оформления в Луганске требуют проверки", presence)
         return Status(UNKNOWN, "отдельных условий для ЛНР на сайте нет, а присутствие "
                                "банка в ЛНР не подтверждено источником", url)
     return Status(UNKNOWN, "регион на сайте банка при сборе не выбран — чьи это "

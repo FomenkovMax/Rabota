@@ -1,0 +1,220 @@
+"""Identify security issues without confusing yields with bank interest rates."""
+from __future__ import annotations
+
+import json
+import logging
+import re
+from pathlib import Path
+from urllib.parse import unquote, urlsplit
+
+from .psb.parser import Product
+
+log = logging.getLogger(__name__)
+
+CATALOGUE_SOURCE = "Источник ценной бумаги: витрина"
+DETAIL_SOURCE = "Источник ценной бумаги: данные карточки"
+DOCUMENT_SCOPE = "Назначение списка ценных бумаг"
+KIND = "Вид ценной бумаги"
+ISIN = "ISIN"
+_CODE = re.compile(r"\b[A-Z]{2}[A-Z0-9]{9}[0-9]\b")
+
+
+def _excluded_issue_slug(url: str, slug: str) -> bool:
+    if slug not in {"all", "ALL"}:
+        return slug.lower() in {"offer", "offer_ofz", "all", "catalog"}
+    path = urlsplit(url)
+    # The Allstate Corporation uses ticker ALL on the official stock site.
+    return not (path.hostname == "www.tbank.ru" and path.path.rstrip("/") == "/invest/stocks/ALL")
+
+
+def issue_kind(url: str) -> str:
+    path = urlsplit(url).path
+    match = re.search(r"/(stocks|bonds)/([^/]+)/?$", path, re.I)
+    if not match or _excluded_issue_slug(url, match[2]):
+        return ""
+    return "Акция" if match[1].lower() == "stocks" else "Облигация"
+
+
+def issue_page(url: str) -> bool:
+    """Recognize individual issues and their subpages inside stock/bond catalogues."""
+    path = urlsplit(url)
+    match = re.search(r"/(?:stocks|bonds)/[^/]+", path.path, re.I)
+    return bool(match and issue_kind(path._replace(path=path.path[:match.end()]).geturl()))
+
+
+def outside_retail_scope(url: str) -> bool:
+    parts = urlsplit(url)
+    return issue_page(url) or (
+        parts.hostname == "www.tbank.ru"
+        and parts.path.rstrip("/") in {"/invest/stocks", "/invest/bonds"}
+    )
+
+
+def excluded_product(url: str, terms: dict) -> bool:
+    return outside_retail_scope(url) or terms.get(KIND) in {"Акция", "Облигация"}
+
+
+def valid_isin(value: str) -> bool:
+    """Check the identifier's shape and check digit, not its current listing."""
+    if not _CODE.fullmatch(value):
+        return False
+    digits = "".join(str(ord(c) - 55) if c.isalpha() else c for c in value)
+    total = 0
+    for i, digit in enumerate(reversed(digits)):
+        n = int(digit) * (2 if i % 2 else 1)
+        total += n // 10 + n % 10
+    return total % 10 == 0
+
+
+def remember(product, body: list[str], *, page_title: str = "") -> None:
+    if product.category != "Инвестиции":
+        return
+    path = urlsplit(product.source_url).path
+    title = product.title
+    if re.search(r"/(?:edu|digest|events|memos|news|blog|journal)(?:/|$)", path, re.I):
+        return
+    issue_path = re.search(r"/(?:stocks|bonds)/([^/]+)/?$", path, re.I)
+    if issue_path and _excluded_issue_slug(product.source_url, issue_path.group(1)):
+        return
+    kind = issue_kind(product.source_url) or (
+            "Облигация" if re.search(r"\bоблигаци", title, re.I)
+            else "Акция" if re.search(r"\bакци[яиюй]\b", title, re.I)
+            else "")
+    # An index/listing is not a specific issue. A unique ISIN can identify
+    # an issue even when the heading omits the instrument type.
+    codes = sorted({c for c in _CODE.findall("\n".join([title, *body])) if valid_isin(c)})
+    # T-Bank labels the instrument in the document title. For OFZs the URL
+    # slug can differ from the ISIN printed there for the issue.
+    if issue_path and urlsplit(product.source_url).hostname == "www.tbank.ru":
+        match = re.search(r"^Купить облигации .+? \(([A-Z]{2}[A-Z0-9]{9}[0-9])\)", page_title, re.I)
+        if match and valid_isin(match[1]):
+            codes = [match[1]]
+    if not issue_path and len(codes) != 1:
+        return
+    product.terms[KIND] = kind or "Ценная бумага"
+    if len(codes) == 1:
+        product.terms[ISIN] = codes[0]
+    elif codes:
+        product.terms["ISIN требует проверки"] = ", ".join(codes)
+    product.terms["Доступность торгов в Луганске"] = (
+        "Наличие страницы не подтверждает возможность покупки через банк в Луганске; "
+        "требуется проверка брокерского обслуживания и ограничений этого выпуска")
+    # Preserve labelled source values verbatim. A coupon is not a deposit
+    # rate; a market price is not guaranteed and requires a quote timestamp.
+    labels = {
+        "Тикер": r"тикер|ticker",
+        "Валюта бумаги": r"валюта(?: номинала| торгов)?",
+        "Номинал": r"номинал(?:ьная стоимость)?",
+        "Дата погашения": r"дата погашения|погашение",
+        "Купон": r"купон(?:ная ставка)?",
+        "Квалификация инвестора": r"для квалифицированных инвесторов",
+    }
+    for key, pattern in labels.items():
+        for index, line in enumerate(body):
+            if re.match(r"^(?:" + pattern + r")(?:\s*[:—–-]\s*|$)", line, re.I):
+                quote = line
+                if re.fullmatch(pattern + r"\s*:?", line, re.I) and index + 1 < len(body):
+                    quote += ": " + body[index + 1]
+                product.terms[key] = quote[:300]
+                break
+
+
+def _public_issue(url: str, row: dict, source: dict[str, str], read_at: str) -> Product | None:
+    title = row.get("symbol", {}).get("showName")
+    if not title:
+        return None
+    symbol = row["symbol"]
+    terms = {KIND: issue_kind(url), **source}
+    code = str(symbol.get("isin") or "")
+    if valid_isin(code):
+        terms[ISIN] = code
+    fields = {"Тикер": symbol.get("ticker"), "Валюта бумаги": symbol.get("currency"),
+              "Размер лота": symbol.get("lotSize")}
+    details = row.get("fields", {})
+    fields.update({"Номинал": details.get("faceValue"), "Купон": details.get("couponValue"),
+                   "Дата погашения": details.get("matDate"),
+                   "Статус инструмента": details.get("instrumentStatusShortDesc")})
+    terms.update({label: str(value) for label, value in fields.items() if value not in (None, "")})
+    return Product(bank="Т-Банк", title=title, category="Инвестиции", source_url=url,
+                   url_path=urlsplit(url).path, terms=terms, collected_at=read_at)
+
+
+def detailed_public_products(path: Path) -> list[Product]:
+    """Replay public instrument detail responses without changing availability."""
+    if not path.is_file():
+        return []
+    products = {}
+    with path.open(encoding="utf-8") as rows:
+        for line in rows:
+            try:
+                row = json.loads(line)
+            except ValueError:
+                continue
+            if not isinstance(row, dict):
+                continue
+            url = row.get("url") or ""
+            parts = urlsplit(url)
+            if parts.scheme != "https" or parts.netloc != "www.tbank.ru" or not issue_kind(url):
+                continue
+            ticker = str(row.get("symbol", {}).get("ticker") or "")
+            if ticker.casefold() != unquote(parts.path.rstrip("/").rsplit("/", 1)[-1]).casefold():
+                continue
+            product = _public_issue(url, row, {DETAIL_SOURCE: url}, row.get("read_at", ""))
+            if product:
+                products[url.rstrip("/")] = product
+    return list(products.values())
+
+
+def catalogue_products(directory: Path, existing) -> list[Product]:
+    """Use labelled listing data only where the detail page is absent."""
+    seen = {p.source_url.rstrip("/") for p in existing if p.source_url}
+    products = []
+    for kind in ("stocks", "bonds"):
+        path = directory / (kind + ".json")
+        if not path.is_file():
+            continue
+        try:
+            source = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as error:
+            log.warning("Не прочитан каталог бумаг %s: %s", path, error)
+            continue
+        root = f"https://www.tbank.ru/invest/{kind}/"
+        if not isinstance(source, dict) or source.get("source") != root:
+            continue
+        for page, snapshot in source.get("pages", {}).items():
+            page_url = urlsplit(page)
+            if not page.startswith(root) or page_url.path != urlsplit(root).path:
+                continue
+            for url, row in snapshot.get("rows", {}).items():
+                canonical = url.rstrip("/")
+                if canonical in seen or not url.startswith(root) or not issue_kind(url):
+                    continue
+                product = _public_issue(url, row, {CATALOGUE_SOURCE: page},
+                                        snapshot.get("read_at") or source.get("updated_at", ""))
+                if product:
+                    products.append(product)
+                    seen.add(canonical)
+    return products
+
+
+def groups(products):
+    """Group only by verified-format ISIN; missing identifiers never merge."""
+    out = {}
+    for product in products:
+        terms = product.terms or {}
+        if not terms.get(KIND):
+            continue
+        code = str(terms.get(ISIN) or "")
+        path = urlsplit(product.source_url).path
+        if re.search(r"/(?:edu|digest|events|memos|news|blog|journal)(?:/|$)", path, re.I):
+            continue
+        issue_path = re.search(r"/(?:stocks|bonds)/([^/]+)/?$", path, re.I)
+        document_ticker = terms.get("Тикер") if terms.get(DOCUMENT_SCOPE) else ""
+        if not valid_isin(code) and not issue_path and not document_ticker:
+            continue
+        if issue_path and _excluded_issue_slug(product.source_url, issue_path.group(1)):
+            continue
+        key = code if valid_isin(code) else (product.bank, product.source_url,
+                                             document_ticker or product.title)
+        out.setdefault(key, []).append(product)
+    return list(out.values())

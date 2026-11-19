@@ -1,6 +1,6 @@
 """Адаптеры Сбера, ВТБ, Т-Банка и РостФинанса.
 
-ГенБанк удалён 07.10.2026: присутствие в ЛНР по аудиту не подтвердилось.
+Генбанк зарегистрирован отдельным адаптером по справочнику Банка России.
 
 Все четверо читаются браузером. Разница между ними — адреса разделов и
 то, какую проверку сайт показывает до содержимого.
@@ -16,9 +16,36 @@
 from __future__ import annotations
 
 import re
+from pathlib import Path
+from urllib.parse import parse_qs, urlencode, urlsplit
 
+from ..availability import (ROST_INSURANCE_URL, ROST_LOYALTY_URL, ROST_TRANSFERS_URL,
+                            SBER_ATM_FX_URL, SBER_INSURER_URL, SBER_PRIME_URL,
+                            TBANK_MFC_CARD_URL, VTB_PRIVILEGE_URL)
+from ..psb.parser import Product
 from .base import registry
-from .crawl_adapter import CrawlAdapter
+from .crawl_adapter import CrawlAdapter, product_from_page
+
+TBANK_MFC_EVIDENCE = Path("config") / "evidence" / "tbank-mfc-59.txt"
+
+
+def tbank_mfc_card_from_evidence() -> Product | None:
+    """Use the dated public service excerpt when the MFC page cannot be collected."""
+    source_file = Path(__file__).resolve().parents[2] / TBANK_MFC_EVIDENCE
+    if not source_file.is_file():
+        return None
+    lines = source_file.read_text(encoding="utf-8").splitlines()
+    if len(lines) < 4 or lines[0] != f"URL: {TBANK_MFC_CARD_URL}":
+        return None
+    _, checked, title, *body = lines
+    product = product_from_page(
+        {"h1": title, "text": "\n".join([title, *body])},
+        bank="Т-Банк", url=TBANK_MFC_CARD_URL, category="Дебетовые карты",
+        region="Луганск", collected_at=checked.removeprefix("Проверено: "),
+    )
+    if product is not None:
+        product.terms["Источник условий"] = f"Сохранённый фрагмент карточки услуги МФЦ. {checked}"
+    return product
 
 
 @registry.register
@@ -32,6 +59,17 @@ class SberAdapter(CrawlAdapter):
     """
 
     code = "sber"
+
+    def _normalize(self, url: str) -> str:
+        url = super()._normalize(url)
+        old = self.base_url + "/ru/person/contributions/deposits/sbervklad_a"
+        if url == old:
+            return self.base_url + "/ru/person/contributions/deposits/vklad"
+        for prefix in ("/retail/ru/person/bank_insure", "/retail/ru/person/bank_inshure",
+                       "/ru/person/bank_inshure"):
+            if url.startswith(self.base_url + prefix + "/"):
+                return self.base_url + "/ru/person/bank_insure" + url.removeprefix(self.base_url + prefix)
+        return url
     title = "Сбер"
     strategy = "браузер: обход витрин и страниц продуктов"
     protection = "JS-челлендж F5 (переменная bobcmn в ответе)"
@@ -46,10 +84,18 @@ class SberAdapter(CrawlAdapter):
         "https://www.sberbank.ru/ru/person/credits/homenew",
         "https://www.sberbank.ru/ru/person/bank_cards/credit_cards",
         "https://www.sberbank.ru/ru/person/bank_cards/debit",
+        "https://www.sberbank.ru/ru/person/bank_insure/insuranceprogram",
     )
     # Главные продукты для сравнения — их адреса видны в обходе 06.10.2026.
     # Сбер пускает около 30 страниц за сеанс, поэтому они идут первыми.
     priority = (
+        "https://www.sberbank.ru/ru/person/additional/rent_of_safes",
+        "https://npfsberbanka.ru/pds",
+        SBER_INSURER_URL,
+        SBER_ATM_FX_URL,
+        SBER_PRIME_URL,
+        "https://www.sberbank.ru/ru/person/new_sb1",
+        "https://www.sberbank.ru/ru/person/sb_premier_new",
         "https://www.sberbank.ru/ru/person/bank_cards/debit/sberkarta",
         "https://www.sberbank.ru/ru/person/bank_cards/credit_cards/credit_sberkarta",
         "https://www.sberbank.ru/ru/person/credits/home/family",
@@ -83,6 +129,11 @@ class SberAdapter(CrawlAdapter):
         ("/ru/person/bank_cards/credit", "Кредитные карты"),
         ("/ru/person/bank_cards/debit", "Дебетовые карты"),
         ("/ru/person/bank_cards", "Банковские карты"),
+        ("/products/kombo", "Страхование"),
+        (urlsplit(SBER_ATM_FX_URL).path, "Валютные операции"),
+        ("/sberprime", "Лояльность и кешбэк"),
+        ("/ru/person/new_sb1", "Премиальное обслуживание"),
+        ("/ru/person/sb_premier_new", "Премиальное обслуживание"),
         ("/ru/sberblizhe", "Специальные предложения"),
     )
     # Служебное внутри розничных разделов: из меню Сбера это «Полезное» —
@@ -91,7 +142,7 @@ class SberAdapter(CrawlAdapter):
     # собираются отдельно и в каталог продуктов не идут.
     skip = re.compile(
         r"(calc|kalkul|faq|question|vopros|help|pomosh|nalog|tax|notif|uvedoml|"
-        r"compens|kompens|asv|safe|seif|sejf|nominal|assistant|gigachat|/ai\b|"
+        r"compens|kompens|asv|nominal|assistant|gigachat|/ai\b|"
         r"podderzh|support|potencial|potential|history|istori|archive|arhiv|"
         r"document|dokument|tarif|stavki|prolong|prodlen|instruction|how_to|"
         r"article|news|blog|promo|akci|action|"
@@ -148,6 +199,19 @@ class VtbAdapter(CrawlAdapter):
     """
 
     code = "vtb"
+
+    def _normalize(self, url: str) -> str:
+        url = super()._normalize(url)
+        prefix = self.base_url + "/personal/investicii/pds-detskiy/-/personal/"
+        if url.startswith(prefix):
+            return self.base_url + "/personal/" + url.removeprefix(prefix)
+        path = url.removeprefix(self.base_url)
+        aliases = {
+            "/personal/platezhi-i-perevody/perevody-v-iran": "/personal/platezhi-i-perevody/perevody-v-real",
+            "/personal/platezhi-i-perevody/perevody-s-karty-na-kartu": "/personal/platezhi-i-perevody",
+            "/personal/karty/zarplatnye": "/personal/karty/zarplatnye/zarplatnyj-proekt",
+        }
+        return self.base_url + aliases[path] if path in aliases else url
     title = "ВТБ"
     strategy = "браузер: обход витрин и страниц продуктов"
     protection = "не проверено"
@@ -155,6 +219,7 @@ class VtbAdapter(CrawlAdapter):
 
     base_url = "https://www.vtb.ru"
     seeds = (
+        "https://www.vtb.ru/personal/avtokredity/",
         "https://www.vtb.ru/personal/vklady-i-scheta/",
         "https://www.vtb.ru/personal/kredit/",
         "https://www.vtb.ru/personal/ipoteka/",
@@ -165,6 +230,13 @@ class VtbAdapter(CrawlAdapter):
     # ссылается на десятки подборок и городов, и без этого списка лимит
     # страниц уходил на них, а до ипотеки и карт обход не доходил.
     priority = (
+        "https://www.vtb.ru/personal/platezhi-i-perevody/obmen-valjuty/",
+        "https://www.vtb.ru/personal/karty/programma-loyalnosti/",
+        VTB_PRIVILEGE_URL,
+        "https://www.vtb.ru/personal/vklady-i-scheta/seyfovye-yacheyki/",
+        "https://www.vtb.ru/personal/avtokredity/bez-podtverzhdeniya-dohoda/",
+        "https://www.vtb.ru/personal/avtokredity/avto-v-avtosalone/",
+        "https://www.vtb.ru/personal/avtokredity/dengi-na-avto/",
         "https://www.vtb.ru/personal/ipoteka/new-regions/",
         "https://www.vtb.ru/personal/kredit/nalichnymi/",
         "https://www.vtb.ru/personal/kredit/refinansirovanie/",
@@ -185,10 +257,14 @@ class VtbAdapter(CrawlAdapter):
         "https://www.vtb.ru/personal/karty/debetovye/detskaya/",
     )
     families = (
+        ("/personal/vklady-i-scheta/seyfovye-yacheyki", "Сейфовые ячейки"),
         ("/personal/vklady-i-scheta/nakopitelnyi-schet", "Накопительные счета"),
         ("/personal/vklady-i-scheta", "Вклады"),
         ("/personal/ipoteka", "Ипотека"),
+        ("/personal/avtokredity/services", "Прочее"),
+        ("/personal/avtokredity", "Кредиты"),
         ("/personal/kredit", "Кредиты"),
+        ("/personal/karty/programma-loyalnosti", "Лояльность и кешбэк"),
         ("/personal/karty/kreditnye", "Кредитные карты"),
         ("/personal/karty/debetovye", "Дебетовые карты"),
         ("/personal/karty", "Банковские карты"),
@@ -198,15 +274,15 @@ class VtbAdapter(CrawlAdapter):
         r"(calc|kalkul|faq|question|vopros|help|pomosh|nalog|tax|document|dokument|"
         r"tarif|archive|arhiv|news|blog|promo|akci|action|business|biz|/legal|"
         r"[/_-]na[_-]\d|rublej|/(moskva|sankt-peterburg|novosibirsk|ekaterinburg|kazan)\b|"
-        r"/bez-|/dlya-|/onlajn-zayavka|/form\b|/anketa|"
+        r"(?<!/avtokredity)/bez-|/dlya-|/onlajn-zayavka|/form\b|/anketa|"
         # Подборки, города и служебное в разделе вкладов ВТБ (обход 07.10.2026).
         r"/vklad-\d|/vklady-(?!i-scheta)|/so-snyatiem|/sberezhenija$|/nakopitelnyy-chet-|"
-        r"/kurs-|/monety|metallicheskij|/seyfovye|/strahovanie|asv|/informacija|"
+        r"/kurs-|asv|/informacija|"
         r"/restrukturizaciya|/spisok-partnerov|/katalog-nedvizhimosti|/maksimum-vygody|"
-        r"/zarplatnyj-proekt|/vtbpay|"
+        r"/vtbpay|/-/r/online/|"
         # Опция к вкладам («Надбавка за покупки») и программа лояльности
         # («Дополнительные категории кешбэка») — не продукты (03.11.2026).
-        r"/vklady-i-scheta/traty|/programma-loyalnosti|"
+        r"/vklady-i-scheta/traty|"
         # Языковые копии страниц («…/foreign/ZH», «/en», «/UZ», «/HI», 03.11.2026).
         r"/(?:en|zh|uz|hi|tj|kg|kz|ky|tg|ar|tr)$|"
         r"/(nizhniy-novgorod|chelyabinsk|yekaterinburg|krasnodar|rostov-na-donu|ufa|"
@@ -255,9 +331,40 @@ class TbankAdapter(CrawlAdapter):
     verified = True
 
     base_url = "https://www.tbank.ru"
+    # В контейнере TZ=MSK-3 Chromium сообщает Etc/Unknown.
+    # Из-за этого скрипт витрины Т-Банка показывает страницу ошибки.
+    browser_timezone = "Europe/Moscow"
+    families = (("/service/59", "Дебетовые карты"),)
+    catalogue_pages = {
+        "/invest/stocks": (12, {"orderType": "Desc", "sortType": "ByPopularity"}),
+        "/invest/bonds": (30, {"country": "All", "orderType": "Desc",
+                               "sortType": "ByRateAndYieldToClient"}),
+    }
+
+    def _normalize(self, url: str) -> str:
+        canonical = super()._normalize(url)
+        path = canonical.removeprefix(self.base_url)
+        if path not in self.catalogue_pages:
+            return canonical
+
+        root = canonical + "/"
+        size, filters = self.catalogue_pages[path]
+        query = parse_qs(urlsplit(url).query)
+        if query.get("currencies") or query.get("tickers"):
+            return root
+        if any(query.get(key, [value]) != [value] for key, value in filters.items()):
+            return root
+        start, end = query.get("start", [""])[0], query.get("end", [""])[0]
+        if not all(re.fullmatch(r"[0-9]{1,8}", value) for value in (start, end)):
+            return root
+        first, last = int(start), int(end)
+        if not first or first % size or last - first != size:
+            return root
+        return root + "?" + urlencode({"start": first, "end": last, **filters})
     # Главные продукты — по обходу 07.10.2026; иначе лимит уходит на
     # рекламные копии карты Black («для студентов», «именная»…).
     priority = (
+        TBANK_MFC_CARD_URL,
         "https://www.tbank.ru/cards/debit-cards/tinkoff-black/",
         "https://www.tbank.ru/cards/credit-cards/tinkoff-platinum/",
         "https://www.tbank.ru/loans/cash-loan/",
@@ -266,9 +373,13 @@ class TbankAdapter(CrawlAdapter):
         "https://www.tbank.ru/savings/deposit/",
         "https://www.tbank.ru/savings/saving-account/",
         "https://www.tbank.ru/cards/debit-cards/tinkoff-black/pension/",
+        "https://www.tbank.ru/pension/",
+        "https://www.tbank.ru/tinkoff-premium/",
     )
     seeds = (
         "https://www.tbank.ru/",
+        "https://www.tbank.ru/invest/stocks/",
+        "https://www.tbank.ru/invest/bonds/",
         "https://www.tbank.ru/cards/debit-cards/",
         "https://www.tbank.ru/cards/credit-cards/",
         "https://www.tbank.ru/loans/",
@@ -277,25 +388,22 @@ class TbankAdapter(CrawlAdapter):
     )
     family_words = RETAIL_WORDS
     skip = re.compile(NOT_RETAIL.pattern + "|" + (
+        r"/invest/(?:social|education)(?:/|$)|"
+        r"/invest/(?:stocks|bonds)/[^/]+/(?:pulse|dividends|ideas)(?:/|$)|"
         r"/city/|/foreign|/form$|/(dlya|bez|s)-|virtualnaya|beskontaktnaya|"
         r"nakopitelnaya-karta|mezhdunarodnaya|imennaya|besplatnaya|momentalnaya|"
-        r"/debit-cards/(premium|travel|driver|games|shopping)$|insurance|"
+        r"/debit-cards/(premium|travel|driver|games|shopping)$|"
         # Сбор 28.10.2026: «как погасить», карты сайта, формы заявок и
         # оплаты, партнёрские рассрочки в магазинах — не продукты.
         r"how-repay|/sitemap|/form/|/new-form|/payment$|/purpose$|/service$|"
         # Языковые копии страниц: «…/islam-card/eng» (03.11.2026).
         r"/(?:eng?|uz|tj|kg|kz)$|"
-        r"/pos-loans/[\w/-]+|/credit-history|/payments/|/specialty-check"), re.I)
+        r"/pos-loans/[\w/-]+|/credit-history|/specialty-check"), re.I)
 
 
 @registry.register
 class RostfinanceAdapter(CrawlAdapter):
-    """РостФинанс — сайт https://www.rostfinance.ru/ (дал заказчик 07.10.2026).
-
-    Структуру сайта мы ещё не видели: обход начинается с главной, раздел
-    определяется по словам в адресе. После первой проверки
-    (check-bank rostfinance) сюда лягут точные витрины.
-    """
+    """Розничные витрины и отдельные услуги РостФинанса."""
 
     code = "rostfinance"
     title = "РостФинанс"
@@ -312,6 +420,12 @@ class RostfinanceAdapter(CrawlAdapter):
         "https://www.rostfinance.ru/credit/",
         "https://www.rostfinance.ru/mortgage/",
         "https://www.rostfinance.ru/cards/",
+    )
+    priority = (ROST_TRANSFERS_URL, ROST_INSURANCE_URL, ROST_LOYALTY_URL)
+    families = (
+        ("/money-transfers", "Переводы и платежи"),
+        ("/offers/insurance-and-services", "Страхование"),
+        (urlsplit(ROST_LOYALTY_URL).path.rstrip("/"), "Лояльность и кешбэк"),
     )
     family_words = RETAIL_WORDS
     skip = NOT_RETAIL
