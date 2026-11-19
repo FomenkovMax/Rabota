@@ -514,7 +514,8 @@ def load_report_data(config: Config, *, competitor: str = "",
         imported_banks = {titles.get(c, c) for c in [HOME_BANK] + competitor_codes
                           if config.bank_settings(c).get("source")}
         candidates = [p for p in scope if p.bank not in imported_banks]
-        regional_scope = [p for p in candidates if not p.terms.get("Точный срок, дней")
+        regional_scope = [p for p in candidates
+                          if not ({"Точный срок, дней", "Точный срок, месяцев"} & p.terms.keys())
                           and current_offers.current_product(
                               p, lnr_status.get(id(p)), "lnr", now, ranking_hours)]
         available_ids = {id(p) for p in regional_scope}

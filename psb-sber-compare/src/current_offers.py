@@ -1,6 +1,6 @@
 """Eligibility for current offers based on observations from the source."""
 from dataclasses import dataclass
-from calendar import isleap
+from calendar import isleap, monthrange
 from datetime import date, datetime, timedelta, timezone
 import re
 from urllib.parse import urlsplit
@@ -69,7 +69,7 @@ class Leader:
     region_source: str
 
 
-def _scenario_metric(product, months: int) -> float | None:
+def _scenario_metric(product, months: int, today: date | None = None) -> float | None:
     if not (product.amount_min is not None and product.amount_max is not None
             and product.amount_min <= AMOUNT <= product.amount_max
             and product.term_min_months is not None and product.term_max_months is not None
@@ -93,11 +93,18 @@ def _scenario_metric(product, months: int) -> float | None:
             and 0 < product.rate_min < 100
             and re.fullmatch(r"\s*\d+(?:[.,]\d+)?\s*%\s*(?:годовых)?\s*", product.rate_raw, re.I)
             and terms.get("Валюта", "").casefold() in {"российский рубль", "рубли", "rub"}
-            and terms.get("Выплата процентов", "").casefold() in {
-                "в конце срока", "в конце срока на счет вклада", "в конце срока на счёт вклада"}
-            and terms.get("База начисления процентов") == "Год"
             and product.term_min_months == product.term_max_months == months):
-        return AMOUNT * product.rate_min / 100
+        payout = terms.get("Выплата процентов", "").casefold()
+        basis = terms.get("База начисления процентов")
+        annual_interest = AMOUNT * product.rate_min / 100
+        if basis == "Год" and payout in {
+                "в конце срока", "в конце срока на счет вклада", "в конце срока на счёт вклада"}:
+            return annual_interest
+        if (today and months == 12 and basis == "Факт/365"
+                and payout == "ежемесячно на карту (без капитализации)"):
+            year = today.year + 1
+            end = today.replace(year=year, day=min(today.day, monthrange(year, today.month)[1]))
+            return round(annual_interest * (end - today).days / 365, 2)
     return None
 
 
@@ -125,7 +132,7 @@ def rankings(products, statuses, banks, *, region, now, hours, key_rate, region_
     scenarios = [(category, category, months, 0) for category, months in SCENARIOS.items()]
     scenarios.extend((f"Вклады на {days} дней", "Вклады", 0, days) for days in days_options)
     for heading, category, months, days in scenarios:
-        offers, reasons = {}, dict.fromkeys(banks, "Нет карточки по этому сценарию")
+        offers, ranges, reasons = {}, [], dict.fromkeys(banks, "Нет карточки по этому сценарию")
         for product in products:
             if product.category != category or product.bank not in banks:
                 continue
@@ -137,11 +144,22 @@ def rankings(products, statuses, banks, *, region, now, hours, key_rate, region_
                         reasons[bank] = "Нет свежих условий с подтверждением региона"
                 continue
             metric = (_fixed_days(product, days, now.date()) if days
-                      else _scenario_metric(product, months))
+                      else _scenario_metric(product, months, now.date()))
+            if (category == "Кредиты" and product.terms.get("Публичный диапазон ПСК")
+                    and product.amount_min == product.amount_max == AMOUNT
+                    and product.term_min_months == product.term_max_months == months
+                    and product.apr_min is not None and product.apr_max is not None
+                    and 0 < product.apr_min < product.apr_max < 100
+                    and market.program_of(product) == "Потребительский кредит"):
+                ranges.append((product, status))
+                if bank not in offers:
+                    reasons[bank] = "Опубликован диапазон ПСК. Индивидуальная ПСК не подтверждена"
+                continue
             check = market.assess(product, key_rate=key_rate,
                                   region_method=market.method_of(product, region_methods))
             if metric is None or check.confidence == market.LOW:
-                if bank not in offers:
+                if bank not in offers and reasons[bank] in {
+                        "Нет карточки по этому сценарию", "Нет свежих условий с подтверждением региона"}:
                     reasons[bank] = "Не подтверждены сопоставимые условия"
                 continue
             candidate = Leader(bank, product.title, product.source_url, product.collected_at,
@@ -156,6 +174,7 @@ def rankings(products, statuses, banks, *, region, now, hours, key_rate, region_
             "deposit": category == "Вклады",
             "leaders": sorted(offers.values(), key=lambda x: (
                 -x.value if category == "Вклады" else x.value, x.bank, x.title))[:3],
+            "ranges": sorted(ranges, key=lambda row: (row[0].bank, row[0].title)),
             "excluded_banks": reasons,
         }
     return result

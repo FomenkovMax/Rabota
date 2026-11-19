@@ -30,6 +30,9 @@ def load(path, banks, today: date):
                 product.rate_min = product.rate_max = rate
                 product.rate_raw = f"{rate}%"
             geography = row.get("geography")
+            statuses[id(product)] = availability.Status(
+                availability.UNKNOWN, product.terms.get("География", "Нет подтверждения региона для тарифа"),
+                product.source_url)
             if geography and _https(geography["source"]):
                 reason = geography["reason"]
                 if geography["scope"] == "lugansk":
@@ -41,9 +44,18 @@ def load(path, banks, today: date):
             periods = row.get("scenario")
             if periods:
                 product.amount_min = product.amount_max = periods["amount"]
-                product.term_raw = f'{periods["days"]} дней'
-                product.terms["Точный срок, дней"] = str(periods["days"])
-                product.terms["База начисления процентов"] = periods["basis"]
+                if "days" in periods:
+                    product.term_raw = f'{periods["days"]} дней'
+                    product.terms["Точный срок, дней"] = str(periods["days"])
+                else:
+                    product.term_min_months = product.term_max_months = periods["months"]
+                    product.term_raw = f'{periods["months"]} мес.'
+                    product.terms["Точный срок, месяцев"] = str(periods["months"])
+                if "basis" in periods:
+                    product.terms["База начисления процентов"] = periods["basis"]
+            if bounds := row.get("published_psk"):
+                product.apr_min, product.apr_max = bounds
+                product.apr_raw = f'{product.apr_min:.3f}–{product.apr_max:.3f}%'.replace(".", ",")
             products.append(product)
         for row in batch["promotions"]:
             if row["bank"] not in banks or not _https(row["rules"]) or not _https(row["regional_source"]):

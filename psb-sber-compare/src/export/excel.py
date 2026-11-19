@@ -145,6 +145,11 @@ def _sheet_regional_offers(book: Workbook, data: dict[str, Any]) -> None:
             for leader in ranking["leaders"]:
                 sheet.append([label, category, leader.bank, leader.title, leader.value,
                               leader.checked_at, leader.url, leader.region_reason])
+            for product, status in ranking.get("ranges", ()):
+                evidence = (f'{product.terms["Публичный диапазон ПСК"]}\n'
+                            f'География: {status.reason}\n{status.source}')
+                sheet.append([label, "Кредиты · диапазон ПСК", product.bank, product.title, product.apr_raw,
+                              product.collected_at, product.source_url, evidence])
             for bank, reason in ranking["excluded_banks"].items():
                 sheet.append([label, category, bank, "", "", "", "", reason])
         for promo in offers["promos"]:

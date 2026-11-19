@@ -1152,6 +1152,16 @@ def _current_offers_block(regional_offers: dict) -> str:
                 parts.append("</ol>")
             else:
                 parts.append("<p>Подтверждённых сопоставимых предложений пока нет.</p>")
+            if ranking.get("ranges"):
+                parts.append("<h4>Публичные диапазоны ПСК</h4>"
+                             "<p>Банк рассчитывает индивидуальную ПСК после заявки.</p><ul>")
+                for product, status in ranking["ranges"]:
+                    parts.append(f'<li>{e(product.bank)} · <a href="{e(product.source_url)}">'
+                                 f'{e(product.title)}</a> · {e(product.apr_raw)} · '
+                                 f'Проверено {e(product.collected_at)}. '
+                                 f'{e(product.terms["Публичный диапазон ПСК"])} '
+                                 f'<a href="{e(status.source)}">{e(status.reason)}</a></li>')
+                parts.append("</ul>")
             if ranking["excluded_banks"]:
                 parts.append("<details><summary>Почему остальные банки вне рейтинга</summary><ul>")
                 parts.extend(f"<li>{e(bank)} — {e(reason)}</li>"
