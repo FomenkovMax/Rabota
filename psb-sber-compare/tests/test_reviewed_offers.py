@@ -47,13 +47,14 @@ def test_november_23_review_includes_new_lugansk_evidence():
                           key_rate=14, region_methods={})
         assert [(p.bank, p.value) for p in offers["Вклады"]["leaders"]] == [("Т-Банк", 57500)]
         assert offers["Кредиты"]["leaders"] == []
-        assert {p.bank for p, _ in offers["Кредиты"]["ranges"]} == {"ВТБ", "ПСБ", "Т-Банк", "ЦМР"}
+        ranges = {p.bank: p.apr_raw for p, _ in offers["Кредиты"]["ranges"]}
+        assert set(ranges) == {"ВТБ", "ПСБ", "Сбер", "Т-Банк", "ЦМР"}
+        assert ranges["Сбер"] == "18,400–50,200%"
         credit_notes = {p.bank: status for p, status in offers["Кредиты"]["notes"]}
-        assert set(credit_notes) == {"Сбер", "Генбанк", "РостФинанс"}
-        assert credit_notes["Сбер"].city_confirmed
+        assert set(credit_notes) == {"Генбанк", "РостФинанс"}
         assert credit_notes["Генбанк"].city_confirmed
         assert credit_notes["РостФинанс"] is None
-        assert {p.bank for p, _ in offers["Вклады"]["notes"]} == {"ВТБ", "Сбер", "ПСБ", "Генбанк"}
+        assert {p.bank for p, _ in offers["Вклады"]["notes"]} == {"ВТБ", "Сбер", "ПСБ", "Генбанк", "Т-Банк"}
         assert offers["Вклады на 370 дней"]["notes"] == []
         active = [p for p in promos if active_promo(p, region=region, now=now, hours=24)]
         assert len(active) == 6
