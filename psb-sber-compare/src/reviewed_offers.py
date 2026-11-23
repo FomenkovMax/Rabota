@@ -5,6 +5,7 @@ import logging
 from urllib.parse import urlsplit
 
 from . import availability
+from .current_offers import SCENARIO_NOTE
 from .promos import classify
 from .psb.parser import Product
 
@@ -42,7 +43,10 @@ def load(path, banks, today: date):
                         availability.LNR, reason, geography["source"])
                     product.region_method = "selector"
             periods = row.get("scenario")
-            if periods:
+            if periods and product.terms.get(SCENARIO_NOTE):
+                product.terms["Сумма сценария, ₽"] = str(periods["amount"])
+                product.terms["Срок сценария, месяцев"] = str(periods["months"])
+            elif periods:
                 product.amount_min = product.amount_max = periods["amount"]
                 if "days" in periods:
                     product.term_raw = f'{periods["days"]} дней'

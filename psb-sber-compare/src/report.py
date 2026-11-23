@@ -1162,6 +1162,14 @@ def _current_offers_block(regional_offers: dict) -> str:
                                  f'{e(product.terms["Публичный диапазон ПСК"])} '
                                  f'<a href="{e(status.source)}">{e(status.reason)}</a></li>')
                 parts.append("</ul>")
+            if ranking.get("notes"):
+                parts.append("<h4>Что ещё известно по этому сценарию</h4><ul>")
+                for product, status in ranking["notes"]:
+                    geography = (f' <a href="{e(status.source)}">{e(status.reason)}</a>' if status else "")
+                    parts.append(f'<li>{e(product.bank)} · <a href="{e(product.source_url)}">'
+                                 f'{e(product.title)}</a> · Проверено {e(product.collected_at)}. '
+                                 f'{e(product.terms[current_offers.SCENARIO_NOTE])}{geography}</li>')
+                parts.append("</ul>")
             if ranking["excluded_banks"]:
                 parts.append("<details><summary>Почему остальные банки вне рейтинга</summary><ul>")
                 parts.extend(f"<li>{e(bank)} — {e(reason)}</li>"

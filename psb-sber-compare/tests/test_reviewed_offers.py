@@ -48,6 +48,13 @@ def test_november_23_review_includes_new_lugansk_evidence():
         assert [(p.bank, p.value) for p in offers["Вклады"]["leaders"]] == [("Т-Банк", 57500)]
         assert offers["Кредиты"]["leaders"] == []
         assert {p.bank for p, _ in offers["Кредиты"]["ranges"]} == {"ВТБ", "ПСБ", "Т-Банк", "ЦМР"}
+        credit_notes = {p.bank: status for p, status in offers["Кредиты"]["notes"]}
+        assert set(credit_notes) == {"Сбер", "Генбанк", "РостФинанс"}
+        assert credit_notes["Сбер"].city_confirmed
+        assert credit_notes["Генбанк"].city_confirmed
+        assert credit_notes["РостФинанс"] is None
+        assert {p.bank for p, _ in offers["Вклады"]["notes"]} == {"ВТБ", "Сбер", "ПСБ", "Генбанк"}
+        assert offers["Вклады на 370 дней"]["notes"] == []
         active = [p for p in promos if active_promo(p, region=region, now=now, hours=24)]
         assert len(active) == 6
         assert any(p.bank == "Генбанк" and "офисе «Луганск»" in p.text for p in active)

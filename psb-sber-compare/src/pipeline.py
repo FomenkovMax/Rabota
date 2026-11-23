@@ -401,7 +401,7 @@ def load_report_data(config: Config, *, competitor: str = "",
         all_products = [p for p in _rows_to_products(storage.products_of_run(run_id))
                         if not is_seo_page(p.source_url) and is_product_title(p.title)
                         and not securities.excluded_product(p.source_url or "", p.terms)]
-        all_products.extend(reviewed_products)
+        all_products.extend(p for p in reviewed_products if not p.terms.get(current_offers.SCENARIO_NOTE))
         if "tbank" in config.enabled_banks():
             from .availability import TBANK_MFC_CARD_URL
             from .banks.others import tbank_mfc_card_from_evidence
@@ -520,6 +520,9 @@ def load_report_data(config: Config, *, competitor: str = "",
                               p, lnr_status.get(id(p)), "lnr", now, ranking_hours)]
         available_ids = {id(p) for p in regional_scope}
         promo_candidates = promos_home + promos_rival + [p for p in reviewed_promos if p.bank in banks]
+        scenario_notes = [p for p in reviewed_products if p.terms.get(current_offers.SCENARIO_NOTE)
+                          and p.bank in banks and p.bank not in imported_banks]
+        scenario_statuses = {**lnr_status, **{id(p): reviewed_statuses[id(p)] for p in scenario_notes}}
         regional_offers = {}
         for region_code in current_offers.REGIONS:
             current_promos = {}
@@ -532,7 +535,7 @@ def load_report_data(config: Config, *, competitor: str = "",
                     current_promos[promo_key] = promo
             regional_offers[region_code] = {
                 "rankings": current_offers.rankings(
-                    candidates, lnr_status, banks, region=region_code, now=now,
+                    candidates + scenario_notes, scenario_statuses, banks, region=region_code, now=now,
                     hours=ranking_hours, key_rate=key_rate, region_methods=region_methods),
                 "promos": list(current_promos.values()),
             }

@@ -12,6 +12,7 @@ MOSCOW = timezone(timedelta(hours=3))
 REGIONS = {"lnr": "ЛНР", "lugansk": "Луганск"}
 AMOUNT = 500_000
 SCENARIOS = {"Вклады": 12, "Кредиты": 36}
+SCENARIO_NOTE = "Результат сверки сценария"
 
 
 def source_verified(url: str, checked_at: str, now: datetime, hours: int) -> bool:
@@ -43,7 +44,7 @@ def product_in_region(status, region: str) -> bool:
     return region == "lnr" or (region == "lugansk" and status.city_confirmed)
 
 
-def current_product(product, status, region: str, now: datetime, hours: int) -> bool:
+def _current_observation(product, now: datetime, hours: int) -> bool:
     terms = product.terms or {}
     end = terms.get("Действует до", "")
     if end:
@@ -52,10 +53,13 @@ def current_product(product, status, region: str, now: datetime, hours: int) -> 
                 return False
         except ValueError:
             return False
-    return (product_in_region(status, region)
-            and not ({"Источник условий: витрина", "Импорт из файла"} & terms.keys())
+    return (not ({"Источник условий: витрина", "Импорт из файла"} & terms.keys())
             and not terms.get(conditions.CLOSED_KEY)
             and source_verified(product.source_url, product.collected_at, now, hours))
+
+
+def current_product(product, status, region: str, now: datetime, hours: int) -> bool:
+    return product_in_region(status, region) and _current_observation(product, now, hours)
 
 
 @dataclass
@@ -132,12 +136,19 @@ def rankings(products, statuses, banks, *, region, now, hours, key_rate, region_
     scenarios = [(category, category, months, 0) for category, months in SCENARIOS.items()]
     scenarios.extend((f"Вклады на {days} дней", "Вклады", 0, days) for days in days_options)
     for heading, category, months, days in scenarios:
-        offers, ranges, reasons = {}, [], dict.fromkeys(banks, "Нет карточки по этому сценарию")
+        offers, ranges, notes = {}, [], []
+        reasons = dict.fromkeys(banks, "Нет карточки по этому сценарию")
         for product in products:
             if product.category != category or product.bank not in banks:
                 continue
             bank = product.bank
             status = statuses.get(id(product))
+            if product.terms.get(SCENARIO_NOTE):
+                if (not days and product.terms.get("Сумма сценария, ₽") == str(AMOUNT)
+                        and product.terms.get("Срок сценария, месяцев") == str(months)
+                        and _current_observation(product, now, hours)):
+                    notes.append((product, status if product_in_region(status, region) else None))
+                continue
             if not current_product(product, status, region, now, hours):
                 if bank not in offers:
                     if reasons[bank] == "Нет карточки по этому сценарию":
@@ -175,6 +186,7 @@ def rankings(products, statuses, banks, *, region, now, hours, key_rate, region_
             "leaders": sorted(offers.values(), key=lambda x: (
                 -x.value if category == "Вклады" else x.value, x.bank, x.title))[:3],
             "ranges": sorted(ranges, key=lambda row: (row[0].bank, row[0].title)),
+            "notes": sorted(notes, key=lambda row: (row[0].bank, row[0].title)),
             "excluded_banks": reasons,
         }
     return result
