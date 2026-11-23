@@ -35,3 +35,20 @@ def test_reviewed_terms_keep_regions_contract_days_and_original_dates():
         assert expired["Кредиты"]["ranges"] == []
         assert not any(active_promo(p, region=region, now=now + timedelta(hours=25), hours=24)
                        for p in promos)
+
+
+def test_november_23_review_includes_new_lugansk_evidence():
+    path = Path(__file__).resolve().parents[1] / "config" / "evidence" / "retail-2026-11-23.json"
+    banks = ["Сбер", "ПСБ", "ВТБ", "Т-Банк", "РостФинанс", "ЦМР", "Генбанк"]
+    now = datetime(2026, 11, 23, 23, tzinfo=MOSCOW)
+    products, statuses, promos = load(path, banks, now.date())
+    for region in ("lnr", "lugansk"):
+        offers = rankings(products, statuses, banks, region=region, now=now, hours=72,
+                          key_rate=14, region_methods={})
+        assert [(p.bank, p.value) for p in offers["Вклады"]["leaders"]] == [("Т-Банк", 57500)]
+        assert offers["Кредиты"]["leaders"] == []
+        assert {p.bank for p, _ in offers["Кредиты"]["ranges"]} == {"ВТБ", "ПСБ", "Т-Банк", "ЦМР"}
+        active = [p for p in promos if active_promo(p, region=region, now=now, hours=24)]
+        assert len(active) == 6
+        assert any(p.bank == "Генбанк" and "офисе «Луганск»" in p.text for p in active)
+        assert not any("Лови момент Баланс" in p.title for p in active)
