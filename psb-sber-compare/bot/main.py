@@ -405,9 +405,9 @@ async def on_audit(call: CallbackQuery) -> None:
             return
         await call.message.answer_document(
             BufferedInputFile(archive.read_bytes(), filename=archive.name),
-            caption="Всё, что агент видел на сайтах при последнем сборе: тексты страниц, "
-                    "калькуляторы. Пришли этот архив в чат с Claude — разбор дорабатывается "
-                    "по нему, без повторных сборов.")
+            caption="Тексты страниц и данные калькуляторов из последнего сбора, "
+                    "а также подключённый файл сверки тарифов и акций. "
+                    "Для проверки пришли этот архив вместе с HTML общего свода.")
         await call.message.answer("Готово.", reply_markup=kb.main_menu())
         return
     if action == "last":

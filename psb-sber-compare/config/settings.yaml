@@ -9,7 +9,7 @@ freshness:
   ranking_hours: 72
   promo_hours: 24
 
-# reviewed_offers: config/evidence/retail-2026-11-23.json
+reviewed_offers: config/evidence/retail-2026-11-23.json
 
 # Пороги светофора в процентных пунктах. parity_pp заодно задаёт «в рынке»
 # в разделе «Место Сбера»: отклонение от медианы остальных банков не больше.

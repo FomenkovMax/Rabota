@@ -523,6 +523,14 @@ def full_snapshot_archive() -> Path | None:
     mfc_evidence = ROOT / TBANK_MFC_EVIDENCE
     if mfc_evidence.is_file():
         files.append((mfc_evidence.parent, mfc_evidence))
+    config = _config()
+    reviewed_path = None
+    if config.get("reviewed_offers"):
+        evidence_dir = (ROOT / "config" / "evidence").resolve()
+        candidate = config.path("reviewed_offers").resolve()
+        if (candidate.parent == evidence_dir and candidate.suffix == ".json"
+                and candidate.name.startswith("retail-") and candidate.is_file()):
+            reviewed_path = candidate
     if not files:
         return None
     archive = ROOT / "data" / "snapshot.zip"
@@ -534,6 +542,8 @@ def full_snapshot_archive() -> Path | None:
                 if heading.startswith("URL: ") and outside_retail_scope(heading[5:].strip()):
                     continue
             out.write(path, Path(src.name) / path.relative_to(src))
+        if reviewed_path is not None:
+            out.write(reviewed_path, Path("config") / "evidence" / reviewed_path.name)
     return archive
 
 
