@@ -122,6 +122,8 @@ def kind_of(product: Any) -> tuple[str, str]:
     niche = _NICHE_TITLE.search(title)
     if niche:
         return NICHE, f"нишевый продукт: «{niche.group(0)}» в названии"
+    if re.search(r"\bзарплатн\w*", title, re.I):
+        return SALARY, "зарплатное предложение по названию продукта"
     premium = _PREMIUM_TITLE.search(title)
     if premium:
         return PREMIUM, f"для премиальных клиентов: «{premium.group(0)}» в названии"

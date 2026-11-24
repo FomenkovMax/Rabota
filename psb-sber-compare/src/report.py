@@ -281,8 +281,8 @@ def _overview(*, gaps: list[Any], home: str, comparisons: list[Any], specials: l
                    f"медианы банков.</p>{bub}</section>")
     heat = charts.heatmap(gaps, banks, home=home)
     if heat:
-        out.append('<section class="card"><h2>Карта ставок: программа × банк</h2>'
-                   '<p class="hint">Лучшая базовая ставка банка в программе и её отклонение '
+        out.append('<section class="card"><h2>Витринные ставки из сбора · ЛНР</h2>'
+                   '<p class="hint">Витринный показатель из карточки банка и его отклонение '
                    'от медианы всех банков. Синий — выгоднее клиенту, красный — хуже. '
                    f"Колонка Сбера выделена рамкой.</p>{heat}</section>")
     return "".join(out)
@@ -1129,60 +1129,69 @@ def _specials_block(rows: list[Any]) -> str:
         "</tr></thead><tbody>" + "".join(body) + "</tbody></table></div>")
 
 
+
+def _offer_table(headers: list[str], rows: list[list[str]]) -> str:
+    head = "".join(f'<th scope="col">{e(label)}</th>' for label in headers)
+    body = "".join("<tr>" + "".join(f"<td>{cell}</td>" for cell in row) + "</tr>" for row in rows)
+    return f'<div class="scroll"><table><thead><tr>{head}</tr></thead><tbody>{body}</tbody></table></div>'
+
+
+def _offer_source(url: str, checked_at: str) -> str:
+    try:
+        date = datetime.fromisoformat(checked_at).strftime("%d.%m.%Y %H:%M")
+    except ValueError:
+        date = checked_at
+    return f'<a href="{e(url)}">Условия банка</a><br>{e(date)}'
+
+
 def _current_offers_block(regional_offers: dict) -> str:
     sections = []
-    for region, data in regional_offers.items():
+    for region in sorted(regional_offers, key=lambda code: code != "lugansk"):
+        data = regional_offers[region]
         label = current_offers.REGIONS[region]
         parts = [f'<section class="card"><h2>Актуальные предложения · {e(label)}</h2>']
         if offers := data.get("products"):
-            parts.append("<h3>Действующие региональные предложения</h3><ul>")
-            for product, status in offers:
-                parts.append(f'<li>{e(product.bank)} · <a href="{e(product.source_url)}">'
-                             f'{e(product.title)}</a> · {e(product.terms[current_offers.REGIONAL_OFFER])} '
-                             f'Проверено {e(product.collected_at)}. '
-                             f'<a href="{e(status.source)}">Подтверждение для региона</a></li>')
-            parts.append("</ul>")
+            rows = [
+                [e(product.bank), e(product.category), e(product.title),
+                 e(product.terms.get(current_offers.OFFER_METRIC, "")),
+                 e(product.terms[current_offers.REGIONAL_OFFER]),
+                 _offer_source(product.source_url, product.collected_at)
+                 + f'<br><a href="{e(status.source)}">Где доступно</a>']
+                for product, status in offers
+            ]
+            parts.append("<h3>Подтверждённые предложения</h3>")
+            parts.append(_offer_table(["Банк", "Категория", "Продукт", "Ставка или выгода",
+                                       "Условия", "Проверка"], rows))
         for category, ranking in data["rankings"].items():
-            heading = ("Лучшие предложения" if ranking["checked"] == ranking["total"]
-                       else "Лучшие среди проверенных")
+            offers = ranking.get("offers", ranking["leaders"])
+            scope = f"{ranking['checked']} из {ranking['total']}"
+            heading = "Подтверждённые условия" if len(offers) <= 1 else "Сравнение подтверждённых условий"
             parts.append(f'<h3>{heading} · {e(category)}</h3><p>'
                          f'{e(f"{current_offers.AMOUNT:,}".replace(",", " "))} ₽ · '
-                         f'{e(ranking["term"])} · Банков с сопоставимыми условиями '
-                         f'{ranking["checked"]} из {ranking["total"]}</p>')
-            if ranking["leaders"]:
-                parts.append("<ol>")
-                for leader in ranking["leaders"]:
-                    metric = (f"Доход {leader.value:,.2f} ₽ до налога".replace(",", " ").replace(".", ",")
-                              if ranking["deposit"] else f"ПСК {fmt_rate(leader.value)}")
-                    parts.append(f'<li>{e(leader.bank)} · <a href="{e(leader.url)}">{e(leader.title)}</a>'
-                                 f' · {e(metric)} · Проверено {e(leader.checked_at)}. '
-                                 f'<a href="{e(leader.region_source)}">{e(leader.region_reason)}</a></li>')
-                parts.append("</ol>")
+                         f'{e(ranking["term"])} · Сопоставимые условия у {scope} банков</p>')
+            if offers:
+                rows = []
+                for offer in offers:
+                    if ranking["deposit"]:
+                        income = f"{offer.value:,.2f}".replace(",", " ").replace(".", ",")
+                        value = f"{income} ₽ до налога"
+                    else:
+                        value = f"ПСК {fmt_rate(offer.value)}"
+                    conditions = "<br>".join(e(x) for x in
+                        [fmt_rate(offer.rate) if offer.rate is not None else "", offer.terms] if x)
+                    rows.append([e(offer.bank), e(offer.title), e(value), conditions,
+                                 _offer_source(offer.url, offer.checked_at)
+                                 + f'<br><a href="{e(offer.region_source)}">Где доступно</a>'])
+                parts.append(_offer_table(["Банк", "Продукт", "Результат", "Условия", "Проверка"], rows))
             else:
-                parts.append("<p>Подтверждённых сопоставимых предложений пока нет.</p>")
-            if ranking.get("ranges"):
-                parts.append("<h4>Публичные диапазоны ПСК</h4>"
-                             "<p>Банк рассчитывает индивидуальную ПСК после заявки.</p><ul>")
-                for product, status in ranking["ranges"]:
-                    parts.append(f'<li>{e(product.bank)} · <a href="{e(product.source_url)}">'
-                                 f'{e(product.title)}</a> · {e(product.apr_raw)} · '
-                                 f'Проверено {e(product.collected_at)}. '
-                                 f'{e(product.terms["Публичный диапазон ПСК"])} '
-                                 f'<a href="{e(status.source)}">{e(status.reason)}</a></li>')
-                parts.append("</ul>")
-            if ranking.get("notes"):
-                parts.append("<h4>Что ещё известно по этому сценарию</h4><ul>")
-                for product, status in ranking["notes"]:
-                    geography = (f' <a href="{e(status.source)}">{e(status.reason)}</a>' if status else "")
-                    parts.append(f'<li>{e(product.bank)} · <a href="{e(product.source_url)}">'
-                                 f'{e(product.title)}</a> · Проверено {e(product.collected_at)}. '
-                                 f'{e(product.terms[current_offers.SCENARIO_NOTE])}{geography}</li>')
-                parts.append("</ul>")
-            if ranking["excluded_banks"]:
-                parts.append("<details><summary>Почему остальные банки вне рейтинга</summary><ul>")
-                parts.extend(f"<li>{e(bank)} — {e(reason)}</li>"
-                             for bank, reason in ranking["excluded_banks"].items())
-                parts.append("</ul></details>")
+                parts.append("<p>Сопоставимых условий по этому сценарию пока нет.</p>")
+            if ranges := ranking.get("ranges"):
+                rows = [[e(p.bank), e(p.title), e(p.apr_raw),
+                         _offer_source(p.source_url, p.collected_at)
+                         + f'<br><a href="{e(status.source)}">Где доступно</a>']
+                        for p, status in ranges]
+                parts.append("<h4>Опубликованные диапазоны ПСК</h4>")
+                parts.append(_offer_table(["Банк", "Кредит", "ПСК", "Проверка"], rows))
         parts.append("<h3>Действующие акции</h3>")
         if data["promos"]:
             parts.append("<ul>")
@@ -1276,6 +1285,8 @@ def render_report(
 
 {_current_offers_block(regional_offers or {})}
 
+<details class="card">
+<summary>Каталог и диагностика сбора</summary>
 {_overview(gaps=gaps or [], home=home, comparisons=comparisons, specials=specials or [],
            quality_rows=quality_rows or [], changes=changes,
            banks=catalog_banks or list((catalog or {}).keys()), lnr_total=lnr_total)}
@@ -1285,17 +1296,15 @@ def render_report(
 {_calculator_section(calculator or [], home)}
 
 <section class="card">
-  <h2>Позиция Сбера по витринным ставкам · ЛНР</h2>
+  <h2>Диагностика витринных ставок · ЛНР</h2>
   <p class="hint">Все банки сразу, без ручных пар. Продукты разложены по программам:
   семейная ипотека сравнивается с семейной, рыночная — с рыночной. По каждой программе
   у банка берётся лучшая витринная ставка: «до» для вкладов и счетов, «от» для кредитов.
   «В рынке» — отклонение от медианы остальных банков не больше
   {str(thresholds.parity).replace(".", ",")} п.п. В расчёт не идут ставки, которые
   не прошли проверку (раздел «Качество данных»), и условия не ЛНР.
-  Сравниваются только базовые ставки: приветственные, на «новые деньги»,
-  премиальные, зарплатные, с подпиской, короткие и нишевые продукты вынесены
-  в блок «Специальные условия» ниже — сравнивать их с обычными нельзя.
-  Витринная ставка — это лучший случай: перед выводом смотрите продукт по ссылке.</p>
+  Строки могут объединять показатели разных сроков, сумм и требований.
+  Для выбора продукта по конкретному сценарию используйте таблицы подтверждённых условий выше.</p>
   {_gap_tiles(gaps or [])}
   {_gaps_table(gaps or [], home)}
 </section>
@@ -1376,6 +1385,7 @@ def render_report(
   {_promo_analysis(promo_segments, expired_promos)}
 </section>
 
+</details>
 <footer>
   Источники — публичные страницы банков, раздел для частных лиц,
   регион запроса «{e(region)}».<br>

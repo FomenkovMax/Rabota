@@ -14,6 +14,7 @@ AMOUNT = 500_000
 SCENARIOS = {"Вклады": 12, "Кредиты": 36}
 SCENARIO_NOTE = "Результат сверки сценария"
 REGIONAL_OFFER = "Условия регионального предложения"
+OFFER_METRIC = "Показатель предложения"
 
 
 def source_verified(url: str, checked_at: str, now: datetime, hours: int) -> bool:
@@ -72,6 +73,8 @@ class Leader:
     value: float
     region_reason: str
     region_source: str
+    rate: float | None = None
+    terms: str = ""
 
 
 def _scenario_metric(product, months: int, today: date | None = None) -> float | None:
@@ -175,17 +178,21 @@ def rankings(products, statuses, banks, *, region, now, hours, key_rate, region_
                     reasons[bank] = "Не подтверждены сопоставимые условия"
                 continue
             candidate = Leader(bank, product.title, product.source_url, product.collected_at,
-                               metric, status.reason, status.source)
+                               metric, status.reason, status.source,
+                               product.rate_min if category == "Вклады" else None,
+                               product.terms.get("Условия тарифа") or product.terms.get("Выплата процентов", ""))
             if bank not in offers or (metric > offers[bank].value if category == "Вклады"
                                       else metric < offers[bank].value):
                 offers[bank] = candidate
             reasons.pop(bank, None)
+        ordered = sorted(offers.values(), key=lambda x: (
+            -x.value if category == "Вклады" else x.value, x.bank, x.title))
         result[heading] = {
             "months": months, "checked": len(offers), "total": len(banks),
             "term": f"{days} дней" if days else f"{months} мес.",
             "deposit": category == "Вклады",
-            "leaders": sorted(offers.values(), key=lambda x: (
-                -x.value if category == "Вклады" else x.value, x.bank, x.title))[:3],
+            "leaders": ordered[:3],
+            "offers": ordered,
             "ranges": sorted(ranges, key=lambda row: (row[0].bank, row[0].title)),
             "notes": sorted(notes, key=lambda row: (row[0].bank, row[0].title)),
             "excluded_banks": reasons,

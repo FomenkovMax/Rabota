@@ -4,6 +4,7 @@ from types import SimpleNamespace
 import pytest
 
 from src import availability, current_offers
+from src.report import _current_offers_block
 from src.promos import classify_all
 from src.psb.parser import Product, Promo
 from src.storage import Storage
@@ -107,3 +108,23 @@ def test_promo_terms_link_without_participation_conditions_is_not_enough():
     promo.text = promo.text.replace("оплатите три покупки картой", "условия доступны по ссылке")
     insight, = classify_all([promo], "Банк", today=NOW.date())
     assert not current_offers.active_promo(insight, region="lnr", now=NOW, hours=24)
+
+
+def test_main_offer_table_shows_only_comparable_confirmed_offers():
+    verified, status = deposit("ВТБ", 11, CITY)
+    salary, other = deposit("Сбер", 14.5, CITY)
+    salary.title = "Зарплатный Максимум"
+    missing, outside = deposit("Банк без подтверждения в городе", 15, LNR)
+    rows = [verified, salary, missing]
+    ranks = current_offers.rankings(
+        rows, dict(zip(map(id, rows), (status, other, outside))),
+        [product.bank for product in rows], region="lugansk", now=NOW,
+        hours=72, key_rate=None,
+        region_methods=dict.fromkeys((p.bank for p in rows), "selector"),
+    )
+    markup = _current_offers_block({"lugansk": {"rankings": ranks, "promos": []}})
+    assert "Вклад ВТБ" in markup
+    assert "55 000,00 ₽ до налога" in markup
+    assert "Зарплатный Максимум" not in markup
+    assert "Банк без подтверждения в городе" not in markup
+    assert "Сопоставимые условия у 1 из 3 банков" in markup

@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlsplit
 
 import yaml
 
@@ -371,8 +371,10 @@ def mark_not_in_region(config: Config, products: list[Any]) -> None:
 
 
 def _regional_offer_key(product) -> tuple[str, str, str]:
-    url = product.source_url.rstrip("/")
-    url = url.replace("https://www.sberbank.ru/retail/ru/", "https://www.sberbank.ru/ru/", 1)
+    source = urlsplit(product.source_url)
+    url = source._replace(query="", fragment="").geturl().rstrip("/")
+    if source.hostname == "www.sberbank.ru":
+        url = url.replace("https://www.sberbank.ru/retail/ru/", "https://www.sberbank.ru/ru/", 1)
     return product.bank, product.category, url
 
 
@@ -431,8 +433,9 @@ def load_report_data(config: Config, *, competitor: str = "",
             from .banks.genbank import (CREDIT_CARD_DOCUMENT, credit_card_from_disclosure,
                                         saved_catalogue_products)
 
-            if not any(p.bank == "Генбанк" for p in all_products):
-                all_products.extend(saved_catalogue_products(storage.path.parent, region=region))
+            genbank_urls = {p.source_url.rstrip("/") for p in all_products if p.bank == "Генбанк"}
+            all_products.extend(p for p in saved_catalogue_products(storage.path.parent, region=region)
+                                if p.source_url.rstrip("/") not in genbank_urls)
 
             credit_card = credit_card_from_disclosure(storage.path.parent / CREDIT_CARD_DOCUMENT)
             if credit_card:
@@ -569,8 +572,9 @@ def load_report_data(config: Config, *, competitor: str = "",
                 if previous is None or promo.checked_at >= previous.checked_at:
                     current_promos[promo_key] = promo
             regional_offers[region_code] = {
-                "products": [offer for offer in confirmed_offers.values()
-                             if current_offers.product_in_region(offer[1], region_code)],
+                "products": [confirmed_offers[key] for key in regional_reviews
+                             if key in confirmed_offers
+                             and current_offers.product_in_region(confirmed_offers[key][1], region_code)],
                 "rankings": current_offers.rankings(
                     candidates + scenario_notes, scenario_statuses, banks, region=region_code, now=now,
                     hours=ranking_hours, key_rate=key_rate, region_methods=region_methods),

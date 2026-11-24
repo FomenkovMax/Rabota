@@ -129,7 +129,7 @@ def _sheet_promos(book: Workbook, data: dict[str, Any]) -> None:
 
 
 def _sheet_regional_offers(book: Workbook, data: dict[str, Any]) -> None:
-    from ..current_offers import AMOUNT, REGIONS, REGIONAL_OFFER, SCENARIO_NOTE
+    from ..current_offers import AMOUNT, REGIONS, OFFER_METRIC, REGIONAL_OFFER
 
     sheet = book.create_sheet("Актуальные по регионам")
     _write_header(sheet, ["Регион", "Категория", "Банк", "Предложение", "Показатель",
@@ -139,29 +139,26 @@ def _sheet_regional_offers(book: Workbook, data: dict[str, Any]) -> None:
         label = REGIONS[region]
         for product, status in offers.get("products", ()):
             evidence = f"{product.terms[REGIONAL_OFFER]}\nГеография: {status.reason}\n{status.source}"
-            sheet.append([label, product.category, product.bank, product.title, "",
-                          product.collected_at, product.source_url, evidence])
+            sheet.append([label, product.category, product.bank, product.title,
+                          product.terms.get(OFFER_METRIC, ""), product.collected_at,
+                          product.source_url, evidence])
         for category, ranking in offers["rankings"].items():
             metric = "Доход до налога, ₽" if ranking["deposit"] else "ПСК, %"
             coverage = (f"{AMOUNT} ₽, {ranking['term']} · {metric} · "
                         f"Банков с сопоставимыми условиями {ranking['checked']} из {ranking['total']}")
             sheet.append([label, category, "", "", "", "", "", coverage])
-            for leader in ranking["leaders"]:
+            for leader in ranking.get("offers", ranking["leaders"]):
+                evidence = leader.terms
+                if leader.rate is not None:
+                    evidence = f"{leader.rate:g}% годовых. {evidence}"
                 sheet.append([label, category, leader.bank, leader.title, leader.value,
-                              leader.checked_at, leader.url, leader.region_reason])
+                              leader.checked_at, leader.url,
+                              f"{evidence}\n{leader.region_reason}\n{leader.region_source}"])
             for product, status in ranking.get("ranges", ()):
                 evidence = (f'{product.terms["Публичный диапазон ПСК"]}\n'
                             f'География: {status.reason}\n{status.source}')
                 sheet.append([label, "Кредиты · диапазон ПСК", product.bank, product.title, product.apr_raw,
                               product.collected_at, product.source_url, evidence])
-            for product, status in ranking.get("notes", ()):
-                evidence = product.terms[SCENARIO_NOTE]
-                if status:
-                    evidence += f"\nГеография: {status.reason}\n{status.source}"
-                sheet.append([label, category, product.bank, product.title, "Справочно",
-                              product.collected_at, product.source_url, evidence])
-            for bank, reason in ranking["excluded_banks"].items():
-                sheet.append([label, category, bank, "", "", "", "", reason])
         for promo in offers["promos"]:
             period = promo.valid_display if promo.valid_until else "До отмены"
             evidence = f"{promo.text}\nГеография: {promo.regional_source}" if promo.regional_source else promo.text
