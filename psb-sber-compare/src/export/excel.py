@@ -129,7 +129,7 @@ def _sheet_promos(book: Workbook, data: dict[str, Any]) -> None:
 
 
 def _sheet_regional_offers(book: Workbook, data: dict[str, Any]) -> None:
-    from ..current_offers import AMOUNT, REGIONS, SCENARIO_NOTE
+    from ..current_offers import AMOUNT, REGIONS, REGIONAL_OFFER, SCENARIO_NOTE
 
     sheet = book.create_sheet("Актуальные по регионам")
     _write_header(sheet, ["Регион", "Категория", "Банк", "Предложение", "Показатель",
@@ -137,6 +137,10 @@ def _sheet_regional_offers(book: Workbook, data: dict[str, Any]) -> None:
                   [16, 20, 20, 45, 18, 23, 42, 75])
     for region, offers in data["regional_offers"].items():
         label = REGIONS[region]
+        for product, status in offers.get("products", ()):
+            evidence = f"{product.terms[REGIONAL_OFFER]}\nГеография: {status.reason}\n{status.source}"
+            sheet.append([label, product.category, product.bank, product.title, "",
+                          product.collected_at, product.source_url, evidence])
         for category, ranking in offers["rankings"].items():
             metric = "Доход до налога, ₽" if ranking["deposit"] else "ПСК, %"
             coverage = (f"{AMOUNT} ₽, {ranking['term']} · {metric} · "

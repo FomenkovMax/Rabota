@@ -1134,6 +1134,14 @@ def _current_offers_block(regional_offers: dict) -> str:
     for region, data in regional_offers.items():
         label = current_offers.REGIONS[region]
         parts = [f'<section class="card"><h2>Актуальные предложения · {e(label)}</h2>']
+        if offers := data.get("products"):
+            parts.append("<h3>Действующие региональные предложения</h3><ul>")
+            for product, status in offers:
+                parts.append(f'<li>{e(product.bank)} · <a href="{e(product.source_url)}">'
+                             f'{e(product.title)}</a> · {e(product.terms[current_offers.REGIONAL_OFFER])} '
+                             f'Проверено {e(product.collected_at)}. '
+                             f'<a href="{e(status.source)}">Подтверждение для региона</a></li>')
+            parts.append("</ul>")
         for category, ranking in data["rankings"].items():
             heading = ("Лучшие предложения" if ranking["checked"] == ranking["total"]
                        else "Лучшие среди проверенных")

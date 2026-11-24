@@ -13,6 +13,7 @@ REGIONS = {"lnr": "ЛНР", "lugansk": "Луганск"}
 AMOUNT = 500_000
 SCENARIOS = {"Вклады": 12, "Кредиты": 36}
 SCENARIO_NOTE = "Результат сверки сценария"
+REGIONAL_OFFER = "Условия регионального предложения"
 
 
 def source_verified(url: str, checked_at: str, now: datetime, hours: int) -> bool:

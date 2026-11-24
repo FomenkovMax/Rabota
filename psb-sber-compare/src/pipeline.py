@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+from urllib.parse import urljoin
 
 import yaml
 
@@ -356,16 +357,23 @@ def mark_not_in_region(config: Config, products: list[Any]) -> None:
     ставку нельзя ставить в рейтинг рядом с луганскими условиями конкурентов.
     """
     titles = registry.titles()
-    by_bank: dict[str, dict[str, str]] = {}
+    by_bank: dict[str, dict[str, dict]] = {}
     for code in config.enabled_banks():
         for item in (config.bank_settings(code) or {}).get("not_in_region") or []:
             if isinstance(item, dict) and item.get("path"):
-                by_bank.setdefault(titles.get(code, code), {})[
-                    str(item["path"]).rstrip("/")] = str(item.get("note") or "по данным сайта")
+                by_bank.setdefault(titles.get(code, code), {})[str(item["path"]).rstrip("/")] = item
     for product in products:
-        note = by_bank.get(product.bank, {}).get((product.url_path or "").rstrip("/"))
-        if note:
-            product.terms[market.REGION_KEY] = note
+        rule = by_bank.get(product.bank, {}).get((product.url_path or "").rstrip("/"))
+        if rule:
+            product.terms[market.REGION_KEY] = str(rule.get("note") or "по данным сайта")
+            if source := rule.get("source"):
+                product.terms[market.REGION_SOURCE_KEY] = str(source)
+
+
+def _regional_offer_key(product) -> tuple[str, str, str]:
+    url = product.source_url.rstrip("/")
+    url = url.replace("https://www.sberbank.ru/retail/ru/", "https://www.sberbank.ru/ru/", 1)
+    return product.bank, product.category, url
 
 
 def load_report_data(config: Config, *, competitor: str = "",
@@ -401,7 +409,12 @@ def load_report_data(config: Config, *, competitor: str = "",
         all_products = [p for p in _rows_to_products(storage.products_of_run(run_id))
                         if not is_seo_page(p.source_url) and is_product_title(p.title)
                         and not securities.excluded_product(p.source_url or "", p.terms)]
-        all_products.extend(p for p in reviewed_products if not p.terms.get(current_offers.SCENARIO_NOTE))
+        regional_reviews = {_regional_offer_key(p): p for p in reviewed_products
+                            if p.terms.get(current_offers.REGIONAL_OFFER)}
+        existing = {_regional_offer_key(p) for p in all_products}
+        all_products.extend(p for p in reviewed_products if not p.terms.get(current_offers.SCENARIO_NOTE)
+                            and (not p.terms.get(current_offers.REGIONAL_OFFER)
+                                 or _regional_offer_key(p) not in existing))
         if "tbank" in config.enabled_banks():
             from .availability import TBANK_MFC_CARD_URL
             from .banks.others import tbank_mfc_card_from_evidence
@@ -445,7 +458,9 @@ def load_report_data(config: Config, *, competitor: str = "",
 
         competitor_titles = [titles.get(c, c) for c in competitor_codes]
         banks = [home_title] + competitor_titles
-        promo_rows = storage.promos_of_run(run_id)
+        promo_rows = [row for row in storage.promos_of_run(run_id)
+                      if not any(securities.outside_retail_scope(row[key] or "")
+                                 for key in ("source_url", "url"))]
         promos_home = classify_all(
             [r for r in promo_rows if r["bank"] == home_title], home_title, today=now.date())
         promos_rival = []
@@ -453,8 +468,13 @@ def load_report_data(config: Config, *, competitor: str = "",
             promos_rival.extend(classify_all(
                 [r for r in promo_rows if r["bank"] == title], title, today=now.date()))
 
-        changes = [dict(row) for row in storage.changes_of_run(run_id)
-                   if not securities.outside_retail_scope(row["product_key"] or "")]
+        changes = []
+        for row in storage.changes_of_run(run_id):
+            source = row["product_key"] or ""
+            if row["bank"] == "Т-Банк":
+                source = urljoin("https://www.tbank.ru", source)
+            if not securities.outside_retail_scope(source):
+                changes.append(dict(row))
 
         run_row = storage.conn.execute(
             "SELECT started_at FROM runs WHERE id=?", (run_id,)).fetchone()
@@ -508,12 +528,22 @@ def load_report_data(config: Config, *, competitor: str = "",
         lnr_status = availability.statuses(scope, region_methods=region_methods,
                                            presence=presence)
         lnr_status.update({id(p): reviewed_statuses[id(p)] for p in scope
-                           if id(p) in reviewed_statuses and not p.terms.get(market.REGION_KEY)})
+                           if id(p) in reviewed_statuses and not p.terms.get(market.REGION_KEY)
+                           and not p.terms.get(current_offers.REGIONAL_OFFER)})
         ranking_hours = int(config.get("freshness", "ranking_hours", default=72))
         promo_hours = int(config.get("freshness", "promo_hours", default=24))
         imported_banks = {titles.get(c, c) for c in [HOME_BANK] + competitor_codes
                           if config.bank_settings(c).get("source")}
         candidates = [p for p in scope if p.bank not in imported_banks]
+        confirmed_offers = {}
+        for product in candidates:
+            review = regional_reviews.get(_regional_offer_key(product))
+            if review is None or lnr_status[id(product)].code == availability.ABSENT:
+                continue
+            status = reviewed_statuses[id(review)]
+            if current_offers.current_product(review, status, "lnr", now, ranking_hours):
+                lnr_status[id(product)] = status
+                confirmed_offers[_regional_offer_key(review)] = (review, status)
         regional_scope = [p for p in candidates
                           if not ({"Точный срок, дней", "Точный срок, месяцев"} & p.terms.keys())
                           and current_offers.current_product(
@@ -534,6 +564,8 @@ def load_report_data(config: Config, *, competitor: str = "",
                 if previous is None or promo.checked_at >= previous.checked_at:
                     current_promos[promo_key] = promo
             regional_offers[region_code] = {
+                "products": [offer for offer in confirmed_offers.values()
+                             if current_offers.product_in_region(offer[1], region_code)],
                 "rankings": current_offers.rankings(
                     candidates + scenario_notes, scenario_statuses, banks, region=region_code, now=now,
                     hours=ranking_hours, key_rate=key_rate, region_methods=region_methods),

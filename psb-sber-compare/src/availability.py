@@ -272,7 +272,7 @@ def status_of(product: Any, *, region_method: str, presence: str = "") -> Status
     url = getattr(product, "source_url", "") or ""
     absent = terms.get(market.REGION_KEY)
     if absent:
-        return Status(ABSENT, str(absent), url)
+        return Status(ABSENT, str(absent), terms.get(market.REGION_SOURCE_KEY) or url)
     if terms.get("Вид ценной бумаги"):
         return Status(UNKNOWN, str(terms.get("Доступность торгов в Луганске") or
                       "доступность торгов этим выпуском через банк в Луганске не подтверждена"), url)

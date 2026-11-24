@@ -161,3 +161,11 @@ def test_tbank_inventory_compares_issue_urls_using_latest_snapshot(tmp_path):
     assert checked["stocks"]["catalogue_fields"]["matched_issues"] == 1
     assert checked["stocks"]["catalogue_fields"]["missing_detail_and_fields"] == []
     assert checked["bonds"]["unread"]
+
+
+def test_tbank_education_and_social_are_outside_the_saved_catalogue():
+    for path in ("education", "education/courses/a-b/lesson", "social/profile/example"):
+        url = f"https://www.tbank.ru/invest/{path}"
+        assert securities.excluded_product(url, {})
+    assert not securities.outside_retail_scope("https://www.tbank.ru/invest/account")
+    assert not securities.outside_retail_scope("https://other.example/invest/education/course")

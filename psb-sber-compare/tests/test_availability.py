@@ -414,3 +414,19 @@ def test_vtb_brokerage_office_registry_only_confirms_brokerage():
     other = Product(bank="ВТБ", category="Инвестиции", source_url=av.VTB_BROKER_URL + "/fund")
     av.remember_vtb_broker_offices(other, evidence)
     assert not av.status_of(other, region_method="federal").city_confirmed
+
+
+def test_far_east_mortgage_geo_rule_overrides_unrelated_lugansk_calculator():
+    from src.pipeline import Config, mark_not_in_region
+    from src.psb.parser import Product
+
+    config = Config.load()
+    suffix = "/ru/person/credits/home/buying_complete_house_daln"
+    product = Product(bank="Сбер", title="Дальневосточная ипотека", category="Ипотека",
+                      source_url=f"https://www.sberbank.ru{suffix}", url_path=suffix,
+                      terms={"Калькулятор на сайте": "Луганск — Региональная: 3,0 %"})
+    mark_not_in_region(config, [product])
+    status = av.status_of(product, region_method="selector")
+    assert status.code == av.ABSENT
+    assert not status.city_confirmed
+    assert status.source.endswith("obshhaya_informaciya_osobennostyax_zhilishhnogo_kreditovaniya.pdf")

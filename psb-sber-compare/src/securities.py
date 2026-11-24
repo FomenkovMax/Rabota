@@ -45,8 +45,9 @@ def issue_page(url: str) -> bool:
 def outside_retail_scope(url: str) -> bool:
     parts = urlsplit(url)
     return issue_page(url) or (
-        parts.hostname == "www.tbank.ru"
-        and parts.path.rstrip("/") in {"/invest/stocks", "/invest/bonds"}
+        parts.hostname in {"tbank.ru", "www.tbank.ru"}
+        and (parts.path.rstrip("/") in {"/invest/stocks", "/invest/bonds"}
+             or re.match(r"^/invest/(?:social|education)(?:/|$)", parts.path, re.I))
     )
 
 
