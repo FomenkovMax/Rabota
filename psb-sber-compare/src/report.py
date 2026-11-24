@@ -241,53 +241,6 @@ CSS += charts.CSS + brand.css() + brand.icons_css() + (
 )
 
 
-def _overview(*, gaps: list[Any], home: str, comparisons: list[Any], specials: list[Any],
-              quality_rows: list[Any], changes: list[Any], banks: list[str],
-              lnr_total: dict[str, int] | None = None) -> str:
-    """Обзор в начале отчёта: выводы и графики по тем же данным, что в таблицах."""
-    items = charts.insights(gaps, home=home, comparisons=comparisons, specials=specials,
-                            quality_rows=quality_rows, changes=changes, lnr_total=lnr_total)
-    out = ['<section class="card"><h2>Главное</h2>'
-           '<p class="hint">Выводы собраны по правилам из таблиц ниже — без модели '
-           'и без цифр со стороны. Каждую фразу можно проверить в своём разделе.</p>'
-           f"{charts.insights_block(items)}</section>"]
-    bars, flow = charts.status_bars(gaps, BLOCK_NAME), charts.funnel(quality_rows, gaps)
-    if bars or flow:
-        out.append('<div class="duo">')
-        if bars:
-            out.append('<section class="card"><h2>Место Сбера по блокам</h2>'
-                       '<p class="hint">Сколько программ блока Сбер лидирует, держится '
-                       f"в рынке, отстаёт или не найден.</p>{bars}</section>")
-        if flow:
-            out.append('<section class="card"><h2>Воронка данных</h2>'
-                       '<p class="hint">Все банки: сколько продуктов дошло от сбора '
-                       f"до рейтинга. Остальные — в «Качестве данных».</p>{flow}</section>")
-        out.append("</div>")
-        out.append('<div style="height:20px"></div>')
-    drops = charts.dumbbell(gaps, home=home)
-    if drops:
-        out.append('<section class="card"><h2>Сбер на фоне рынка</h2>'
-                   '<p class="hint">Линия — разброс ставок банков по программе, справа '
-                   'всегда выгоднее клиенту (для кредитов шкала развёрнута). Точки конкурентов — '
-                   'цветом банка, черта — медиана остальных, крупная точка — Сбер (цвет — его место). '
-                   f"Наведите на точку, чтобы увидеть банк и продукт.</p>{drops}</section>")
-    bub = charts.bubbles(gaps, home=home)
-    if bub:
-        out.append('<section class="card"><h2>Позиционирование банков</h2>'
-                   '<p class="hint">Средняя базовая ставка банка по сбережениям (вправо — '
-                   'выгоднее вкладчику) и по кредитам наличными, рефинансированию, '
-                   'автокредиту и залогу (вверх — дешевле заёмщику). Размер пузыря — '
-                   'в скольких программах у банка есть проверенная ставка. Пунктир — '
-                   f"медианы банков.</p>{bub}</section>")
-    heat = charts.heatmap(gaps, banks, home=home)
-    if heat:
-        out.append('<section class="card"><h2>Витринные ставки из сбора · ЛНР</h2>'
-                   '<p class="hint">Витринный показатель из карточки банка и его отклонение '
-                   'от медианы всех банков. Синий — выгоднее клиенту, красный — хуже. '
-                   f"Колонка Сбера выделена рамкой.</p>{heat}</section>")
-    return "".join(out)
-
-
 def _presence_block(presence: dict[str, str], banks: list[str]) -> str:
     """Чем подтверждено присутствие каждого банка в ЛНР."""
     rows = []
@@ -1159,7 +1112,7 @@ def _current_offers_block(regional_offers: dict) -> str:
                  + f'<br><a href="{e(status.source)}">Где доступно</a>']
                 for product, status in offers
             ]
-            parts.append("<h3>Подтверждённые предложения</h3>")
+            parts.append(f"<h3>Витринные ставки и предложения · {e(label)}</h3>")
             parts.append(_offer_table(["Банк", "Категория", "Продукт", "Ставка или выгода",
                                        "Условия", "Проверка"], rows))
         for category, ranking in data["rankings"].items():
@@ -1287,27 +1240,9 @@ def render_report(
 
 <details class="card">
 <summary>Каталог и диагностика сбора</summary>
-{_overview(gaps=gaps or [], home=home, comparisons=comparisons, specials=specials or [],
-           quality_rows=quality_rows or [], changes=changes,
-           banks=catalog_banks or list((catalog or {}).keys()), lnr_total=lnr_total)}
-
 {_lnr_section(lnr_rows or [], lnr_total or {}, catalog_banks or [], home, presence or {})}
 
 {_calculator_section(calculator or [], home)}
-
-<section class="card">
-  <h2>Диагностика витринных ставок · ЛНР</h2>
-  <p class="hint">Все банки сразу, без ручных пар. Продукты разложены по программам:
-  семейная ипотека сравнивается с семейной, рыночная — с рыночной. По каждой программе
-  у банка берётся лучшая витринная ставка: «до» для вкладов и счетов, «от» для кредитов.
-  «В рынке» — отклонение от медианы остальных банков не больше
-  {str(thresholds.parity).replace(".", ",")} п.п. В расчёт не идут ставки, которые
-  не прошли проверку (раздел «Качество данных»), и условия не ЛНР.
-  Строки могут объединять показатели разных сроков, сумм и требований.
-  Для выбора продукта по конкретному сценарию используйте таблицы подтверждённых условий выше.</p>
-  {_gap_tiles(gaps or [])}
-  {_gaps_table(gaps or [], home)}
-</section>
 
 <section class="card">
   <h2>Специальные условия и нишевые предложения · ЛНР</h2>
