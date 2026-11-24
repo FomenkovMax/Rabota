@@ -1114,12 +1114,15 @@ def _regional_matrix(data: dict) -> str:
         for product, _ in ranking.get("ranges", []):
             cells = rows.setdefault(label + " · диапазон ПСК", {}).setdefault(product.bank, [])
             cells.append(f'<a href="{e(product.source_url)}">{e(product.title)}</a><br>{e(product.apr_raw)}')
+    for promo in data.get("promos", []):
+        cells = rows.setdefault("Действующие акции", {}).setdefault(promo.bank, [])
+        cells.append(f'<a href="{e(promo.source_url)}">{e(promo.title)}</a>')
     banks = sorted({bank for row in rows.values() for bank in row},
                    key=lambda bank: (bank != "Сбер", bank))
     if not banks:
         return ""
     return _offer_table(["Продукт или сценарий", *banks], [
-        [e(label), *["<hr>".join(row.get(bank, ["—"])) for bank in banks]]
+        [e(label), *["<hr>".join(row.get(bank, ["Нет подтверждённых данных"])) for bank in banks]]
         for label, row in rows.items()])
 
 
