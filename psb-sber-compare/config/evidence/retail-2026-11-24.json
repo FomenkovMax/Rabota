@@ -531,6 +531,16 @@
         "source": "https://sovminlnr.ru/novosti/35321-vtb-otkryl-novyy-ofis-v-luganske.html",
         "reason": "Правительство ЛНР подтверждает оформление накопительных счетов в офисе ВТБ в Луганске."
       }
+    },
+    {
+      "bank": "Т-Банк",
+      "category": "Накопительные счета",
+      "title": "Накопительный счёт Т-Банка",
+      "source": "https://www.tbank.ru/bank/help/deposits/savings-account/open/terms/",
+      "checked_at": "2026-11-24T18:16:27+03:00",
+      "terms": {
+        "Тариф по России": "6% без подписки, 8% с Pro, 9% с Premium. Для владельца основной дебетовой карты."
+      }
     }
   ],
   "promotions": [

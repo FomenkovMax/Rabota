@@ -571,7 +571,27 @@ def load_report_data(config: Config, *, competitor: str = "",
                 previous = current_promos.get(promo_key)
                 if previous is None or promo.checked_at >= previous.checked_at:
                     current_promos[promo_key] = promo
+            reference_rates = []
+            for product in candidates:
+                status = lnr_status.get(id(product))
+                if (not status or status.code == availability.ABSENT
+                        or product.terms.get(market.REGION_KEY)
+                        or market.program_of(product) in market.NOT_FOR_LNR
+                        or not current_offers._current_observation(product, now, ranking_hours)):
+                    continue
+                nationwide = product.terms.get("Тариф по России")
+                if status.code == availability.UNKNOWN and not nationwide:
+                    continue
+                if not nationwide and not (product.rate_raw or product.apr_raw):
+                    continue
+                if not nationwide and market.assess(product, key_rate=key_rate,
+                        region_method=market.method_of(product, region_methods)).confidence == market.LOW:
+                    continue
+                scope_label = ("Тариф по России" if nationwide or status.code == availability.FEDERAL
+                               else "Условия ЛНР")
+                reference_rates.append((product, scope_label))
             regional_offers[region_code] = {
+                "banks": banks, "reference_rates": reference_rates,
                 "products": [confirmed_offers[key] for key in regional_reviews
                              if key in confirmed_offers
                              and current_offers.product_in_region(confirmed_offers[key][1], region_code)],

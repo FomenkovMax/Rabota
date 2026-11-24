@@ -1117,7 +1117,18 @@ def _regional_matrix(data: dict) -> str:
     for promo in data.get("promos", []):
         cells = rows.setdefault("Действующие акции", {}).setdefault(promo.bank, [])
         cells.append(f'<a href="{e(promo.source_url)}">{e(promo.title)}</a>')
-    banks = sorted({bank for row in rows.values() for bank in row},
+    local_cells = {(label, bank) for label, row in rows.items() for bank in row}
+    for product, scope in data.get("reference_rates", []):
+        label = product.category
+        if (label, product.bank) in local_cells:
+            continue
+        terms = product.terms.get("Тариф по России") or product.rate_raw or product.apr_raw
+        cell = rows.setdefault(label, {}).setdefault(product.bank, [])
+        item = (f'<a href="{e(product.source_url)}">{e(product.title)}</a><br>'
+                f'{e(scope)} · {e(terms)} · {e(product.collected_at[:10])}')
+        if item not in cell:
+            cell.append(item)
+    banks = sorted(data.get("banks") or {bank for row in rows.values() for bank in row},
                    key=lambda bank: (bank != "Сбер", bank))
     if not banks:
         return ""
