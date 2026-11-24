@@ -1099,9 +1099,12 @@ def _offer_source(url: str, checked_at: str) -> str:
 
 def _regional_matrix(data: dict) -> str:
     rows = {}
+    local_cells = set()
     for product, _ in data.get("products", []):
         cell = rows.setdefault(product.category, {}).setdefault(product.bank, [])
         metric = product.terms.get(current_offers.OFFER_METRIC, "")
+        if metric and metric != "Доступно оформление":
+            local_cells.add((product.category, product.bank))
         cell.append(f'<a href="{e(product.source_url)}">{e(product.title)}</a> {e(metric)}'
                     f'<br>{e(product.terms[current_offers.REGIONAL_OFFER])}')
     for category, ranking in data["rankings"].items():
@@ -1117,7 +1120,6 @@ def _regional_matrix(data: dict) -> str:
     for promo in data.get("promos", []):
         cells = rows.setdefault("Действующие акции", {}).setdefault(promo.bank, [])
         cells.append(f'<a href="{e(promo.source_url)}">{e(promo.title)}</a>')
-    local_cells = {(label, bank) for label, row in rows.items() for bank in row}
     for product, scope in data.get("reference_rates", []):
         label = product.category
         if (label, product.bank) in local_cells:
