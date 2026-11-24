@@ -1097,12 +1097,40 @@ def _offer_source(url: str, checked_at: str) -> str:
     return f'<a href="{e(url)}">Условия банка</a><br>{e(date)}'
 
 
+def _regional_matrix(data: dict) -> str:
+    rows = {}
+    for product, _ in data.get("products", []):
+        cell = rows.setdefault(product.category, {}).setdefault(product.bank, [])
+        metric = product.terms.get(current_offers.OFFER_METRIC, "")
+        cell.append(f'<a href="{e(product.source_url)}">{e(product.title)}</a> {e(metric)}'
+                    f'<br>{e(product.terms[current_offers.REGIONAL_OFFER])}')
+    for category, ranking in data["rankings"].items():
+        label = f"{category} · 500 000 ₽ · {ranking['term']}"
+        for offer in ranking.get("offers", ranking["leaders"]):
+            value = (f"{offer.value:,.2f} ₽ до налога".replace(",", " ").replace(".", ",")
+                     if ranking["deposit"] else f"ПСК {fmt_rate(offer.value)}")
+            rows.setdefault(label, {})[offer.bank] = [
+                f'<a href="{e(offer.url)}">{e(offer.title)}</a><br>{e(value)}']
+        for product, _ in ranking.get("ranges", []):
+            cells = rows.setdefault(label + " · диапазон ПСК", {}).setdefault(product.bank, [])
+            cells.append(f'<a href="{e(product.source_url)}">{e(product.title)}</a><br>{e(product.apr_raw)}')
+    banks = sorted({bank for row in rows.values() for bank in row},
+                   key=lambda bank: (bank != "Сбер", bank))
+    if not banks:
+        return ""
+    return _offer_table(["Продукт или сценарий", *banks], [
+        [e(label), *["<hr>".join(row.get(bank, ["—"])) for bank in banks]]
+        for label, row in rows.items()])
+
+
 def _current_offers_block(regional_offers: dict) -> str:
     sections = []
     for region in sorted(regional_offers, key=lambda code: code != "lugansk"):
         data = regional_offers[region]
         label = current_offers.REGIONS[region]
         parts = [f'<section class="card"><h2>Актуальные предложения · {e(label)}</h2>']
+        if matrix := _regional_matrix(data):
+            parts.append(f"<h3>Сводная таблица по банкам · {e(label)}</h3>{matrix}")
         if offers := data.get("products"):
             rows = [
                 [e(product.bank), e(product.category), e(product.title),
