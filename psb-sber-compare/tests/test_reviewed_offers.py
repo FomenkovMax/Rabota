@@ -60,3 +60,24 @@ def test_november_23_review_includes_new_lugansk_evidence():
         assert len(active) == 6
         assert any(p.bank == "Генбанк" and "офисе «Луганск»" in p.text for p in active)
         assert not any("Лови момент Баланс" in p.title for p in active)
+
+
+def test_november_24_promotion_review_covers_seven_banks_and_uses_entry_deadlines():
+    import json
+    from collections import Counter
+
+    path = Path(__file__).resolve().parents[1] / "config" / "evidence" / "retail-2026-11-24.json"
+    audit = json.loads(path.read_text(encoding="utf-8"))["promotion_review"]
+    now = datetime.fromisoformat(audit["checked_at"])
+    banks = {row["bank"] for row in audit["results"]}
+    assert banks == {"Сбер", "ПСБ", "ВТБ", "Т-Банк", "РостФинанс", "ЦМР", "Генбанк"}
+    _, _, promos = load(path, banks, now.date())
+    counts = {"Сбер": 3, "ПСБ": 4, "ВТБ": 2, "Генбанк": 1}
+    for region in ("lnr", "lugansk"):
+        active = [p for p in promos if active_promo(p, region=region, now=now, hours=24)]
+        assert Counter(p.bank for p in active) == counts
+        assert all(p.regional_source for p in active)
+        assert all(not p.is_guaranteed for p in active if "розыгрыш" in p.title)
+    later = datetime(2026, 11, 30, 12, tzinfo=MOSCOW)
+    smile = next(p for p in promos if "Улыбатл" in p.title)
+    assert not active_promo(smile, region="lugansk", now=later, hours=24 * 7)
