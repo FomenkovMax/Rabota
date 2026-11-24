@@ -398,8 +398,11 @@ def load_report_data(config: Config, *, competitor: str = "",
         now = (now or datetime.now(current_offers.MOSCOW)).astimezone(current_offers.MOSCOW)
         reviewed_products, reviewed_statuses, reviewed_promos = [], {}, []
         if config.get("reviewed_offers"):
+            state_path = (config.path("promotion_refresh", "state")
+                          if config.get("promotion_refresh", "state") else None)
             reviewed_products, reviewed_statuses, reviewed_promos = reviewed_offers.load(
-                config.path("reviewed_offers"), {titles.get(c, c) for c in config.enabled_banks()}, now.date())
+                config.path("reviewed_offers"), {titles.get(c, c) for c in config.enabled_banks()},
+                now.date(), state_path=state_path)
 
         # SEO-страницы отсеиваем и здесь: в базе они остались от прошлых
         # сборов, а пересобирать ради этого все банки незачем.
@@ -549,7 +552,9 @@ def load_report_data(config: Config, *, competitor: str = "",
                           and current_offers.current_product(
                               p, lnr_status.get(id(p)), "lnr", now, ranking_hours)]
         available_ids = {id(p) for p in regional_scope}
-        promo_candidates = promos_home + promos_rival + [p for p in reviewed_promos if p.bank in banks]
+        promo_candidates = [p for p in reviewed_promos if p.bank in banks]
+        if not config.get("promotion_refresh", "state"):
+            promo_candidates.extend(promos_home + promos_rival)
         scenario_notes = [p for p in reviewed_products if p.terms.get(current_offers.SCENARIO_NOTE)
                           and p.bank in banks and p.bank not in imported_banks]
         scenario_statuses = {**lnr_status, **{id(p): reviewed_statuses[id(p)] for p in scenario_notes}}

@@ -40,3 +40,14 @@ services:
           fi
           sleep 50
         done
+
+  # Узкий обход акций запускается независимо от длинного сбора каталога.
+  promo-review:
+    build: .
+    restart: unless-stopped
+    environment:
+      TZ: "MSK-3"
+    volumes:
+      - ./data:/app/data
+      - ./config:/app/config:ro
+    command: ["python", "run.py", "watch-promos"]

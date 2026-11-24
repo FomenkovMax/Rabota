@@ -1,5 +1,6 @@
 """Optional, dated supplements reviewed against published terms and local sources."""
 from datetime import date
+from hashlib import sha256
 import json
 import logging
 from urllib.parse import urlsplit
@@ -17,7 +18,33 @@ def _https(value: str) -> bool:
     return url.scheme == "https" and bool(url.hostname)
 
 
-def load(path, banks, today: date):
+def promotion_version(row):
+    fields = [row[key] for key in ("bank", "title", "rules", "regional_source", "text")]
+    return sha256(json.dumps(fields, ensure_ascii=False).encode("utf-8")).hexdigest()
+
+
+def promotion_state(path):
+    if path is None:
+        return {}
+    try:
+        state = json.loads(path.read_text(encoding="utf-8"))
+        return state if isinstance(state, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def promotion(row, today):
+    if not _https(row["rules"]) or not _https(row["regional_source"]):
+        return None
+    promo = classify(row["bank"], row["title"], row["text"], row["rules"], "", today=today)
+    if promo:
+        promo.source_url = row["rules"]
+        promo.checked_at = row["checked_at"]
+        promo.regional_source = row["regional_source"]
+    return promo
+
+
+def load(path, banks, today: date, *, state_path=None):
     products, statuses, promos = [], {}, []
     try:
         batch = json.loads(path.read_text(encoding="utf-8"))
@@ -61,16 +88,19 @@ def load(path, banks, today: date):
                 product.apr_min, product.apr_max = bounds
                 product.apr_raw = f'{product.apr_min:.3f}–{product.apr_max:.3f}%'.replace(".", ",")
             products.append(product)
-        for row in batch["promotions"]:
-            if row["bank"] not in banks or not _https(row["rules"]) or not _https(row["regional_source"]):
+        state = promotion_state(state_path)
+        for row in [*batch["promotions"], *state.get("discovered", ())]:
+            if row["bank"] not in banks:
                 continue
-            promo = classify(row["bank"], row["title"], row["text"], row["rules"], "",
-                             today=today)
-            if promo is not None:
-                promo.source_url = row["rules"]
-                promo.checked_at = row["checked_at"]
-                promo.regional_source = row["regional_source"]
-                promos.append(promo)
+            promo = promotion(row, today)
+            if promo is None:
+                continue
+            check = state.get("checks", {}).get(row["rules"], {})
+            if check.get("version") == promotion_version(row):
+                if check.get("status") in {"expired", "changed"}:
+                    continue
+                promo.checked_at = max(promo.checked_at, check.get("checked_at", ""))
+            promos.append(promo)
     except (OSError, ValueError, TypeError, KeyError, AttributeError) as exc:
         log.warning("Сверка условий %s не загружена: %s", path, exc)
         return [], {}, []

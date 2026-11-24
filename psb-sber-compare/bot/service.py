@@ -531,6 +531,10 @@ def full_snapshot_archive() -> Path | None:
         if (candidate.parent == evidence_dir and candidate.suffix == ".json"
                 and candidate.name.startswith("retail-") and candidate.is_file()):
             reviewed_path = candidate
+    if config.get("promotion_refresh", "state"):
+        promo_state = config.path("promotion_refresh", "state")
+        if promo_state.is_file():
+            files.append((promo_state.parent, promo_state))
     if not files:
         return None
     archive = ROOT / "data" / "snapshot.zip"

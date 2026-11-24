@@ -1,0 +1,148 @@
+{
+  "banks": {
+    "Сбер": [
+      "https://www.sberbank.ru/ru/person/contributions/deposits",
+      "https://www.sberbank.ru/promo/ulibattle/",
+      "https://t.me/s/sberbank"
+    ],
+    "ПСБ": [
+      "https://www.psbank.ru/personal/saving",
+      "https://www.psbank.ru/personal/debetcards/yourcashback",
+      "https://www.psbank.ru/personal/pensioners/vykhod-na-pensiyu"
+    ],
+    "ВТБ": [
+      "https://www.vtb.ru/personal/pensioneram/",
+      "https://www.vtb.ru/"
+    ],
+    "Т-Банк": [
+      "https://www.tbank.ru/gorod/",
+      "https://www.tbank.ru/bank/help/debit-cards/tinkoff-black/earn-with-card/special-cashback/"
+    ],
+    "РостФинанс": [
+      "https://www.rostfinance.ru/news/",
+      "https://www.rostfinance.ru/deposits/"
+    ],
+    "ЦМР": [
+      "https://cmrbank.ru/about/news/",
+      "https://cmrbank.ru/person/card/"
+    ],
+    "Генбанк": [
+      "https://www.genbank.ru/",
+      "https://t.me/s/genbank_russia"
+    ]
+  },
+  "rules": {
+    "https://www.psbank.ru/qpstorage/psb/images/personal/saving/vklad-v-pobedu/usl.pdf": {
+      "sha256": "f528c1664fccf84d6712e0d760104027e27fe2709584e535a98bbac80236ce68",
+      "geography": [
+        {
+          "url": "https://www.psbank.ru/bank/branches",
+          "contains": [
+            "Луганский филиал ПАО"
+          ]
+        }
+      ]
+    },
+    "https://www.psbank.ru/qpstorage/psb/images/personal/pensioncards/bonus_k_pens.pdf": {
+      "sha256": "3ce7fa9d457849a54735afdbaf5671c7f55266b9f8658f187aac3c9aa24ce942",
+      "geography": [
+        {
+          "url": "https://www.psbank.ru/bank/branches",
+          "contains": [
+            "Луганский филиал ПАО"
+          ]
+        }
+      ]
+    },
+    "https://www.vtb.ru/media-files/vtb.ru/sitepages/promo/13pensiy/usloviya_akcii.pdf": {
+      "sha256": "b4bc1030d4bd76c9152c663af1cc14dae31d02954a4bf3327b22dfdb28f506c7",
+      "geography": [
+        {
+          "url": "https://t.me/s/government_lnr?before=34312",
+          "contains": [
+            "В новом офисе ВТБ в Луганске",
+            "помощь в переводе пенсии в ВТБ"
+          ]
+        }
+      ]
+    },
+    "https://www.genbank.ru/upload/iblock/ee6/t10uxt7m63fekup0t1anl6tcequgtawg/Akciya_pensionery.pdf": {
+      "sha256": "4a35a76ac1fe8978e159a54a54b9f8369afbb699cdb8c5abd746923364bf9521"
+    },
+    "https://www.sberbank.ru/common/img/uploaded/vklad/lovi_moment_new.pdf": {
+      "sha256": "5f0e29179d3fab997b653a3bf506b3c32fcd412e36f582cb59646945e38725ef",
+      "geography": [
+        {
+          "url": "https://www.sberbank.ru/retail/ru/oib/regions",
+          "contains": [
+            "В этих офисах можно оформить банковские карты, вклады",
+            "полноформатных офисах Луганска"
+          ]
+        },
+        {
+          "url": "https://lug-info.ru/news/sber-otkryl-novoe-otdelenie-v-centre-luganska/",
+          "contains": [
+            "Сбер открыл новое отделение в центре Луганска",
+            "доступен полный спектр услуг для физических лиц"
+          ]
+        }
+      ]
+    },
+    "https://www.psbank.ru/qpstorage/psb/images/personal/cashback-na-vse-pokupki/usloviya.pdf": {
+      "sha256": "8a6e3c8375c9c20b7a689ee09a0cfce272290e540c286013ea88d1a15b68fe32",
+      "geography": [
+        {
+          "url": "https://www.psbank.ru/bank/branches",
+          "contains": [
+            "Луганский филиал ПАО"
+          ]
+        }
+      ]
+    },
+    "https://www.sberbank.ru/common/files/ulybattle/rules/pa_ulibattle.pdf": {
+      "sha256": "2aba94404d17a80c2954e9328bca3fe7c2ddebea345fafddb87410d2931acf99"
+    },
+    "https://www.sberbank.ru/common/img/uploaded/vklad/prizy_za_vklad.pdf": {
+      "sha256": "27da292bf5135ae3c4f5229511fa8f0fd241296808dff39fbbb0ac2b55982b6a",
+      "geography": [
+        {
+          "url": "https://www.sberbank.ru/retail/ru/oib/regions",
+          "contains": [
+            "В этих офисах можно оформить банковские карты, вклады",
+            "полноформатных офисах Луганска"
+          ]
+        },
+        {
+          "url": "https://lug-info.ru/news/sber-otkryl-novoe-otdelenie-v-centre-luganska/",
+          "contains": [
+            "Сбер открыл новое отделение в центре Луганска",
+            "доступен полный спектр услуг для физических лиц"
+          ]
+        }
+      ]
+    },
+    "https://www.psbank.ru/qpstorage/psb/images/personal/savingsoffers/vklad-na-million/usl.pdf": {
+      "sha256": "95255bba6cec904916482a171ecad0b560269cd34d5d2667e4c6acf2e31d2ac5",
+      "geography": [
+        {
+          "url": "https://www.psbank.ru/bank/branches",
+          "contains": [
+            "Луганский филиал ПАО"
+          ]
+        }
+      ]
+    },
+    "https://www.vtb.ru/media-files/vtb.ru/sitepages/promo/milpens-5000/usloviya_akcii_1.pdf": {
+      "sha256": "3740e66dae956472fdf8233fd78eb9203645df2065d1d4523924ce0b0dc657dd",
+      "geography": [
+        {
+          "url": "https://t.me/s/government_lnr?before=34312",
+          "contains": [
+            "В новом офисе ВТБ в Луганске",
+            "помощь в переводе пенсии в ВТБ"
+          ]
+        }
+      ]
+    }
+  }
+}
