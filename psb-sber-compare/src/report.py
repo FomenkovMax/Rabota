@@ -1097,7 +1097,7 @@ def _offer_source(url: str, checked_at: str) -> str:
     return f'<a href="{e(url)}">Условия банка</a><br>{e(date)}'
 
 
-def _regional_matrix(data: dict) -> str:
+def _regional_cells(data: dict):
     rows = {}
     local_cells = set()
     explanations = dict(data.get("gap_reasons", {}))
@@ -1136,8 +1136,14 @@ def _regional_matrix(data: dict) -> str:
             cell.append(item)
     banks = sorted(data.get("banks") or {bank for row in rows.values() for bank in row},
                    key=lambda bank: (bank != "Сбер", bank))
+    return banks, rows, explanations
+
+
+def _regional_matrix(data: dict, cells=None) -> str:
+    banks, rows, explanations = cells if cells is not None else _regional_cells(data)
     if not banks:
         return ""
+
     def cell(label, row, bank):
         if bank in row:
             return "<hr>".join(row[bank])
@@ -1151,13 +1157,63 @@ def _regional_matrix(data: dict) -> str:
         for label, row in rows.items()])
 
 
+def _executive_overview(data, banks, rows):
+    if not banks:
+        return ""
+    promos = data.get("promos", [])
+    rankings = data["rankings"]
+    def bars(values, scale):
+        return "".join(
+            f'<div class="ex-row"><span>{e(bank)}</span><div class="ex-track">'
+            f'<i style="width:{100 * count / max(1, scale):.3f}%"></i></div><b>{count}</b></div>'
+            for bank, count in sorted(values.items(), key=lambda pair: -pair[1]))
+    cards = []
+    for p, _ in data.get("products", []):
+        if p.bank == "Сбер" and p.category == "Накопительные счета" and p.terms.get(current_offers.OFFER_METRIC):
+            cards.append(f'<article><small>{e(p.bank)} · {e(p.title)}</small>'
+                         f'<strong>{e(p.terms[current_offers.OFFER_METRIC])}</strong>'
+                         f'<p>{e(p.terms[current_offers.REGIONAL_OFFER])}</p>'
+                         f'<a href="{e(p.source_url)}">Условия банка</a></article>')
+    deposit = rankings.get("Вклады", {})
+    if deposit.get("leaders"):
+        best = deposit["leaders"][0]
+        income = f"{best.value:,.2f}".replace(",", " ").replace(".", ",")
+        cards.append(f'<article><small>Вклад · {fmt_money(current_offers.AMOUNT)} · {e(deposit["term"])}</small>'
+                     f'<strong>{income} ₽</strong><p>Расчётный доход до налога. {e(best.bank)} · {e(best.title)}. '
+                     f'Сопоставимые условия у {deposit["checked"]} из {deposit["total"]} банков.</p>'
+                     f'<a href="{e(best.url)}">Условия вклада</a></article>')
+    counts = {bank: sum(bank in row for row in rows.values()) for bank in banks}
+    actions = {bank: sum(p.bank == bank for p in promos) for bank in banks}
+    credit = rankings.get("Кредиты", {})
+    ranges = credit.get("ranges", [])
+    ceiling = max([10] + [10 * (int(p.apr_max) // 10 + 1) for p, _ in ranges])
+    ranges_html = "".join(
+        f'<div class="ex-range"><a href="{e(p.source_url)}">{e(p.bank)}</a><div class="ex-track">'
+        f'<i style="margin-left:{100*p.apr_min/ceiling:.3f}%;width:{100*(p.apr_max-p.apr_min)/ceiling:.3f}%;min-width:2px"></i>'
+        f'</div><b>{e(p.apr_raw)}</b></div>' for p, _ in ranges)
+    return (f'<section class="card ex"><h2>Управленческий обзор · Луганск</h2>'
+            f'<div class="ex-cards">{"".join(cards)}</div><div class="ex-grid"><article>'
+            f'<h3>Охват отчёта по банкам</h3><p>Заполненные категории и сценарии из {len(rows)}. '
+            f'Включены условия по Луганску, ЛНР и России.</p>{bars(counts, len(rows))}</article>'
+            f'<article><h3>Действующие акции в городе</h3><p>Подтверждено в последней сверке: {len(promos)}. '
+            f'Ноль означает отсутствие подтверждения в выгрузке.</p>{bars(actions, max(actions.values()))}</article></div>'
+            f'<article><h3>Кредит · {fmt_money(current_offers.AMOUNT)} · {e(credit.get("term", "—"))}</h3>'
+            f'<p>Банков с сопоставимой стоимостью кредита: {credit.get("checked", 0)} из {len(banks)}.</p>'
+            + (f'<p>Опубликованные диапазоны ПСК, шкала от 0 до {ceiling}% годовых.</p>{ranges_html}' if ranges else '')
+            + '</article><a href="#lugansk-details">Таблицы и источники по Луганску ↓</a></section>')
+
+
 def _current_offers_block(regional_offers: dict) -> str:
     sections = []
     for region in sorted(regional_offers, key=lambda code: code != "lugansk"):
         data = regional_offers[region]
         label = current_offers.REGIONS[region]
         parts = [f'<section class="card"><h2>Актуальные предложения · {e(label)}</h2>']
-        if matrix := _regional_matrix(data):
+        cells = _regional_cells(data)
+        if region == "lugansk":
+            sections.append(_executive_overview(data, *cells[:2]))
+            parts.insert(0, '<div id="lugansk-details"></div>')
+        if matrix := _regional_matrix(data, cells):
             parts.append(f"<h3>Сводная таблица по банкам · {e(label)}</h3>{matrix}")
         if offers := data.get("products"):
             rows = [
@@ -1278,7 +1334,13 @@ def render_report(
 <html lang="ru"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Сбер и конкуренты — {e(region)}</title>
-<style>{CSS}</style></head>
+<style>{CSS}
+.ex-grid,.ex-cards{{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,270px),1fr));gap:16px}}
+.ex article{{padding:16px 0;min-width:0}}.ex strong{{display:block;font-size:1.55rem}}.ex small{{display:block}}
+.ex-row,.ex-range{{display:grid;align-items:center;gap:10px;grid-template-columns:90px 1fr 24px;margin:8px 0;font-variant-numeric:tabular-nums}}
+.ex-range{{grid-template-columns:65px 1fr minmax(110px,auto)}}.ex-track{{background:#879a992e;border-radius:6px;height:9px}}.ex-track i{{display:block;background:#299978;border-radius:6px;height:100%}}.ex-grid article+article{{padding-left:12px}}
+@media(max-width:620px){{.ex-grid article+article{{padding-left:0}}}}
+</style></head>
 <body>
 <button class="tg" onclick="var r=document.documentElement;
   r.dataset.theme = r.dataset.theme==='dark' ? 'light' : 'dark';">Тема</button>
