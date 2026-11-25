@@ -1100,8 +1100,9 @@ def _offer_source(url: str, checked_at: str) -> str:
 def _regional_matrix(data: dict) -> str:
     rows = {}
     local_cells = set()
+    explanations = dict(data.get("gap_reasons", {}))
     for product, _ in data.get("products", []):
-        cell = rows.setdefault(product.category, {}).setdefault(product.bank, [])
+        cell = rows.setdefault(current_offers.matrix_category(product.category), {}).setdefault(product.bank, [])
         metric = product.terms.get(current_offers.OFFER_METRIC, "")
         if metric and metric != "Доступно оформление":
             local_cells.add(current_offers.product_key(product))
@@ -1109,6 +1110,9 @@ def _regional_matrix(data: dict) -> str:
                     f'<br>{e(product.terms[current_offers.REGIONAL_OFFER])}')
     for category, ranking in data["rankings"].items():
         label = f"{category} · 500 000 ₽ · {ranking['term']}"
+        for bank, reason in ranking.get("excluded_banks", {}).items():
+            explanations[label, bank] = {reason}
+            explanations[label + " · диапазон ПСК", bank] = {"Нет проверенного диапазона ПСК для этой суммы и срока"}
         for offer in ranking.get("offers", ranking["leaders"]):
             value = (f"{offer.value:,.2f} ₽ до налога".replace(",", " ").replace(".", ",")
                      if ranking["deposit"] else f"ПСК {fmt_rate(offer.value)}")
@@ -1118,13 +1122,13 @@ def _regional_matrix(data: dict) -> str:
             cells = rows.setdefault(label + " · диапазон ПСК", {}).setdefault(product.bank, [])
             cells.append(f'<a href="{e(product.source_url)}">{e(product.title)}</a><br>{e(product.apr_raw)}')
     for promo in data.get("promos", []):
-        cells = rows.setdefault("Действующие акции", {}).setdefault(promo.bank, [])
+        cells = rows.setdefault("Акции и специальные предложения", {}).setdefault(promo.bank, [])
         cells.append(f'<a href="{e(promo.source_url)}">{e(promo.title)}</a>')
     for product, scope in data.get("reference_rates", []):
-        label = product.category
+        label = current_offers.matrix_category(product.category)
         if current_offers.product_key(product) in local_cells:
             continue
-        terms = product.terms.get("Тариф по России") or product.rate_raw or product.apr_raw
+        terms = product.terms.get("Тариф по России") or current_offers.service_terms(product) or product.rate_raw or product.apr_raw
         cell = rows.setdefault(label, {}).setdefault(product.bank, [])
         item = (f'<a href="{e(product.source_url)}">{e(product.title)}</a><br>'
                 f'{e(scope)} · {e(terms)} · {e(product.collected_at[:10])}')
@@ -1134,8 +1138,16 @@ def _regional_matrix(data: dict) -> str:
                    key=lambda bank: (bank != "Сбер", bank))
     if not banks:
         return ""
+    def cell(label, row, bank):
+        if bank in row:
+            return "<hr>".join(row[bank])
+        if label == "Акции и специальные предложения":
+            return "Для этой территории сверка не подтвердила действующее предложение"
+        reasons = explanations.get((label, bank), {"В снимке нет карточки банка в этой категории"})
+        return e(". ".join(sorted(reasons)))
+
     return _offer_table(["Продукт или сценарий", *banks], [
-        [e(label), *["<hr>".join(row.get(bank, ["Нет подтверждённых данных"])) for bank in banks]]
+        [e(label), *[cell(label, row, bank) for bank in banks]]
         for label, row in rows.items()])
 
 

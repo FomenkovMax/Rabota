@@ -564,27 +564,40 @@ def load_report_data(config: Config, *, competitor: str = "",
                 if previous is None or promo.checked_at >= previous.checked_at:
                     current_promos[promo_key] = promo
             reference_rates = []
+            gaps = {}
             for product in candidates:
+                category = current_offers.matrix_category(product.category)
+                reasons = gaps.setdefault((category, product.bank), set())
                 status = lnr_status.get(id(product))
-                if (not status or status.code == availability.ABSENT
-                        or product.terms.get(market.REGION_KEY)
-                        or market.program_of(product) in market.NOT_FOR_LNR
-                        or not current_offers._current_observation(product, now, ranking_hours)):
+                if (status and status.code == availability.ABSENT or product.terms.get(market.REGION_KEY)
+                        or market.program_of(product) in market.NOT_FOR_LNR):
+                    reasons.add("У карточки есть территориальное ограничение")
+                    continue
+                if not current_offers._current_observation(product, now, ranking_hours):
+                    reasons.add("Нет свежей действующей карточки тарифа")
                     continue
                 nationwide = product.terms.get("Тариф по России")
-                if status.code == availability.UNKNOWN and not nationwide:
+                if not status or status.code == availability.UNKNOWN and not nationwide:
+                    reasons.add("Не установлена территория условий")
                     continue
-                if not nationwide and not (product.rate_raw or product.apr_raw):
+                if category == "Акции и специальные предложения":
+                    reasons.add("Для акции требуется проверка периода и правил участия")
+                    continue
+                if not (nationwide or product.rate_raw or product.apr_raw or current_offers.service_terms(product)):
+                    reasons.add("Источник не дал проверяемых условий услуги или тарифа")
                     continue
                 if not nationwide and market.assess(product, key_rate=key_rate,
                         region_method=market.method_of(product, region_methods)).confidence == market.LOW:
+                    reasons.add("Условия не прошли проверку качества")
                     continue
                 scope_label = ("Тариф по России" if nationwide or status.code == availability.FEDERAL
                                else "Условия ЛНР")
-                if not current_offers.reference_exclusion(product):
+                if exclusion := current_offers.reference_exclusion(product):
+                    reasons.add(exclusion)
+                else:
                     reference_rates.append((product, scope_label))
             regional_offers[region_code] = {
-                "banks": banks, "reference_rates": reference_rates,
+                "banks": banks, "reference_rates": reference_rates, "gap_reasons": gaps,
                 "products": [confirmed_offers[key] for key in regional_reviews
                              if key in confirmed_offers
                              and current_offers.product_in_region(confirmed_offers[key][1], region_code)],

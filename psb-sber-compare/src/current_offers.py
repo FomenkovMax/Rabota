@@ -25,6 +25,30 @@ def product_key(product) -> tuple[str, str, str]:
     return product.bank, product.category, url
 
 
+def matrix_category(category):
+    if category in {"Акции и спецпредложения", "Специальные предложения", "Действующие акции"}:
+        return "Акции и специальные предложения"
+    return category
+
+
+def service_terms(product):
+    from . import card_terms
+
+    if product.category in card_terms.CARD_CATEGORIES:
+        return card_terms.summary(product.terms)
+    if product.category in market.RATED or matrix_category(product.category) == "Акции и специальные предложения":
+        return ""
+    if re.search(r"^(как |зачем |что такое|почему |урок|обзор)", product.title, re.I):
+        return ""
+    fields = re.compile(r"комисси|страхов(?:ое покрытие|ая сумма|ые риски)|стоимость|"
+                        r"мошенничество|утрата|условия открытия|сумма перевода|лимит перевода|кешбэк", re.I)
+    details = [f"{k}: {v}" for k,v in product.terms.items() if fields.search(k) and v]
+    if not details:
+        lines = product.terms.get("Условия услуги на сайте", "").splitlines()
+        details = [line for line in lines if fields.search(line) and re.search(r"\d", line)]
+    return " · ".join(details[:2])[:500]
+
+
 def reference_exclusion(product) -> str:
     path = urlsplit(product.source_url).path.rstrip("/")
     if path.endswith("/savingsaccount/atlant"):
