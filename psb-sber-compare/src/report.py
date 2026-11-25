@@ -1104,7 +1104,7 @@ def _regional_matrix(data: dict) -> str:
         cell = rows.setdefault(product.category, {}).setdefault(product.bank, [])
         metric = product.terms.get(current_offers.OFFER_METRIC, "")
         if metric and metric != "Доступно оформление":
-            local_cells.add((product.category, product.bank))
+            local_cells.add(current_offers.product_key(product))
         cell.append(f'<a href="{e(product.source_url)}">{e(product.title)}</a> {e(metric)}'
                     f'<br>{e(product.terms[current_offers.REGIONAL_OFFER])}')
     for category, ranking in data["rankings"].items():
@@ -1122,7 +1122,7 @@ def _regional_matrix(data: dict) -> str:
         cells.append(f'<a href="{e(promo.source_url)}">{e(promo.title)}</a>')
     for product, scope in data.get("reference_rates", []):
         label = product.category
-        if (label, product.bank) in local_cells:
+        if current_offers.product_key(product) in local_cells:
             continue
         terms = product.terms.get("Тариф по России") or product.rate_raw or product.apr_raw
         cell = rows.setdefault(label, {}).setdefault(product.bank, [])

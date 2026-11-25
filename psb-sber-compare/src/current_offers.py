@@ -17,6 +17,27 @@ REGIONAL_OFFER = "Условия регионального предложени
 OFFER_METRIC = "Показатель предложения"
 
 
+def product_key(product) -> tuple[str, str, str]:
+    source = urlsplit(product.source_url)
+    url = source._replace(query="", fragment="").geturl().rstrip("/")
+    if source.hostname == "www.sberbank.ru":
+        url = url.replace("https://www.sberbank.ru/retail/ru/", "https://www.sberbank.ru/ru/", 1)
+    return product.bank, product.category, url
+
+
+def reference_exclusion(product) -> str:
+    path = urlsplit(product.source_url).path.rstrip("/")
+    if path.endswith(("/savingsaccount/atlant",)):
+        return "Архивный счёт ПСБ"
+    if path.endswith(("/savingsaccount/in_store", "/savingsaccount/hranitel")):
+        return "Ставка снимка расходится с опубликованной витриной ПСБ"
+    if path.endswith(("/contributions/deposits", "/vklady-i-scheta", "/nonresident-friendly")):
+        return "Ссылка ведёт на раздел с несколькими предложениями"
+    if (product.rate_raw or "").lstrip().startswith("+"):
+        return "Вместо полной ставки извлечена надбавка"
+    return ""
+
+
 def source_verified(url: str, checked_at: str, now: datetime, hours: int) -> bool:
     try:
         source = urlsplit(url)
