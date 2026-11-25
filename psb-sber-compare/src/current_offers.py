@@ -27,9 +27,11 @@ def product_key(product) -> tuple[str, str, str]:
 
 def reference_exclusion(product) -> str:
     path = urlsplit(product.source_url).path.rstrip("/")
-    if path.endswith(("/savingsaccount/atlant",)):
+    if path.endswith("/savingsaccount/atlant"):
         return "Архивный счёт ПСБ"
-    if path.endswith(("/savingsaccount/in_store", "/savingsaccount/hranitel")):
+    raw = (product.rate_raw or "").replace(".", ",")
+    if ((path.endswith("/savingsaccount/in_store") and "16,00%" in raw)
+            or (path.endswith("/savingsaccount/hranitel") and "13,5%" in raw)):
         return "Ставка снимка расходится с опубликованной витриной ПСБ"
     if path.endswith(("/contributions/deposits", "/vklady-i-scheta", "/nonresident-friendly")):
         return "Ссылка ведёт на раздел с несколькими предложениями"

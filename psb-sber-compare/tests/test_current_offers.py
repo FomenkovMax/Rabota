@@ -128,3 +128,17 @@ def test_main_offer_table_shows_only_comparable_confirmed_offers():
     assert "Зарплатный Максимум" not in markup
     assert "Банк без подтверждения в городе" not in markup
     assert "Сопоставимые условия у 1 из 3 банков" in markup
+
+
+def test_reference_product_in_same_category_survives_local_offer():
+    from src.report import _regional_matrix
+    local, status = deposit("А", 12, CITY)
+    local.terms[current_offers.REGIONAL_OFFER] = "Открытие в городе"
+    local.terms[current_offers.OFFER_METRIC] = "12%"
+    other, _ = deposit("А", 13, LNR)
+    other.title = "Другой вклад"
+    other.source_url = "https://bank.example/another"
+    markup = _regional_matrix({"products": [(local, status)], "rankings": {},
+                               "reference_rates": [(local, "Условия ЛНР"), (other, "Тариф по России")]})
+    assert markup.count(local.source_url) == 1
+    assert other.title in markup and "Тариф по России" in markup
