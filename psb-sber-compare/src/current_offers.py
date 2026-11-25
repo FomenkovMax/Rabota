@@ -42,10 +42,17 @@ def service_terms(product):
         return ""
     fields = re.compile(r"комисси|страхов(?:ое покрытие|ая сумма|ые риски)|стоимость|"
                         r"мошенничество|утрата|условия открытия|сумма перевода|лимит перевода|кешбэк", re.I)
-    details = [f"{k}: {v}" for k,v in product.terms.items() if fields.search(k) and v]
+    if re.fullmatch(r"[a-z0-9_./-]+", product.title, re.I):
+        return ""
+    amount = re.compile(r"\d[\d ,.]*\s*(?:%|₽|руб|₽)|бесплатно|без комиссии", re.I)
+    def usable(value):
+        return (not re.search(r"\.pdf|настоящий документ|связаны с высокими рисками", value, re.I)
+                and (amount.search(value) or product.category == "Страхование"))
+    details = [f"{k}: {v}" for k, v in product.terms.items()
+               if fields.search(k) and isinstance(v, str) and v and usable(v)]
     if not details:
         lines = product.terms.get("Условия услуги на сайте", "").splitlines()
-        details = [line for line in lines if fields.search(line) and re.search(r"\d", line)]
+        details = [line for line in lines if fields.search(line) and amount.search(line) and usable(line)]
     return " · ".join(details[:2])[:500]
 
 
