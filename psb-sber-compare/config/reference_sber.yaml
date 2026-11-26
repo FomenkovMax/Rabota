@@ -9,6 +9,7 @@
 # Как дополнять: новая строка в products. Продукт закрыт — удалить или
 # поставить active: false.
 bank: Сбер
+base_url: https://www.sberbank.ru
 products:
   - {name: "Пакеты услуг", category: "Банковские карты", path: "/ru/person/bank_cards/pack", source: site}
   - {name: "Пакет услуг Золотой", category: "Банковские карты", path: "/ru/person/bank_cards/pack/gold", source: site}
@@ -116,11 +117,11 @@ products:
   - {name: "Накопительный счёт Рядом", category: "Накопительные счета", path: "/ru/person/contributions/deposits/nakopitelnyj_schyot_ryadom", source: site}
   - {name: "Накопительный счёт Пенсионный старт", category: "Накопительные счета", path: "/ru/person/contributions/deposits/pensionnyi_start", source: site}
   - {name: "Сберегательный счёт", category: "Накопительные счета", path: "/ru/person/contributions/deposits/sb_schet", source: site}
-  - {name: "СберВклад", category: "Вклады", path: "/ru/person/contributions/deposits/sbervklad_a", match: 'сбервклад$', source: site}
+  - {name: "СберВклад", category: "Вклады", path: "/ru/person/contributions/deposits/vklad", match: 'сбервклад$', source: site}
   - {name: "Зарплатный максимум", category: "Вклады", match: 'зарплатн\w*\s+максимум', source: aggregator}
   - {name: "Образовательный кредит (без господдержки)", category: "Кредиты", match: 'образовательн(?!.*господдерж)', source: aggregator}
-  - {name: "СберПервый (пакет премиального обслуживания)", category: "Специальные предложения", match: '^(?:пакет\w*\s+(?:услуг\s+)?)?«?сберпервый»?$', source: site-text}
-  - {name: "СберПремьер (пакет премиального обслуживания)", category: "Специальные предложения", match: 'сберпремьер', source: site-text}
+  - {name: "СберПервый (пакет премиального обслуживания)", category: "Премиальное обслуживание", path: "/ru/person/new_sb1", match: '^(?:пакет\w*\s+(?:услуг\s+)?)?«?сберпервый»?$', source: site}
+  - {name: "СберПремьер (пакет премиального обслуживания)", category: "Премиальное обслуживание", path: "/ru/person/sb_premier_new", match: 'сберпремьер', source: site}
   - {name: "Sber Private Banking", category: "Специальные предложения", match: 'private\s+banking', source: site-text}
   - {name: "СберПрайм (подписка)", category: "Специальные предложения", match: 'сберпрайм(?!\s+старт\s+зарплатн)', source: site-text}
   - {name: "СберБлиже (подписка)", category: "Специальные предложения", path: "/ru/sberblizhe", match: 'сберближе', source: site}

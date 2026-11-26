@@ -36,6 +36,17 @@ def test_sber_reference_file_is_valid():
     assert all(p.get("path") or p.get("match") for p in ref["products"])
 
 
+def test_genbank_reference_reports_catalogue_gaps_with_bank_links():
+    from src.report import _reference_block
+
+    ref = reference.load("genbank")
+    p = SimpleNamespace(bank="Генбанк", title="Сейфовые ячейки",
+                        source_url="https://www.genbank.ru/chastnym-litsam/seyfovye-yacheyki/")
+    check = reference.check(ref, [p])
+    assert [item["name"] for item in check.found] == [p.title]
+    assert "https://www.genbank.ru/chastnym-litsam/deposits/kopilka/" in _reference_block([check])
+
+
 def test_new_candidates_after_baseline(tmp_path):
     path = tmp_path / "seen.json"
     crawl = {"Сбер": {"candidates": ["https://s/ru/a"]}}

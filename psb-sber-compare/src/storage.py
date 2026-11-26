@@ -73,7 +73,9 @@ CREATE TABLE IF NOT EXISTS promos (
     status     TEXT,
     valid_until TEXT,
     benefit_type TEXT,
-    benefit_value REAL
+    benefit_value REAL,
+    source_url    TEXT,
+    checked_at    TEXT
 );
 CREATE INDEX IF NOT EXISTS ix_promos_run ON promos(run_id);
 CREATE INDEX IF NOT EXISTS ix_promos_key ON promos(bank, promo_key);
@@ -134,7 +136,8 @@ class Storage:
         existing = {row["name"] for row in self.conn.execute("PRAGMA table_info(promos)")}
         for column, ddl in (("segment", "TEXT"), ("status", "TEXT"),
                             ("valid_until", "TEXT"), ("benefit_type", "TEXT"),
-                            ("benefit_value", "REAL")):
+                            ("benefit_value", "REAL"), ("source_url", "TEXT"),
+                            ("checked_at", "TEXT")):
             if column not in existing:
                 self.conn.execute(f"ALTER TABLE promos ADD COLUMN {column} {ddl}")
                 log.info("База обновлена: promos.%s", column)
@@ -294,12 +297,24 @@ class Storage:
                 info.valid_until.isoformat() if info and info.valid_until else "",
                 getattr(info, "benefit_type", "") if info else "",
                 getattr(info, "benefit_value", None) if info else None,
+                getattr(pr, "source_url", ""),
+                getattr(pr, "checked_at", ""),
             ))
         self.conn.executemany(
             "INSERT INTO promos (run_id, bank, promo_key, title, text, url,"
             " source_path, category, segment, status, valid_until,"
-            " benefit_type, benefit_value) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            " benefit_type, benefit_value, source_url, checked_at) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             rows,
+        )
+        self.conn.commit()
+
+    def copy_bank_promos(self, from_run: int, to_run: int, bank: str) -> None:
+        columns = ", ".join(row["name"] for row in self.conn.execute("PRAGMA table_info(promos)")
+                            if row["name"] not in ("id", "run_id"))
+        self.conn.execute(
+            f"INSERT INTO promos (run_id, {columns}) SELECT ?, {columns} "
+            "FROM promos WHERE run_id = ? AND bank = ?", (to_run, from_run, bank),
         )
         self.conn.commit()
 

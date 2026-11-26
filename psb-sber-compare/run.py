@@ -4,6 +4,8 @@
 Команды:
     python run.py collect              сбор по всем включённым банкам
     python run.py collect --bank psb   сбор по одному банку
+    python run.py review-promos        сверка акций для Луганска
+    python run.py watch-promos         периодическая сверка акций
     python run.py check-bank psb       проверить, берутся ли данные банка
     python run.py banks                список банков и способов сбора
     python run.py report               пересобрать отчёт без похода на сайты
@@ -309,7 +311,7 @@ def main() -> int:
     )
     parser.add_argument("command", choices=[
         "collect", "check-bank", "banks", "report", "export",
-        "history", "bot", "dump", "audit", "page", "replay",
+        "history", "bot", "dump", "audit", "page", "replay", "review-promos", "watch-promos",
     ])
     parser.add_argument("target", nargs="?", default="",
                         help="код банка для check-bank и dump")
@@ -338,6 +340,13 @@ def main() -> int:
 
     config = Config.load(args.config)
 
+    if args.command in {"review-promos", "watch-promos"}:
+        from src import promotion_refresh
+        if args.command == "watch-promos":
+            promotion_refresh.watch(config)
+        else:
+            promotion_refresh.run(config)
+        return 0
     if args.command == "banks":
         return cmd_banks(config)
     if args.command == "dump":

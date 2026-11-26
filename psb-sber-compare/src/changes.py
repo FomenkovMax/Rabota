@@ -28,9 +28,15 @@ def _rows_by_key(rows: list[Any]) -> dict[str, Any]:
     # SEO-копии продуктов из старых сборов не сравниваем: иначе их отсев
     # выглядел бы как «продукт исчез».
     from .banks.seo import is_seo_page
+    from .securities import excluded_product
 
-    return {row["product_key"]: row for row in rows
-            if "source_url" not in row.keys() or not is_seo_page(row["source_url"] or "")}
+    by_key = {}
+    for row in rows:
+        url = row["source_url"] or "" if "source_url" in row.keys() else ""
+        terms = json.loads(row["terms_json"] or "{}") if "terms_json" in row.keys() else {}
+        if not is_seo_page(url) and not excluded_product(url, terms):
+            by_key[row["product_key"]] = row
+    return by_key
 
 
 def _promo_by_key(rows: list[Any]) -> dict[str, Any]:

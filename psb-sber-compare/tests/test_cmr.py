@@ -4,6 +4,26 @@ from __future__ import annotations
 
 from src.banks import cmr
 
+
+def test_card_pickup_proof_requires_a_matching_form_and_enabled_lugansk_option():
+    from src import availability
+    from src.psb.parser import Product
+
+    page = """<title>ЦМРБанк > Заказать карту (Плюс)</title>
+    <label>Офис получения карты</label><select>
+    <option value="office">г. Луганск, ул. Демехина 23б</option>
+    </select>"""
+    office = cmr.card_pickup_office(page, "Плюс")
+    assert office == "г. Луганск, ул. Демехина 23б"
+    assert not cmr.card_pickup_office(page.replace('value="office"', 'disabled value="office"'), "Плюс")
+    assert not cmr.card_pickup_office(page, "Драйв")
+    card = "https://cmrbank.ru/person/card/plus-card/"
+    product = Product(bank="ЦМР", source_url=card, terms={
+        availability.CARD_PICKUP_CITY_KEY: office,
+        availability.CARD_PICKUP_SOURCE_KEY: availability.CMR_CARD_FORMS[card][0],
+    })
+    assert availability.status_of(product, region_method="local").city_confirmed
+
 DEPOSIT_PAGE = """<div>{{ deposit.name }}</div><script>
 var app = {deposites: {"21":{"id":"21","name":"Вклад \\"Доход на максимум\\"","type":"deposit",
 "is_active":"1","max_sum":500000,"annotation":"Вклад с максимальной доходностью",
@@ -72,3 +92,15 @@ def test_section_links_skip_service_pages():
     page = ('<a href="/person/card/drive-card/">a</a><a href="/person/card/card-documents/">b</a>'
             '<a href="/person/card/">c</a><a href="/person/person-loans/restructuring/">d</a>')
     assert cmr.section_links(page, "/person/card/") == ["https://cmrbank.ru/person/card/drive-card/"]
+
+
+def test_payment_service_preserves_fee_text_without_interest_rate():
+    page = """<div>Главная страница / Частным клиентам / Платежи и переводы / Переводы по реквизитам</div>
+    <p>Комиссия 1%, минимум 100 рублей.</p>
+    <a href="/files/tariff.pdf">Тариф</a><p>© Банк</p>"""
+    product = cmr.service_product(page, cmr.BASE + "/person/payments-and-transfers/requisites/",
+                                  category="Переводы и платежи", region="ЛНР", now="2026-11-11")
+    assert product.title == "Переводы по реквизитам"
+    assert "Комиссия 1%" in product.terms["Условия услуги на сайте"]
+    assert product.terms["Документы и тарифы"] == cmr.BASE + "/files/tariff.pdf"
+    assert product.rate_min is None and product.rate_max is None

@@ -126,6 +126,8 @@ class Promo:
     url: str = ""
     source_path: str = ""
     content_type: str = ""
+    source_url: str = ""
+    checked_at: str = ""
     # Сегмент из выгрузки Сбера: у него раздела сайта нет, зато есть
     # категория продукта, к которому акция привязана.
     segment: str = ""
@@ -406,6 +408,8 @@ def _extract_promos(state: dict[str, Any], product: Product) -> None:
         if promo.key() in seen:
             return
         seen.add(promo.key())
+        promo.source_url = product.source_url
+        promo.checked_at = product.collected_at
         product.promos.append(promo)
 
     for entry in find_entries(state, "ProductNotificationBanner"):

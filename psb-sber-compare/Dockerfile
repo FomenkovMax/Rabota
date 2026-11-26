@@ -2,7 +2,7 @@
 # Версия образа и версия playwright в requirements.txt обязаны совпадать:
 # библиотека ищет браузер по пути с номером своей сборки и не находит
 # чужой. Меняешь здесь — меняй и там.
-FROM mcr.microsoft.com/playwright/python:v1.63.0-jammy
+FROM mcr.microsoft.com/playwright/python:v1.64.1-jammy
 
 WORKDIR /app
 

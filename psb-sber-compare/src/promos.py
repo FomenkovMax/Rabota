@@ -409,6 +409,9 @@ class PromoInsight:
     benefit_type: str = OTHER
     benefit_value: float | None = None
     benefit_unit: str = ""
+    source_url: str = ""
+    checked_at: str = ""
+    regional_source: str = ""
 
     @property
     def status_label(self) -> str:
@@ -474,6 +477,12 @@ def classify_all(rows: Iterable[Any], bank: str, *, today: date | None = None,
         insight = classify(bank, title, text, url, path,
                            today=today, segment=segment_hint or hint)
         if insight is not None:
+            if hasattr(row, "keys"):
+                insight.source_url = (row["source_url"] or "") if "source_url" in row.keys() else ""
+                insight.checked_at = (row["checked_at"] or "") if "checked_at" in row.keys() else ""
+            else:
+                insight.source_url = getattr(row, "source_url", "")
+                insight.checked_at = getattr(row, "checked_at", "")
             out.append(insight)
     return out
 

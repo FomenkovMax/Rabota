@@ -60,7 +60,7 @@ _NEAR_RATE: tuple[tuple[str, re.Pattern[str]], ...] = (
     (PREMIUM, re.compile(r"премиальн\w*|привилеги\w*|\bprivate\b|премьер", re.I)),
     (SALARY, re.compile(
         r"зарплатн\w+\s+(?:клиент|карт)\w*|получа\w+\s+зарплат\w*|"
-        r"с\s+зарплатной\s+картой", re.I)),
+        r"надбавк\w*\s+за\s+получение\s+зарплаты|с\s+зарплатной\s+картой", re.I)),
     (SUBSCRIPTION, re.compile(
         r"подписк\w*|с\s+услугой\s+«[^»]+»|\d[\d\s]*₽\s+в\s+месяц", re.I)),
     (SHORT_TERM, re.compile(r"до\s+31\s+дн\w*|на\s+1\s+месяц\b", re.I)),
@@ -122,6 +122,8 @@ def kind_of(product: Any) -> tuple[str, str]:
     niche = _NICHE_TITLE.search(title)
     if niche:
         return NICHE, f"нишевый продукт: «{niche.group(0)}» в названии"
+    if re.search(r"\bзарплатн\w*", title, re.I):
+        return SALARY, "зарплатное предложение по названию продукта"
     premium = _PREMIUM_TITLE.search(title)
     if premium:
         return PREMIUM, f"для премиальных клиентов: «{premium.group(0)}» в названии"

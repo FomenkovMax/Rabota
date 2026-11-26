@@ -37,9 +37,9 @@ class CollectResult:
     pages_visited: int = 0
     #: Был ли на сайте действительно выбран нужный регион. False означает,
     #: что условия собраны те, которые сайт отдал по умолчанию.
-    region_applied: bool = True
+    region_applied: bool = False
     #: Как условия привязаны к региону: selector | federal | not_confirmed.
-    region_method: str = "selector"
+    region_method: str = "not_confirmed"
     #: Обход оборвался раньше времени (сайт закрыл доступ или кончился
     #: лимит страниц): не все продукты банка прочитаны в этот раз.
     partial: bool = False
@@ -51,7 +51,7 @@ class CollectResult:
         if not self.ok:
             return f"{self.bank}: сбор не удался — {self.error}"
         note = {"federal": " (единые условия по РФ)",
-                "local": " (банк работает только в ЛНР)",
+                "local": " (доступность продуктов в ЛНР не подтверждена)",
                 "not_confirmed": " (регион на сайте не выбран)"}.get(self.region_method, "")
         if not self.region_applied and not note:
             note = " (регион на сайте не выбран)"
@@ -62,7 +62,7 @@ class CollectResult:
 #: Подписи способов привязки к региону — для лога, отчёта и бота.
 FEDERAL_LABEL = "единые условия по РФ — отдельных для ЛНР на сайте нет"
 NOT_CONFIRMED_LABEL = "регион на сайте не выбран"
-LOCAL_LABEL = "банк работает только в ЛНР — условия на сайте луганские"
+LOCAL_LABEL = "локальный профиль банка — доступность продуктов в ЛНР не подтверждена"
 
 
 def region_binding(sets_region: bool, settings: dict[str, Any]) -> tuple[str, str]:

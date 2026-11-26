@@ -89,7 +89,7 @@ def strip_icons(markup: InlineKeyboardMarkup) -> None:
 # Порядок кнопок сравнения. В меню попадают только банки, которые включены
 # в config/settings.yaml: кнопка «Сравнить Сбер и ВТБ» при выключенном ВТБ
 # обещала сравнение, которого нет.
-COMPARE_ORDER = ("psb", "vtb", "tbank", "rostfinance", "cmr")
+COMPARE_ORDER = ("psb", "vtb", "tbank", "rostfinance", "genbank", "cmr")
 
 
 def compare_targets() -> list[tuple[str, str]]:
@@ -108,22 +108,29 @@ def compare_targets() -> list[tuple[str, str]]:
 
 EXPORT_FORMATS: list[tuple[str, str]] = [
     ("xlsx", "Excel"),
-    ("pdf", "PDF"),
     ("html", "Дашборд HTML"),
     ("bi", "Данные для BI (CSV)"),
 ]
 
 
 def main_menu() -> InlineKeyboardMarkup:
-    rows = [[button("refresh_all", "🔄", "Обновить все банки", "collect:all", REFRESH)]]
-    rows += [[button(f"compare_{code}", "🏦", title, f"cmp:{code}", COMPARE)]
-             for code, title in compare_targets()]
-    rows.append([button("categories", "📂", "По категориям", "cat:menu")])
-    rows.append([button("export", "📊", "Выгрузить общий свод", "export:menu", EXPORT)])
-    rows.append([button("ai", "🤖", "AI-консультант", "ai:menu")])
-    rows.append([button("refresh_one", "🔁", "Обновить один банк", "collect:menu")])
-    rows.append([button("audit", "🧪", "Аудит качества", "audit:menu")])
-    return InlineKeyboardMarkup(inline_keyboard=rows)
+    entries = [
+        ("Обзор Луганска · HTML", "export:html"),
+        ("Сравнить Сбер с банком", "pairs"),
+        ("По категориям", "cat:menu"),
+        ("Скачать отчёты", "export:menu"),
+        ("Архивы сбора", "audit:menu"),
+        ("Обновить данные", "collect:menu"),
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=title, callback_data=code)] for title, code in entries
+    ])
+
+
+def pairs_menu() -> InlineKeyboardMarkup:
+    rows = [[InlineKeyboardButton(text=title, callback_data=f"cmp:{code}")]
+            for code, title in compare_targets()]
+    return InlineKeyboardMarkup(inline_keyboard=rows + back_to_menu().inline_keyboard)
 
 
 #: Категории для фильтра: код кнопки → подпись.
@@ -155,10 +162,6 @@ def category_actions(code: str) -> InlineKeyboardMarkup:
 
 def audit_menu() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="Запустить автоаудит", callback_data="audit:run")],
-        [InlineKeyboardButton(text="Автоаудит + независимый LLM-аудит",
-                              callback_data="audit:llm")],
-        [InlineKeyboardButton(text="Последний отчёт аудита", callback_data="audit:last")],
         [InlineKeyboardButton(text="Страницы без ставки (для доработки)",
                               callback_data="audit:missing")],
         [InlineKeyboardButton(text="Полный снимок страниц (для разбора)",
@@ -171,8 +174,6 @@ def export_menu() -> InlineKeyboardMarkup:
     rows = [[InlineKeyboardButton(text=title, callback_data=f"export:{code}",
                                   style=EXPORT)]
             for code, title in EXPORT_FORMATS]
-    rows.append([InlineKeyboardButton(text="Все форматы сразу",
-                                      callback_data="export:all", style=EXPORT)])
     rows.append([InlineKeyboardButton(text="Назад", callback_data="menu")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -194,7 +195,8 @@ def ai_menu() -> InlineKeyboardMarkup:
 
 def collect_menu() -> InlineKeyboardMarkup:
     """Обновление одного банка. Все банки — отдельной кнопкой в главном меню."""
-    rows = [[InlineKeyboardButton(text="Только Сбер", callback_data="collect:sber")]]
+    rows = [[InlineKeyboardButton(text="Все банки", callback_data="collect:all")],
+            [InlineKeyboardButton(text="Только Сбер", callback_data="collect:sber")]]
     rows += [[InlineKeyboardButton(text=f"Только {title.split(' и ')[-1]}",
                                    callback_data=f"collect:{code}")]
              for code, title in compare_targets()]

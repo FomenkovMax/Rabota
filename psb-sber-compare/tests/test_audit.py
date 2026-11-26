@@ -43,10 +43,10 @@ def test_sample_takes_every_bank_and_category():
 
 
 def test_cell_points_follow_agreed_scope():
-    # По категориям со ставками — сравнение, по остальным — достаточно ссылки.
+    # Ссылка на раздел услуг не равна сбору продуктов и условий.
     assert audit._cell_points("Вклады", coverage.COMPARED, False) == 1.0
     assert audit._cell_points("Вклады", coverage.LINK_ONLY, False) == 0.3
-    assert audit._cell_points("Инвестиции", coverage.LINK_ONLY, False) == 1.0
+    assert audit._cell_points("Инвестиции", coverage.LINK_ONLY, False) == 0.3
     assert audit._cell_points("Инвестиции", coverage.NOT_FOUND, False) == 0.0
     assert audit._cell_points("Ипотека", coverage.NOT_FOUND, True) is None
 
@@ -65,3 +65,12 @@ def test_verify_marks_found_missing_and_unreachable():
     evidence = audit.verify([p("A", 13.7, "https://x/a"), p("B", 12.0, "https://x/b"),
                              p("C", 13.7, "https://x/down")], Fetcher(), {}, {})
     assert [e.status for e in evidence] == [audit.FOUND, audit.MISSING, audit.UNREACHABLE]
+
+
+def test_not_offered_setting_without_evidence_cannot_hide_a_gap():
+    from src.pipeline import Config
+    config = Config({"banks": {"cmr": {"coverage_not_offered": ["Инвестиции"]}}})
+    matrix = {"Инвестиции": {"ЦМР": coverage.Cell(coverage.NOT_FOUND)}}
+    score, rows = audit.score_products(matrix, config, {"ЦМР": "cmr"})
+    assert score == 0
+    assert rows[0]["points"] == 0
