@@ -46,15 +46,8 @@ log = logging.getLogger("bot")
 COVER = Path(__file__).resolve().parent / "assets" / "cover.jpg"
 
 WELCOME = (
-    "<b>Сравнение розничных продуктов</b>\n"
-    "Сбер против конкурентов в Луганской Народной Республике.\n\n"
-    "🔄 <b>Обновить все банки</b> — свежий сбор с сайтов, 50–60 мин\n"
-    "🏦 <b>Сравнить</b> — светофор Сбера против одного банка\n"
-    "📂 <b>По категориям</b> — место Сбера и аргументы для клиента\n"
-    "📊 <b>Выгрузить свод</b> — Excel, PDF, HTML или данные для BI\n"
-    "🤖 <b>AI-консультант</b> — совет по собранным цифрам\n"
-    "🔁 <b>Обновить один банк</b> — быстрее, остальные из прошлого сбора\n"
-    "🧪 <b>Аудит качества</b> — сверка цифр с сайтами и баллы по критериям"
+    "<b>Банки Луганска и ЛНР</b>\n"
+    "Открой обзор по последнему сбору или выбери банк для сравнения со Сбером."
 )
 
 
@@ -145,6 +138,16 @@ async def cmd_id(message: Message) -> None:
     await message.answer(f"Твой Telegram ID: <code>{message.from_user.id}</code>")
 
 
+@dp.callback_query(F.data.startswith("ai:") | F.data.in_(
+    {"audit:llm", "audit:run", "audit:last", "export:all", "export:pdf"}))
+async def on_previous_menu(call: CallbackQuery) -> None:
+    if not permitted(call.from_user.id):
+        await call.answer("Доступ закрыт", show_alert=True)
+        return
+    await call.answer("Меню обновлено")
+    await call.message.edit_text(WELCOME, reply_markup=kb.main_menu())
+
+
 @dp.callback_query(F.data == "menu")
 async def on_menu(call: CallbackQuery) -> None:
     awaiting_question.discard(call.from_user.id)
@@ -153,6 +156,15 @@ async def on_menu(call: CallbackQuery) -> None:
 
 
 # --- сравнение -------------------------------------------------------------
+
+@dp.callback_query(F.data == "pairs")
+async def on_pairs(call: CallbackQuery) -> None:
+    if not permitted(call.from_user.id):
+        await call.answer("Доступ закрыт", show_alert=True)
+        return
+    await call.message.edit_text("С каким банком сравнить Сбер?", reply_markup=kb.pairs_menu())
+    await call.answer()
+
 
 @dp.callback_query(F.data.startswith("cmp:"))
 async def on_compare(call: CallbackQuery) -> None:
@@ -170,8 +182,10 @@ async def on_compare(call: CallbackQuery) -> None:
         log.exception("Сравнение %s не удалось", code)
         text = f"Не получилось посчитать: {html.escape(str(exc))[:400]}"
 
-    await call.message.edit_text(text, reply_markup=kb.back_to_menu(),
-                                 disable_web_page_preview=True)
+    chunks = _split(text)
+    await call.message.edit_text(chunks[0], reply_markup=kb.back_to_menu(), disable_web_page_preview=True)
+    for chunk in chunks[1:]:
+        await call.message.answer(chunk, disable_web_page_preview=True)
     # Дашборд пары — файлом сразу за текстом: подробности, графики, калькулятор.
     try:
         path = await asyncio.to_thread(service.compare_dashboard, code)
@@ -351,7 +365,7 @@ async def on_client_script(call: CallbackQuery) -> None:
     await call.answer()
     thinking = await call.message.answer("Готовлю аргументы…")
     try:
-        text = await asyncio.to_thread(service.client_script, code)
+        text = await asyncio.to_thread(service.template_script, code)
     except Exception as exc:                      # noqa: BLE001
         log.exception("Скрипт %s не получился", code)
         text = f"Не получилось: {html.escape(str(exc))[:400]}"
@@ -366,12 +380,7 @@ async def on_client_script(call: CallbackQuery) -> None:
 
 @dp.callback_query(F.data == "audit:menu")
 async def on_audit_menu(call: CallbackQuery) -> None:
-    await call.message.edit_text(
-        "Автоаудит заново открывает страницы банков и сверяет с ними цифры отчёта, "
-        "проверяет охват и сопоставимость и ставит баллы по формулам. Занимает "
-        "10–20 минут. Независимый LLM-аудит — то же плюс оценка моделью по "
-        "собранному пакету.",
-        reply_markup=kb.audit_menu())
+    await call.message.edit_text("Какой архив скачать?", reply_markup=kb.audit_menu())
     await call.answer()
 
 
@@ -392,8 +401,7 @@ async def on_audit(call: CallbackQuery) -> None:
             return
         await call.message.answer_document(
             BufferedInputFile(archive.read_bytes(), filename=archive.name),
-            caption="Тексты страниц, где сборщик не нашёл ставку. Пришли этот архив в чат "
-                    "с Claude — по нему дорабатывается разбор.")
+            caption="Страницы последнего сбора, на которых не удалось извлечь ставку.")
         await call.message.answer("Готово.", reply_markup=kb.main_menu())
         return
     if action == "snapshot":
@@ -461,7 +469,7 @@ async def on_audit(call: CallbackQuery) -> None:
 @dp.callback_query(F.data == "collect:menu")
 async def on_collect_menu(call: CallbackQuery) -> None:
     await call.message.edit_text(
-        "Какой банк обновить? Остальные банки останутся из прошлого сбора. "
+        "Обновить все банки или один? При выборе одного остальные сохранят данные прошлого сбора. "
         "Сколько займёт — скажу сразу после выбора, и напишу, когда закончу.",
         reply_markup=kb.collect_menu())
     await call.answer()
